@@ -40,7 +40,9 @@ cp $B/image/lb/packages.list config/package-lists/openthinrdp.list.chroot
 LANGS="en it ${LOCALE%%_*}"
 mkdir -p config/includes.chroot_before_packages/etc/dpkg/dpkg.cfg.d $C/etc/dpkg/dpkg.cfg.d
 { echo "# OpenThinRDP: no documentation, manuals or translations on a thin client (licenses kept)"
-  printf 'path-exclude=%s\n' /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/help/* /usr/share/locale/* /usr/lib/chromium/locales/*
+  # quoted: these are dpkg patterns, the shell must not expand them against the build container
+  printf 'path-exclude=%s\n' '/usr/share/doc/*' '/usr/share/man/*' '/usr/share/info/*' '/usr/share/help/*' \
+    '/usr/share/locale/*' '/usr/lib/chromium/locales/*'
   echo "path-include=/usr/share/doc/*/copyright"; echo "path-include=/usr/share/locale/locale.alias"
   for l in $(echo $LANGS | tr ' ' '\n' | sort -u); do echo "path-include=/usr/share/locale/$l/*"; echo "path-include=/usr/lib/chromium/locales/$l*.pak"; done; } \
   > config/includes.chroot_before_packages/etc/dpkg/dpkg.cfg.d/01-openthinrdp-slim
