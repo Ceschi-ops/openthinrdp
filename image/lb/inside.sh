@@ -11,12 +11,18 @@ get(){ sed -n "s/^$1=//p" "$S/site.conf" "$B/rootfs/opt/openthinrdp/defaults.con
 rgb(){ local h=${1#\#}
        awk -v h="$h" 'BEGIN{ for(i=0;i<3;i++){ x=substr(h,i*2+1,2); v=0; for(j=1;j<=2;j++){ c=index("0123456789abcdef", tolower(substr(x,j,1)))-1; v=v*16+c }; printf "%s%.3f", (i?", ":""), v/255 } }'; }
 mkdir -p /lb && cd /lb
-lb config --distribution trixie --architectures amd64 \
-  --archive-areas "main contrib non-free non-free-firmware" --backports true \
-  --debian-installer live --debian-installer-gui true --memtest none \
-  --iso-volume "OpenThinRDP $V" --iso-application OpenThinRDP --image-name openthinrdp \
-  --bootappend-live "boot=live components quiet splash loglevel=3 systemd.show_status=false username=kiosk hostname=thinclient vt.global_cursor_default=0" \
-  $( [ "${AUTO_INSTALL:-yes}" = yes ] && echo --bootappend-install "auto=true priority=critical preseed/file=/cdrom/install/preseed.cfg locale=$LOCALE keymap=$KEYBOARD" )
+# an array, not $( ... ): the install options contain spaces and must reach lb config as ONE argument,
+# otherwise the installer starts without the preseed and stops at the first question
+CFG=(--distribution trixie --architectures amd64
+  --archive-areas "main contrib non-free non-free-firmware" --backports true
+  --debian-installer live --debian-installer-gui true --memtest none
+  --iso-volume "OpenThinRDP $V" --iso-application OpenThinRDP --image-name openthinrdp
+  --bootappend-live "boot=live components quiet splash loglevel=3 systemd.show_status=false username=kiosk hostname=thinclient vt.global_cursor_default=0")
+if [ "${AUTO_INSTALL:-yes}" = yes ]; then
+  L=${LOCALE%%.*}
+  CFG+=(--bootappend-install "auto=true priority=critical preseed/file=/cdrom/install/preseed.cfg language=${L%%_*} country=${L#*_} locale=$LOCALE keymap=$KEYBOARD")
+fi
+lb config "${CFG[@]}"
 C=config/includes.chroot
 mkdir -p config/package-lists config/hooks/normal config/packages.chroot config/includes.binary/install \
   $C/etc/openthinrdp/ca $C/opt/openthinrdp/branding $C/usr/share/plymouth/themes/openthinrdp
