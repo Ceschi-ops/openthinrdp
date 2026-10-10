@@ -371,6 +371,16 @@ session(){
     # Exception: code 1 below 20 s stays an attempt (seen once while re-entering a session: with the shutdown
     # page the countdown would have switched the device off)
     if [ "$d" -ge "$thr" ] && ! { [ "$ec" = 1 ] && [ "$d" -lt 20 ]; }; then
+      # Code 1 ("disconnection initiated by an administrative tool on the server") is also what the server
+      # sends when a reconnection fails or when re-entering a disconnected session goes wrong; a user
+      # disconnect from Windows ends with 12. A single code 1 counts as a drop (reconnect); a second one
+      # within 5 minutes means the server insists (VM shutting down, administrator): deliberate.
+      if [ "$ec" = 1 ]; then
+        if [ $(( $(date +%s) - ${LAST_EC1:-0} )) -gt 300 ]; then
+          LAST_EC1=$(date +%s); ev "session of $U closed by the server after $(duration $d) (code 1): reconnecting once"; return 3
+        fi
+        ev "session of $U closed by the server again within 5 minutes (code 1): treated as deliberate"
+      fi
       if deliberate "$ec"; then ev "session of $U ended after $(duration $d) ($(reason "$ec"), code $ec)"; return 0; fi
       ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting"; return 3
     fi
