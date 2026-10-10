@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenThinRDP: Wake-on-LAN on the wired adapters
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openthinrdp/wol.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

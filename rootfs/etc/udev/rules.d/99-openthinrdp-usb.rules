@@ -1,0 +1,2 @@
+# The kiosk user (FreeRDP) opens USB devices to pass them to Windows
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", GROUP="plugdev", MODE="0664"

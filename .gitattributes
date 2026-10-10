@@ -1,0 +1,6 @@
+# Everything that ends up on the thin client must keep Unix line endings.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary

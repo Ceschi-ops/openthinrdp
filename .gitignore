@@ -1,0 +1,4 @@
+# your site folder (credentials, keys, logos): never in git
+image/site/
+out/
+*.iso

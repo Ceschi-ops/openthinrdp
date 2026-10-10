@@ -1,0 +1,8 @@
+// The kiosk user may use smart card readers through pcscd, so FreeRDP passes them to Windows with /smartcard.
+// Without this pcscd refuses ("NOT authorized for action: access_pcsc"): the kiosk is not the "active" session.
+polkit.addRule(function(action, subject) {
+  if ((action.id == "org.debian.pcsc-lite.access_pcsc" || action.id == "org.debian.pcsc-lite.access_card") &&
+      subject.user == "kiosk") {
+    return polkit.Result.YES;
+  }
+});

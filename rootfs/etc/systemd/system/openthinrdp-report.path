@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenThinRDP: status at every new event
+
+[Path]
+PathModified=/var/log/openthinrdp/events.log
+
+[Install]
+WantedBy=paths.target

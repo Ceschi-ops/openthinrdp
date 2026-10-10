@@ -1,0 +1,3 @@
+xset s off -dpms s noblank &
+setxkbmap "$(. /opt/openthinrdp/lib/common.sh; cfg KEYBOARD)" &
+exec /opt/openthinrdp/kiosk.sh

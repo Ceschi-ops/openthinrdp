@@ -1,0 +1,56 @@
+#!/bin/bash
+# live-build chroot hook: users, services and system settings of OpenThinRDP. Runs inside the image.
+set -e
+. /etc/openthinrdp/build.env
+OTR=/opt/openthinrdp
+
+# FreeRDP: newer from trixie-backports (USB and graphics fixes), unless the site brings its own packages
+case "$FREERDP_FROM" in
+  backports) apt-get install -y -t trixie-backports freerdp3-x11 ;;
+  site)      dpkg -s freerdp3-x11 >/dev/null 2>&1 || { echo "FREERDP_FROM=site but no freerdp3-x11 in debs/"; exit 1; } ;;
+  *)         apt-get install -y freerdp3-x11 ;;
+esac
+
+# accounts: "kiosk" runs the X session without a password; "admin" administers (SSH with a key, sudo)
+id kiosk >/dev/null 2>&1 || useradd -m -s /bin/bash kiosk
+usermod -aG plugdev,video,audio,dialout,input kiosk
+passwd -d kiosk >/dev/null; usermod -s /bin/bash kiosk
+id admin >/dev/null 2>&1 || useradd -m -s /bin/bash admin
+usermod -aG sudo admin
+if [ -n "$ADMIN_PASSWORD_HASH" ]; then usermod -p "$ADMIN_PASSWORD_HASH" admin; else usermod -p '!' admin; fi
+passwd -l root >/dev/null
+cp -a /etc/skel/. /home/kiosk/; chown -R kiosk:kiosk /home/kiosk
+chmod 0440 /etc/sudoers.d/openthinrdp
+
+# files of the kiosk user and of the services
+chmod 755 $OTR/*.sh
+mkdir -p /var/log/openthinrdp /var/lib/openthinrdp
+touch /var/log/openthinrdp/events.log; chown kiosk: /var/log/openthinrdp/events.log
+[ -f /etc/openthinrdp/smb.cred ] && chmod 600 /etc/openthinrdp/smb.cred
+
+# fast DHCP: no ARP probe (~5 s), no initial delay, no IPv6; in the background, so ifup returns at once
+# without a cable (with "timeout 0" it waited for ever and blocked ifdown)
+for o in noarp nodelay ipv4only 'timeout 0' background; do grep -qx "$o" /etc/dhcpcd.conf || echo "$o" >> /etc/dhcpcd.conf; done
+
+# language, time zone, keyboard
+sed -i "s/^# *\($LOCALE\)/\1/" /etc/locale.gen && locale-gen >/dev/null && update-locale LANG="$LOCALE"
+ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime; echo "$TIMEZONE" > /etc/timezone
+printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\n' "$KEYBOARD" > /etc/default/keyboard
+
+# services
+systemctl enable openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer \
+  openthinrdp-report.path openthinrdp-schedule.timer systemd-timesyncd pcscd.socket
+systemctl disable ssh 2>/dev/null || true          # apply.sh turns it on with SSH=on and a key
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+for s in ModemManager bluetooth cups avahi-daemon; do systemctl disable "$s" 2>/dev/null || true; done
+systemctl mask NetworkManager-wait-online.service systemd-networkd-wait-online.service e2scrub_all.timer 2>/dev/null || true
+systemctl mask console-setup.service 2>/dev/null || true
+
+# security updates (FreeRDP excluded), browser policies, boot splash
+$OTR/security-updates.sh
+$OTR/browser-policy.sh
+plymouth-set-default-theme openthinrdp
+update-initramfs -u
+
+# the build settings (with the admin password hash) are not needed on the device
+rm -f /etc/openthinrdp/build.env

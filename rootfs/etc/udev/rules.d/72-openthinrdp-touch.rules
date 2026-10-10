@@ -1,0 +1,3 @@
+# Touch screens: note VID:PID in /var/lib/openthinrdp/touch-usb as soon as the touch screen appears, so the
+# kiosk knows it is a touch screen even while it is unplugged: never passed whole, touches go via +multitouch.
+ACTION=="add|change", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{ID_VENDOR_ID}=="?*", ENV{ID_MODEL_ID}=="?*", RUN+="/bin/sh -c 'mkdir -p /var/lib/openthinrdp; grep -qx $env{ID_VENDOR_ID}:$env{ID_MODEL_ID} /var/lib/openthinrdp/touch-usb 2>/dev/null || echo $env{ID_VENDOR_ID}:$env{ID_MODEL_ID} >> /var/lib/openthinrdp/touch-usb'"

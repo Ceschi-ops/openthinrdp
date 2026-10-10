@@ -1,0 +1,43 @@
+#!/bin/bash
+# Runs inside a debian:trixie container (build.sh): assembles the live-build configuration and builds the ISO.
+set -euo pipefail
+B=/build; S=$B/site
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq && apt-get install -y -qq live-build >/dev/null
+. "$S/build.conf"
+V=$(cat $B/VERSION)
+get(){ sed -n "s/^$1=//p" "$S/site.conf" "$B/rootfs/opt/openthinrdp/defaults.conf" 2>/dev/null | grep -v '^$' | head -1; }
+# #rrggbb -> "r, g, b" between 0 and 1, as Plymouth wants it
+rgb(){ local h=${1#\#}
+       awk -v h="$h" 'BEGIN{ for(i=0;i<3;i++){ x=substr(h,i*2+1,2); v=0; for(j=1;j<=2;j++){ c=index("0123456789abcdef", tolower(substr(x,j,1)))-1; v=v*16+c }; printf "%s%.3f", (i?", ":""), v/255 } }'; }
+mkdir -p /lb && cd /lb
+lb config --distribution trixie --architectures amd64 \
+  --archive-areas "main contrib non-free non-free-firmware" --backports true \
+  --debian-installer live --debian-installer-gui true --memtest none \
+  --iso-volume "OpenThinRDP $V" --iso-application OpenThinRDP --image-name openthinrdp \
+  --bootappend-live "boot=live components quiet splash loglevel=3 systemd.show_status=false username=kiosk hostname=thinclient vt.global_cursor_default=0" \
+  $( [ "${AUTO_INSTALL:-yes}" = yes ] && echo --bootappend-install "auto=true priority=critical preseed/file=/cdrom/install/preseed.cfg locale=$LOCALE keymap=$KEYBOARD" )
+C=config/includes.chroot
+mkdir -p config/package-lists config/hooks/normal config/packages.chroot config/includes.binary/install \
+  $C/etc/openthinrdp/ca $C/opt/openthinrdp/branding $C/usr/share/plymouth/themes/openthinrdp
+cp $B/image/lb/packages.list config/package-lists/openthinrdp.list.chroot
+cp -a $B/rootfs/. $C/
+echo "$V" > $C/opt/openthinrdp/VERSION
+# site: settings, branding, certificates, credentials, keys, packages
+[ -f $S/site.conf ] && cp $S/site.conf $C/etc/openthinrdp/site.conf
+for f in logo splash; do if [ -f $S/$f.png ]; then cp $S/$f.png $C/opt/openthinrdp/branding/; else cp $B/image/branding/$f.png $C/opt/openthinrdp/branding/; fi; done
+cp $C/opt/openthinrdp/branding/splash.png $C/usr/share/plymouth/themes/openthinrdp/logo.png
+cp $B/image/lb/plymouth/openthinrdp.plymouth $C/usr/share/plymouth/themes/openthinrdp/
+sed -e "s/@TOP@/$(rgb "$(get BG_TOP)")/" -e "s/@BOTTOM@/$(rgb "$(get BG_BOTTOM)")/" $B/image/lb/plymouth/openthinrdp.script > $C/usr/share/plymouth/themes/openthinrdp/openthinrdp.script
+cp $S/ca/*.crt $C/etc/openthinrdp/ca/ 2>/dev/null || true
+for f in smb.cred update-key.asc authorized_keys; do [ -f $S/$f ] && cp $S/$f $C/etc/openthinrdp/; done
+cp $S/debs/*.deb config/packages.chroot/ 2>/dev/null || true
+printf 'LOCALE=%s\nTIMEZONE=%s\nKEYBOARD=%s\nFREERDP_FROM=%s\nADMIN_PASSWORD_HASH=%s\n' "$LOCALE" "$TIMEZONE" "$KEYBOARD" "$FREERDP_FROM" "${ADMIN_PASSWORD_HASH:-}" > $C/etc/openthinrdp/build.env
+cp $B/image/lb/hook.chroot config/hooks/normal/0100-openthinrdp.hook.chroot
+sed -e "s|@LOCALE@|$LOCALE|" -e "s|@KEYBOARD@|$KEYBOARD|" -e "s|@TIMEZONE@|$TIMEZONE|" -e "s|@ADMIN_HASH@|${ADMIN_PASSWORD_HASH:-!}|" \
+  $B/image/lb/preseed.cfg.in > config/includes.binary/install/preseed.cfg
+chmod +x config/hooks/normal/*.hook.chroot
+echo "=== lb build $(date)"
+lb build
+cp live-image-amd64.hybrid.iso /out/openthinrdp-$V.iso 2>/dev/null || cp openthinrdp*.iso /out/openthinrdp-$V.iso
+cd /out && sha256sum openthinrdp-$V.iso > openthinrdp-$V.iso.sha256 && ls -lh

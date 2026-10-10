@@ -1,0 +1,6 @@
+# OpenThinRDP: USB disks (sticks, signature keys, devices with storage)
+# 1) the kernel checks every 2 s whether content appeared on removable media (without a desktop nobody
+#    enables it: "Media removed, stopped polling" and content that appears later is never seen)
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{DEVTYPE}=="disk", ATTR{events_poll_msecs}="2000"
+# 2) mount when plugged in AND when content appears later (devices that boot or switch mode)
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", RUN+="/opt/openthinrdp/usb-mount.sh %k"

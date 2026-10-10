@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenThinRDP: apply the settings at boot (network, DNS, time, updates, USB, SSH)
+After=live-config.service network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openthinrdp/boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

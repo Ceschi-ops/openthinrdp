@@ -1,0 +1,63 @@
+# OpenThinRDP: automatic installation (AUTO_INSTALL=yes in build.conf). It WIPES THE FIRST DISK without asking.
+d-i debian-installer/locale string @LOCALE@
+d-i keyboard-configuration/xkb-keymap select @KEYBOARD@
+d-i console-setup/ask_detect boolean false
+
+# Network: NOT configured during the installation (it installs offline from the medium). Otherwise, on a PC
+# whose wired port has no link, the installer switches to Wi-Fi and stops asking for a WPA password.
+# The thin client configures its network at the first boot.
+d-i netcfg/enable boolean false
+d-i netcfg/get_hostname string thinclient
+d-i netcfg/hostname string thinclient
+
+# No mirror: offline installation from the medium (live installer)
+d-i apt-setup/use_mirror boolean false
+d-i apt-setup/services-select multiselect
+apt-cdrom-setup apt-setup/cdrom/set-first boolean false
+
+d-i clock-setup/utc boolean true
+d-i time/zone string @TIMEZONE@
+d-i clock-setup/ntp boolean false
+
+# Accounts: root disabled; "admin" (already in the image, with sudo) gets the console password of
+# build.conf, or a locked password (SSH with a key only)
+d-i passwd/root-login boolean false
+d-i passwd/make-user boolean true
+d-i passwd/user-fullname string Administrator
+d-i passwd/username string admin
+d-i passwd/user-password-crypted password @ADMIN_HASH@
+d-i user-setup/encrypt-home boolean false
+
+# Partitioning: the first disk (sda / nvme0n1 / mmcblk0 / vda), wiped completely
+d-i partman/early_command string \
+  DISK=$(list-devices disk | head -n1); \
+  debconf-set partman-auto/disk "$DISK"; \
+  debconf-set grub-installer/bootdev "$DISK"
+d-i partman-auto/method string regular
+d-i partman-auto/choose_recipe select atomic
+d-i partman-auto/purge_lvm_from_device boolean true
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-md/device_remove_md boolean true
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-md/confirm boolean true
+d-i partman/alignment string optimal
+d-i partman/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+
+# Packages: nothing more (everything comes from the live image)
+tasksel tasksel/first multiselect
+d-i pkgsel/include string
+d-i pkgsel/upgrade select none
+d-i pkgsel/update-policy select none
+popularity-contest/participate boolean false
+
+d-i grub-installer/only_debian boolean true
+d-i grub-installer/with_other_os boolean true
+d-i grub-installer/bootdev string default
+d-i finish-install/keep-consoles boolean true
+d-i finish-install/reboot_in_progress note
+d-i cdrom-detect/eject boolean true
+d-i debian-installer/exit/reboot boolean true

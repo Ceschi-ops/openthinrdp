@@ -1,0 +1,6 @@
+[Unit]
+Description=OpenThinRDP: scheduled power on and off
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openthinrdp/schedule.sh

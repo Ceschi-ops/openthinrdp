@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenThinRDP: status to the management folder, central settings, signed updates
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/openthinrdp/report.sh
+Nice=10

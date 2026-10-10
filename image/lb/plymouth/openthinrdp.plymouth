@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=OpenThinRDP
+Description=OpenThinRDP boot splash: the logo on a dark gradient
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/openthinrdp
+ScriptFile=/usr/share/plymouth/themes/openthinrdp/openthinrdp.script

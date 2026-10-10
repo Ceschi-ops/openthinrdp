@@ -1,0 +1,55 @@
+#!/bin/bash
+# Boot service (openthinrdp-boot.service): bring the system to a known state from the settings.
+# Runs in parallel with the automatic login: nothing here may be needed before the login form.
+. /opt/openthinrdp/lib/common.sh
+mkdir -p "$OTR_LIB" "$OTR_LOG"; touch "$OTR_EVENTS"; chown "$OTR_KIOSK_USER:" "$OTR_EVENTS" 2>/dev/null
+
+# network, DNS, time servers, updates, USB, SSH, keyboard
+"$OTR/apply.sh" boot
+
+# NTLM only (RDP_AUTH=ntlm): without a Kerberos configuration FreeRDP cannot try Kerberos at all
+if [ "$(cfg RDP_AUTH)" = ntlm ]; then grep -q '^KRB5_CONFIG=' /etc/environment || echo 'KRB5_CONFIG=/dev/null' >> /etc/environment
+else sed -i '/^KRB5_CONFIG=\/dev\/null$/d' /etc/environment; fi
+
+# APT sources: a system installed offline from the ISO only knows the cdrom
+if ! grep -qhsE '^(deb|URIs:) *https?://' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null; then
+  cat > /etc/apt/sources.list.d/debian.sources <<'SRC'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: trixie trixie-updates trixie-backports
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: http://security.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+SRC
+  sed -i 's/^deb cdrom/# deb cdrom/' /etc/apt/sources.list 2>/dev/null
+fi
+# package lists never downloaded (offline install): fetch them once, in the background
+[ -z "$(ls /var/lib/apt/lists/ 2>/dev/null | grep -v -e lock -e partial -e auxfiles)" ] && { (sleep 60; apt-get update -q >/dev/null 2>&1) & }
+
+# --- once, on the INSTALLED system only (not on the live image)
+if [ -f /etc/default/grub ] && [ -d /boot/grub ]; then
+  # direct and silent boot: no GRUB menu, no kernel or systemd messages, the splash until the login form
+  if [ ! -f "$OTR_LIB/.grub-silent" ]; then
+    sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
+    grep -q '^GRUB_TIMEOUT_STYLE' /etc/default/grub || echo 'GRUB_TIMEOUT_STYLE=hidden' >> /etc/default/grub
+    sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 rd.udev.log_level=3 systemd.show_status=false vt.global_cursor_default=0"/' /etc/default/grub
+    update-grub 2>/dev/null && touch "$OTR_LIB/.grub-silent"
+  fi
+  # initramfs with the drivers of THIS machine only (on a thin client 137 MB -> 18 MB, a few seconds less of
+  # boot from eMMC). It has to happen on the device, not in the image. The graphics and network drivers in
+  # use go in explicitly so the splash and an early network keep working.
+  if [ ! -f "$OTR_LIB/.initramfs-dep" ]; then
+    sed -i 's/^MODULES=.*/MODULES=dep/' /etc/initramfs-tools/initramfs.conf
+    for d in /sys/class/drm/card[0-9]/device/driver /sys/class/net/*/device/driver; do
+      m=$(basename "$(readlink -f "$d")" 2>/dev/null); [ -n "$m" ] && modinfo "$m" >/dev/null 2>&1 || continue
+      grep -qx "$m" /etc/initramfs-tools/modules || echo "$m" >> /etc/initramfs-tools/modules
+    done
+    update-initramfs -u >/dev/null 2>&1 && touch "$OTR_LIB/.initramfs-dep"
+  fi
+fi
+exit 0

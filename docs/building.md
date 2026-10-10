@@ -1,0 +1,43 @@
+# Building the image
+
+Needs a Linux machine (or VM) with Docker or Podman able to run privileged containers, and about 15 GB of
+disk. The build runs live-build inside a `debian:trixie` container and takes 10-20 minutes.
+
+```
+cp -r image/site.example image/site
+# edit image/site/build.conf and image/site/site.conf, add logo.png / splash.png and the rest
+image/build.sh
+```
+
+Result: `out/openthinrdp-<version>.iso` and its `.sha256`. `image/site/` is ignored by git: it holds your
+credentials and keys.
+
+## The site folder
+
+See [image/site.example/README.md](../image/site.example/README.md). In short:
+
+- `build.conf`: installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
+  of `admin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`backports`, `debian` or
+  `site`), `AUTO_INSTALL`.
+- `site.conf`: default settings of every device.
+- `logo.png` (~200 px, dialogs), `splash.png` (~640 px, transparent, boot screen).
+- `ca/*.crt`: certificate authorities for the web button.
+- `smb.cred`, `update-key.asc`, `authorized_keys`: management (see [management.md](management.md)).
+- `debs/*.deb`: your own packages, e.g. a FreeRDP build.
+
+## Installing
+
+Write the ISO to a USB stick with any raw image writer and boot from it (UEFI). The default menu entry starts
+the live system; **Install** runs the automatic installation, which **wipes the first disk without asking**
+and reboots. With `AUTO_INSTALL=no` the usual Debian installer questions are asked.
+
+At the first boot of the installed system the device shrinks its initramfs to its own hardware and makes the
+boot silent; the settings dialog opens if no broker is set.
+
+## Accounts
+
+| Account | Purpose |
+|---|---|
+| `kiosk` | runs the X session and the kiosk, logs in automatically, no password, may only run `save-config.sh` as root |
+| `admin` | administration: SSH with a key (`SSH=on`), console with `ADMIN_PASSWORD_HASH`, sudo |
+| `root` | locked |

@@ -1,0 +1,515 @@
+#!/bin/bash
+# OpenThinRDP kiosk: login form, RDP session through the broker, reconnection, settings dialog.
+# Runs as the kiosk user inside the X session (started by Openbox, see /etc/xdg/openbox/autostart).
+. /opt/openthinrdp/lib/common.sh
+otr_lang
+export DISPLAY=${DISPLAY:-:0}
+for i in $(seq 1 200); do xset q >/dev/null 2>&1 && break; sleep 0.1; done
+
+# Same picture as the boot splash, then Plymouth quits leaving it on screen: no black gap before the form
+SPLASH=$OTR/branding/splash.png
+background(){ command -v hsetroot >/dev/null && hsetroot -add "$(cfg BG_TOP)" -add "$(cfg BG_BOTTOM)" -gradient 0 -center "$SPLASH" 2>/dev/null; }
+background
+sudo -n /usr/bin/plymouth quit --retain-splash 2>/dev/null
+xset s off -dpms s noblank 2>/dev/null
+numlockx on 2>/dev/null            # FreeRDP sends the NumLock state to Windows when connecting
+# The X authorization is tied to the hostname: after renaming the device from the settings dialog no new
+# window would open any more (every dialog failed as if "Shut down" had been pressed).
+xhost +si:localuser:"$(id -un)" >/dev/null 2>&1
+ev "kiosk started"
+
+# Screen always on. A monitor that powers on or wakes up AFTER X (slow HDMI, monitor off at boot) leaves X
+# without outputs and the screen black for good: every 2 s check that each connected monitor has a picture,
+# otherwise enable it and redraw background and login form.
+monitor_watch(){
+  while sleep 2; do
+    # --current does not probe the monitor (no flicker); "connected (" = connected but no picture
+    if xrandr --current 2>/dev/null | grep -qE ' connected (primary )?\('; then
+      ev "monitor connected without picture: enabled"
+      xrandr --auto 2>/dev/null; sleep 1
+      xset s off -dpms s noblank 2>/dev/null
+      background
+      # the form was drawn for the wrong resolution: close it, the main loop draws it again
+      pgrep -x xfreerdp3 >/dev/null || pkill -f -- '--class=OtrLogin' 2>/dev/null
+    fi
+  done
+}
+monitor_watch &
+
+TITLE=$(cfg TITLE); LOGO=$(cfg LOGO); IMG=""; [ -f "$LOGO" ] && IMG="--image=$LOGO"
+DEF=$(cfg DEFAULT_USER)
+
+# Webcam: always passed whole to Windows (FreeRDP has no camera redirection channel for Linux clients)
+CAMID=""
+_V=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_VENDOR_ID=//p')
+_P=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_MODEL_ID=//p')
+[ -n "$_V" ] && [ -n "$_P" ] && CAMID="$_V:$_P"
+
+# Touch screens (VID:PID) stay on the thin client and the touches go to Windows through the RDP touch channel
+# (+multitouch). Passed whole over USB a touch screen reaches the VM as a raw device that is not tied to the
+# session screen and does not work. Sources: $OTR_LIB/touch-usb (written by udev when the touch screen
+# appears, so it counts even while unplugged) + the input devices the kernel marks as direct (INPUT_PROP_DIRECT).
+touch_ids(){
+  local i p d
+  { cat "$OTR_LIB/touch-usb" 2>/dev/null
+    for i in /sys/class/input/input*; do
+      p=$(cat "$i/properties" 2>/dev/null); [ -n "$p" ] && (( 0x$p & 2 )) || continue
+      d=$(readlink -f "$i/device"); while [ -n "$d" ] && [ "$d" != / ]; do
+        [ -f "$d/idVendor" ] && { echo "$(cat "$d/idVendor"):$(cat "$d/idProduct")"; break; }; d=$(dirname "$d"); done
+    done; } | tr 'A-F' 'a-f' | grep -E '^[0-9a-f]{4}:[0-9a-f]{4}$' | sort -u
+}
+# Every connected USB device except keyboards and mice (HID boot protocol 1/2), hubs, Bluetooth, smart card
+# readers, touch screens and network adapters
+usb_all_ids(){
+  local d i skip dp n touch=" $(touch_ids | tr '\n' ' ') "
+  for d in /sys/bus/usb/devices/[0-9]*-[0-9]*; do
+    [ -f "$d/idVendor" ] || continue
+    [ "$(cat "$d/bDeviceClass" 2>/dev/null)" = 09 ] && continue
+    skip=0
+    for i in "$d"/*:*; do
+      [ -f "$i/bInterfaceClass" ] || continue
+      case "$(cat "$i/bInterfaceClass")" in
+        09|e0|0b) skip=1 ;;     # hub, Bluetooth, smart card reader (goes with /smartcard through pcscd)
+        03) case "$(cat "$i/bInterfaceProtocol")" in 01|02) skip=1 ;; esac ;;
+      esac
+    done
+    # USB network adapter: given to Windows, the thin client would lose its network and the session
+    dp=$(readlink -f "$d")
+    for n in /sys/class/net/*/device; do case "$(readlink -f "$n")" in "$dp"/*) skip=1 ;; esac; done
+    case "$touch" in *" $(cat "$d/idVendor"):$(cat "$d/idProduct") "*) skip=1 ;; esac
+    # service controller of the hubs built into some monitors (Microchip USB27xx): useless to Windows,
+    # it stays with a driver error in Device Manager
+    [ "$(cat "$d/product" 2>/dev/null)" = "Hub Controller" ] && skip=1
+    [ $skip = 0 ] && echo "$(cat "$d/idVendor"):$(cat "$d/idProduct")"
+  done | sort -u | tr '\n' ' '
+}
+# FreeRDP with the filter: option (upstream since 3.33): devices plugged in during the session follow the same
+# rules, HID, hubs, smart card readers and Bluetooth stay here, storage and webcams go to Windows
+USBFILTER=""
+xfreerdp3 /help 2>/dev/null | grep -q 'filter:<class>' && USBFILTER=",filter:03#09#0b#e0"
+usb_opt(){
+  local ids="$CAMID $(cfg USB_REDIRECT)" l="" i x scard
+  [ "$(cfg USB_MODE)" != disks ] && ids="$ids $(usb_all_ids)"
+  # smart card readers never go as whole devices, even when listed in USB_REDIRECT (pcscd owns them)
+  scard=" $(for x in /sys/bus/usb/devices/*:*; do [ "$(cat "$x/bInterfaceClass" 2>/dev/null)" = 0b ] && echo "$(cat "${x%:*}/idVendor"):$(cat "${x%:*}/idProduct")"; done | sort -u | tr '\n' ' ') "
+  for i in $(echo $ids | tr ' ' '\n' | tr 'A-F' 'a-f' | sort -u); do
+    [[ $i =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] && [[ "$scard" != *" $i "* ]] && l="$l${l:+#}$i"
+  done
+  # auto = a device that disconnects and comes back (keys that restart in another mode once they see a PC) is
+  # passed again instead of being lost. The channel is always open, also without devices at login.
+  echo "/usb:auto${l:+,id:$l}$USBFILTER"
+}
+# First device with a microphone (audio interface, class 01) among those passed whole ($1 = the /usb option).
+# Webcams and USB headsets bring their own microphone into Windows: the redirected thin client microphone
+# (usually an empty analog input) would become the default "Remote Audio" device, and every time the webcam
+# is re-attached Windows creates a new microphone and apps fall back to the empty one.
+usb_audio_to_windows(){
+  local ids=" $(echo "$1" | sed -n 's/.*,id:\([^,]*\).*/\1/p' | tr '#' ' ') " x id
+  for x in /sys/bus/usb/devices/*:*; do
+    [ "$(cat "$x/bInterfaceClass" 2>/dev/null)" = 01 ] || continue
+    id="$(cat "${x%:*}/idVendor" 2>/dev/null):$(cat "${x%:*}/idProduct" 2>/dev/null)"
+    case "$ids" in *" $id "*) echo "$id"; return 0 ;; esac
+  done
+  return 1
+}
+# USB reset of the webcam before connecting: some webcams are not re-enumerated reliably otherwise
+reset_cam(){
+  [ -z "$CAMID" ] && return
+  local n pr
+  for n in /dev/bus/usb/*/*; do
+    pr=$(udevadm info -q property -n "$n" 2>/dev/null)
+    if echo "$pr" | grep -qi "ID_VENDOR_ID=${CAMID%:*}" && echo "$pr" | grep -qi "ID_MODEL_ID=${CAMID#*:}"; then
+      python3 -c "import fcntl,sys;fcntl.ioctl(open(sys.argv[1],'wb'),0x5514,0)" "$n" 2>/dev/null
+      break
+    fi
+  done
+}
+
+# NTLM only: since FreeRDP 3.17 "ntlm,!kerberos" no longer excludes Kerberos, "none,ntlm" does (FreeRDP #11818)
+FRV=$(xfreerdp3 --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+NTLMPKG='ntlm,!kerberos'
+{ [ "${FRV%%.*}" -gt 3 ] || { [ "${FRV%%.*}" -eq 3 ] && [ "$(echo "$FRV" | cut -d. -f2)" -ge 17 ]; }; } 2>/dev/null && NTLMPKG='none,ntlm'
+HASUDP=0; xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && HASUDP=1
+
+# connect USER PASSWORD BROKER: one xfreerdp3 run; its exit code is the result
+connect(){
+  reset_cam; sleep 1
+  local -a o=(/v:"$3" /u:"$1" /p:"$2") extra
+  local v i=1 dev usb mic
+  v=$(cfg DOMAIN); [ -n "$v" ] && o+=(/d:"$v")
+  v=$(cfg LOAD_BALANCE_INFO); [ -n "$v" ] && o+=(/load-balance-info:"$v")
+  [ "$(cfg RDP_AUTH)" = ntlm ] && o+=(/auth-pkg-list:"$NTLMPKG")
+  case "$(cfg RDP_CERT)" in ignore) o+=(/cert:ignore) ;; verify) o+=(/cert:deny) ;; *) o+=(/cert:tofu) ;; esac
+  v=$(cfg RDP_GFX); [ -n "$v" ] && o+=(/gfx:"$v")
+  # udp: the server measures the line (/network:auto) and lowers frame rate and quality when the network or
+  # the server itself struggle. No /auto-reconnect: when FreeRDP's own reconnection fails it exits with code 1,
+  # the same code as an administrator disconnect, and the kiosk would stop. The kiosk reopens the session
+  # instead, and every new connection tries UDP again. tcp with a UDP-capable FreeRDP needs -multitransport.
+  if [ "$(cfg TRANSPORT)" = udp ] && [ $HASUDP = 1 ]; then o+=(/network:auto)
+  elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
+  else o+=(/network:lan); fi
+  v=$(cfg RDP_KEYBOARD); [ -n "$v" ] && o+=(/kbd:layout:"$v")
+  for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyS0; do [ -e "$dev" ] && { o+=(/serial:"COM$i,$dev"); i=$((i+1)); }; done
+  usb=$(usb_opt); o+=("$usb")
+  [ -n "$(touch_ids)" ] && o+=(+multitouch)
+  # microphone: the one of the USB device passed to Windows, if any (see usb_audio_to_windows), else ours
+  if mic=$(usb_audio_to_windows "$usb"); then ev "microphone: the one of $mic in Windows, no thin client microphone"
+  else o+=(/microphone:sys:alsa); fi
+  read -ra extra <<< "$(cfg RDP_EXTRA)"
+  xfreerdp3 "${o[@]}" /gdi:hw /bpp:32 /dynamic-resolution /f /smartcard /drive:hotplug,'*' \
+    /sound:sys:alsa /clipboard "${extra[@]}" > /tmp/kiosk.log 2>&1
+}
+
+# --- settings dialog ----------------------------------------------------------------------------
+# prefix /23 -> 255.255.254.0
+pfx2mask(){ local p=$1 m="" i o; for i in 1 2 3 4; do if [ $p -ge 8 ]; then o=255; p=$((p-8)); else o=$(( 256 - (1 << (8-p)) )); [ $p -eq 0 ] && o=0; p=0; fi; m="$m${m:+.}$o"; done; echo $m; }
+# combo VALUE VALUES_ARRAY LABELS_ARRAY: yad list "a!^b!c" with the label of VALUE selected
+combo(){ local cur=$1 i out=""; local -n vs=$2 ls=$3
+  for i in "${!vs[@]}"; do out+="${out:+!}$([ "${vs[$i]}" = "$cur" ] && echo '^')${ls[$i]}"; done; echo "$out"; }
+# unlabel LABEL VALUES_ARRAY LABELS_ARRAY: the value behind a label chosen in a combo
+unlabel(){ local lab=$1 i; local -n vs=$2 ls=$3
+  for i in "${!ls[@]}"; do [ "${ls[$i]}" = "$lab" ] && { echo "${vs[$i]}"; return; }; done; echo "${vs[0]}"; }
+# the settings can be protected by a PIN (SETTINGS_PIN_SHA256): anyone at the device could change the broker
+pin_ok(){
+  local h p; h=$(cfg SETTINGS_PIN_SHA256); [ -z "$h" ] && return 0
+  # Enter in the entry field presses the LAST button: OK goes last
+  p=$(yad --entry --hide-text $IMG --title="$TITLE" --center --text="$L_PIN_ASK" --button="$L_CANCEL:1" --button="$L_OK:0" 2>/dev/null) || return 1
+  [ "$(printf '%s' "$p" | sha256sum | cut -c1-64)" = "$h" ] && return 0
+  ev "settings: wrong PIN"; yad --error --center --timeout=3 --text="$L_PIN_WRONG" 2>/dev/null; return 1
+}
+settings_dialog(){
+  pin_ok || return
+  local IF IPC PFX GWC mac sync st rep wli wst out r tmp msg
+  . "$OTR/lib/netif.sh"; IF=$(main_nic)
+  IPC=$(ip -4 -o addr show dev "$IF" 2>/dev/null | awk '{print $4}' | head -1); PFX=${IPC#*/}; IPC=${IPC%/*}
+  GWC=$(ip -4 route show default 2>/dev/null | awk '{print $3}' | head -1)
+  mac=$(cat "/sys/class/net/$IF/address" 2>/dev/null)
+  [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ] && sync=$L_TIME_SYNC || sync=$L_TIME_NOSYNC
+  wli=$(wifi_nics | head -1)
+  if [ -z "$wli" ]; then wst=$L_WIFI_NONE
+  elif iw dev "$wli" link 2>/dev/null | grep -q Connected; then wst=$(printf "$L_WIFI_CONNECTED" "$(iw dev "$wli" link | sed -n 's/^[[:space:]]*SSID: //p') $(iw dev "$wli" link | sed -n 's/^[[:space:]]*signal: //p')")
+  else wst=$L_WIFI_DISCONNECTED; fi
+  rep=$(tail -1 "$OTR_LOG/report.log" 2>/dev/null | cut -c1-60)
+  st=$(printf "$L_STATUS_LINE" "${IPC:-$L_NO_NETWORK}" "$mac" "$(date +%H:%M)" "$sync" "$wst" "${rep:-$L_NEVER}")
+
+  local -a NETV=(dhcp static) NETL=("DHCP" "$L_STATIC") USBV=(all disks) USBL=("$L_USB_ALL" "$L_USB_DISKS")
+  local -a ONV=(on off) ONL=("$L_ON" "$L_OFF") TRV=(tcp udp) TRL=(TCP UDP)
+  local -a WEBV=(none app browser kiosk) WEBL=("$L_WEB_NONE" "$L_WEB_APP" "$L_WEB_BROWSER" "$L_WEB_KIOSK")
+  local -a LNV=(en it) LNL=(English Italiano)
+  local h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share um ur su tr wb wu ku kr pon poff pdays wf ws wp ln
+  h=$(hostname); u=$(cfg DEFAULT_USER); br=$(cfg BROKER); brf=$(cfg BROKER_FALLBACK); dom=$(cfg DOMAIN)
+  lbi=$(cfg LOAD_BALANCE_INFO); nm=$(cfg NETMODE)
+  if [ "$nm" = static ]; then ip=$(cfg IPADDR); mask=$(cfg NETMASK); gw=$(cfg GATEWAY)
+  else ip=$IPC; mask=$([ -n "$IPC" ] && pfx2mask "$PFX" || cfg NETMASK); gw=${GWC:-$(cfg GATEWAY)}; fi
+  d1=$(cfg DNS1); d2=$(cfg DNS2); ntp=$(cfg NTP); off=$(cfg_num SHUTDOWN_SECS 10); thr=$(cfg_num SESSION_THRESHOLD 10)
+  share=$(cfg MGMT_SHARE); um=$(cfg USB_MODE); ur=$(cfg USB_REDIRECT); su=$(cfg SECURITY_UPDATES); tr=$(cfg TRANSPORT)
+  wb=$(cfg WEB_BUTTON); wu=$(cfg WEB_URL); ku=$(cfg KIOSK_URL); kr=$(cfg_num KIOSK_RELOAD_MIN 10)
+  pon=$(cfg POWER_ON_TIME); poff=$(cfg POWER_OFF_TIME); pdays=$(cfg POWER_ON_DAYS); wf=$(cfg WIFI); ws=$(cfg WIFI_SSID); ln=$(cfg LANGUAGE)
+  while true; do
+    # two columns: on one column the dialog does not fit a 1440x900 screen and Save disappears
+    out=$(yad --form --title="$L_SETTINGS" --columns=2 --width=1150 --center --separator="|" \
+          --text="<b>$L_SETTINGS</b>\n<small>$L_SETTINGS_HELP</small>" \
+          --field="$L_F_HOSTNAME" --field="$L_F_USER" --field="$L_F_BROKER" --field="$L_F_FALLBACK" \
+          --field="$L_F_DOMAIN" --field="$L_F_COLLECTION" --field="$L_F_NETWORK:CB" --field="$L_F_IP" \
+          --field="$L_F_NETMASK" --field="$L_F_GATEWAY" --field="$L_F_DNS1" --field="$L_F_DNS2" \
+          --field="$L_F_NTP" --field="$L_F_SHUTDOWN" --field="$L_F_THRESHOLD" --field="$L_F_SHARE" \
+          --field="$L_F_USBMODE:CB" --field="$L_F_USBLIST" --field="$L_F_UPDATES:CB" --field="$L_F_TRANSPORT:CB" \
+          --field="$L_F_WEB:CB" --field="$L_F_WEBURL" --field="$L_F_KIOSKURL" --field="$L_F_RELOAD" \
+          --field="$L_F_POWERON" --field="$L_F_POWEROFF" --field="$L_F_DAYS" --field="$L_F_LANGUAGE:CB" \
+          --field="$L_F_STATUS:RO" --field="$L_F_WIFI:CB" --field="$L_F_SSID" --field="$L_F_WIFIPSK:H" \
+          --button="$L_TERMINAL:2" --button="$L_CLOSE:1" --button="$L_SAVE:0" \
+          "$h" "$u" "$br" "$brf" "$dom" "$lbi" "$(combo "$nm" NETV NETL)" "$ip" "$mask" "$gw" "$d1" "$d2" \
+          "$ntp" "$off" "$thr" "$share" "$(combo "$um" USBV USBL)" "$ur" "$(combo "$su" ONV ONL)" "$(combo "$tr" TRV TRL)" \
+          "$(combo "$wb" WEBV WEBL)" "$wu" "$ku" "$kr" "$pon" "$poff" "$pdays" "$(combo "$ln" LNV LNL)" \
+          "$st" "$(combo "$wf" ONV ONL)" "$ws" "" 2>/dev/null)
+    r=$?
+    [ $r -eq 2 ] && { xterm -fa Monospace -fs 11 2>/dev/null; return; }
+    [ $r -ne 0 ] && return
+    IFS='|' read -r h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share um ur su tr wb wu ku kr pon poff pdays ln _ wf ws wp <<< "$out"
+    # the Wi-Fi password is the last field: a "|" inside it stays, only the trailing separator goes
+    wp=${wp%|}
+    nm=$(unlabel "$nm" NETV NETL); um=$(unlabel "$um" USBV USBL); su=$(unlabel "$su" ONV ONL); tr=$(unlabel "$tr" TRV TRL)
+    wb=$(unlabel "$wb" WEBV WEBL); ln=$(unlabel "$ln" LNV LNL); wf=$(unlabel "$wf" ONV ONL)
+    tmp=$(mktemp)
+    printf '%s\n' "HOSTNAME=$h" "DEFAULT_USER=$u" "BROKER=$br" "BROKER_FALLBACK=$brf" "DOMAIN=$dom" \
+      "LOAD_BALANCE_INFO=$lbi" "NETMODE=$nm" "IPADDR=$ip" "NETMASK=$mask" "GATEWAY=$gw" "DNS1=$d1" "DNS2=$d2" \
+      "NTP=$ntp" "SHUTDOWN_SECS=$off" "SESSION_THRESHOLD=$thr" "MGMT_SHARE=$share" "USB_MODE=$um" \
+      "USB_REDIRECT=$ur" "SECURITY_UPDATES=$su" "TRANSPORT=$tr" "WEB_BUTTON=$wb" "WEB_URL=$wu" "KIOSK_URL=$ku" \
+      "KIOSK_RELOAD_MIN=$kr" "POWER_ON_TIME=$pon" "POWER_OFF_TIME=$poff" "POWER_ON_DAYS=$pdays" "LANGUAGE=$ln" \
+      "WIFI=$wf" "WIFI_SSID=$ws" > "$tmp"
+    [ -n "$wp" ] && printf 'WIFI_PSK=%s\n' "$wp" >> "$tmp"
+    msg=$(sudo -n "$OTR/save-config.sh" "$tmp" 2>&1); r=$?
+    rm -f "$tmp"
+    if [ $r -eq 0 ]; then
+      ev "settings saved from the dialog: hostname=$h user=$u network=$nm ip=$ip broker=$br"
+      otr_lang     # the language may have changed
+      yad --center --undecorated --skip-taskbar --no-buttons --timeout=2 --width=300 --text="<b>$L_SAVED</b>" 2>/dev/null
+      break
+    fi
+    ev "settings rejected: $(echo "$msg" | tr '\n' ' ')"
+    yad --error --center --width=420 --title="$L_INVALID" --text="$msg" --button="$L_FIX:0" 2>/dev/null
+  done
+  TITLE=$(cfg TITLE); DEF=$(cfg DEFAULT_USER)
+}
+
+# --- session ------------------------------------------------------------------------------------
+# xfreerdp3 exit codes (measured with FreeRDP 3.31-3.33): 12 = Disconnect or Sign out from the Start menu,
+# 1 = VM shut down or restarted, or disconnected by an administrator, 147 = network lost, 5 = session taken
+# over from another device (inside a session the exit code is the ERRINFO code).
+# Only DELIBERATE endings lead to the shutdown page; everything else reconnects on its own.
+reason(){ case "$1" in
+  0) echo "closed" ;; 1) echo "VM shut down or disconnected by an administrator" ;; 2) echo "disconnected by an administrator" ;;
+  3) echo "idle timeout" ;; 5) echo "session opened from another device" ;;
+  11|12) echo "user disconnect or sign out" ;; 137) echo "killed (watchdog or kill -9)" ;; 147) echo "network lost" ;; *) echo "error $1" ;; esac; }
+deliberate(){ case "$1" in 0|1|2|3|11|12) return 0 ;; *) return 1 ;; esac; }
+# Is the user already connected from ANOTHER thin client? Based on the thin clients' own reports
+# (report.sh writes $OTR_LIB/sessions-elsewhere: user|hostname|IP, only reports sent in the last 10 minutes),
+# NOT on the Windows sessions: a disconnected session stays on the VM and would warn at every return.
+# A list older than 15 minutes (management folder unreachable) is ignored. Prints "hostname (IP)" or nothing.
+session_elsewhere(){ local f=$OTR_LIB/sessions-elsewhere u
+  [ -f "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -le 900 ] || return 0
+  u=$(echo "$1" | tr 'A-Z' 'a-z' | sed 's/^.*\\//; s/@.*//')
+  awk -F'|' -v u="$u" '$1==u{print $2 ($3 != "" ? " (" $3 ")" : ""); exit}' "$f"; }
+# Why an attempt failed, to tell the user. Broker down or port closed = 141, broker name not resolved = 140,
+# and in both cases the log has NO authentication line; if it has one, the broker answered and the VM is missing.
+#   net = no address or gateway   dns = broker name not found   broker = no broker answers   vm = broker ok, no desktop
+net_ok(){ ip -4 route show default 2>/dev/null | grep -q . && [ -n "$(hostname -I 2>/dev/null | tr -d ' ')" ]; }
+err_class(){
+  case "$1" in 139|140) echo dns; return ;; esac
+  if grep -qiE 'credssp|nla|license|ntlm|messageChannel|activation|redirect' /tmp/kiosk.log 2>/dev/null; then echo vm; return; fi
+  case "$1" in 131|133|141|142|143|147|150) echo broker ;; *) echo other ;; esac; }
+err_title(){ case "$1" in net) echo "$L_E_NET" ;; dns) echo "$L_E_DNS" ;; broker) echo "$L_E_BROKER" ;; vm) echo "$L_E_VM" ;; *) echo "$L_E_OTHER" ;; esac; }
+# final message after the last attempt: what happened and what to do. Stays 60 s (or until OK).
+show_err(){ local cl=$1 u=$2 before=$3 t sup
+  sup=$(cfg SUPPORT_TEXT); [ -z "$sup" ] && sup=$L_CALL_SUPPORT
+  case "$cl" in
+    net)    t="$L_T_NET" ;;
+    dns)    t=$(printf "$L_T_DNS" "$(cfg BROKER)")"\n$sup" ;;
+    broker) t=$(printf "$L_T_BROKER" "$(cfg BROKER) $(cfg BROKER_FALLBACK)")"\n$sup" ;;
+    vm)     t=$(printf "$L_T_VM" "$u")"\n$sup" ;;
+    *)      t=$(printf "$L_T_OTHER" "$LAST_EC")"\n$sup" ;;
+  esac
+  yad --error $IMG --title="$TITLE" --width=520 --center --timeout=60 --timeout-indicator=bottom \
+      --text="<b>${before:+$before - }$(err_title "$cl")</b>\n\n$t\n\n<small>$(hostname)  IP $(hostname -I 2>/dev/null | awk '{print $1}')   $(date '+%d/%m %H:%M')</small>" \
+      --button="$L_OK:0" 2>/dev/null; }
+duration(){ [ "$1" -lt 120 ] && echo "$1 s" || echo "$(( $1 / 60 )) min"; }
+# Broker for attempt n: the first 2 on BROKER, then in turn on BROKER_FALLBACK, so one broken broker
+# does not lock anybody out while DNS round robin keeps sending half of the devices to it
+pick_broker(){ local n=$1 ha=$2; set -- $(cfg BROKER_FALLBACK)
+  if [ $n -le 2 ] || [ $# -eq 0 ]; then echo "$ha"; else local k=$(( (n - 3) % $# + 1 )); echo "${!k}"; fi; }
+
+# session USER PASSWORD [reconnect]. Returns 0 = ended deliberately, 1 = credentials refused,
+# 2 = desktop not available after the attempts, 3 = session DROPPED (the caller reconnects without asking),
+# 4 = session taken over from another device (warn, never reconnect: the two devices would fight)
+session(){
+  local U="$1" P="$2" att=0 max=8 txt="$L_P_CONNECTING" B BRHA st d ec thr xp wp
+  BRHA=$(cfg BROKER)
+  [ "$3" = reconnect ] && { max=40; txt="$L_P_RECONNECTING"; }
+  LAST_ERR=""; LAST_EC=""
+  thr=$(cfg_num SESSION_THRESHOLD 10)
+  while [ $att -lt $max ]; do
+    att=$((att+1))
+    # without a network calling the broker is pointless: say so now and retry in 5 s
+    if ! net_ok; then
+      LAST_ERR=net; LAST_EC=""
+      ev "attempt $att for $U: no network (no address or gateway)"
+      yad $IMG --title="$TITLE" --center --width=470 --no-buttons --timeout=5 --timeout-indicator=bottom \
+          --text="<b>$L_E_NET</b>\n$(printf "$L_P_NONET" "$att" "$max")" 2>/dev/null
+      continue
+    fi
+    : > /tmp/kiosk.log
+    st=$(date +%s)
+    B=$(pick_broker $att "$BRHA")
+    ( connect "$U" "$P" "$B"; echo $? > /tmp/kiosk.rc ) &
+    xp=$!
+    # still up after the threshold = open: the event makes report.sh send the status at once, so the other
+    # thin clients soon know the user is connected here ("already active" warning)
+    ( sleep "$thr"; kill -0 $xp 2>/dev/null && ev "session of $U opened (broker $B)" ) &
+    wp=$!
+    {
+      echo "8"; echo "# $txt  ($(printf "$L_P_ATTEMPT" "$att")$([ "$B" != "$BRHA" ] && echo ", $B"))"
+      local s1=0 s2=0 n=0 seen=0 lost=0 fp
+      while kill -0 $xp 2>/dev/null; do
+        if [ $s1 -eq 0 ] && grep -qiE 'credssp|nla|license|ntlm' /tmp/kiosk.log; then echo "35"; echo "# $L_P_AUTH"; s1=1; fi
+        if [ $s2 -eq 0 ] && grep -qiE 'messageChannel|activation|graphics|redirect|DisplayControl' /tmp/kiosk.log; then echo "70"; echo "# $L_P_STARTING"; s2=1; fi
+        sleep 0.4; n=$((n + 1))
+        # Watchdog, every ~5 s: FreeRDP alive but without any TCP connection for 60 s = stuck. Seen with USB
+        # redirection: a USB hotplug event during the disconnect deadlocks urbdrc against drdynvc and the
+        # process never exits, so the screen stays frozen and nothing reconnects. Killed, it exits with 137
+        # and the session is reopened like after any drop.
+        [ $((n % 12)) -eq 0 ] || continue
+        fp=$(pgrep -P $xp -x xfreerdp3 | head -1); [ -n "$fp" ] || continue
+        if ss -tnpH state established 2>/dev/null | grep -q "pid=$fp,"; then seen=1; lost=0
+        elif [ $seen = 1 ]; then
+          lost=$((lost + 5))
+          [ $lost -ge 60 ] && { ev "watchdog: FreeRDP alive without any connection for 60 s, killed"; kill -9 "$fp"; }
+        fi
+      done
+      echo "100"; echo "# $L_P_READY"
+    } | yad --progress --auto-close --no-buttons --undecorated --skip-taskbar --center --width=470 \
+          --title="$TITLE" --text="$L_P_TITLE" 2>/dev/null
+    wait $xp 2>/dev/null
+    kill $wp 2>/dev/null
+    d=$(( $(date +%s) - st )); ec=$(cat /tmp/kiosk.rc 2>/dev/null)
+    SESS_SECS=$d
+    # credentials: from the EXIT CODE and first, at any duration. Never retry a wrong password (the attempts
+    # would lock the account). 134 = wrong password (measured), 132 authentication, 154 wrong password,
+    # 135 locked, 148/149/152 expired or must change, 151 disabled, 155-159 access denied or restricted
+    CRED_MSG=""
+    case "$ec" in
+      132|134|154) CRED_MSG=$L_C_INVALID ;;
+      135)         CRED_MSG=$L_C_LOCKED ;;
+      148|149|152) CRED_MSG=$L_C_EXPIRED ;;
+      151|157)     CRED_MSG=$L_C_DISABLED ;;
+      155|156|158|159) CRED_MSG=$L_C_DENIED ;;
+    esac
+    if [ -n "$CRED_MSG" ]; then ev "sign-in refused for $U (code $ec)"; return 1; fi
+    # 5 = ERRINFO_DISCONNECTED_BY_OTHER_CONNECTION: same user signed in from another device. Never retry,
+    # also during a reconnection: taking the session back would drop the other device, which would do the same
+    if [ "$ec" = 5 ]; then ev "session of $U taken over by another device after $(duration $d) (code 5): no reconnection"; return 4; fi
+    # a session that lasted at least SESSION_THRESHOLD was open: only the exit code counts.
+    # Exception: code 1 below 20 s stays an attempt (seen once while re-entering a session: with the shutdown
+    # page the countdown would have switched the device off)
+    if [ "$d" -ge "$thr" ] && ! { [ "$ec" = 1 ] && [ "$d" -lt 20 ]; }; then
+      if deliberate "$ec"; then ev "session of $U ended after $(duration $d) ($(reason "$ec"), code $ec)"; return 0; fi
+      ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting"; return 3
+    fi
+    LAST_EC=$ec; LAST_ERR=$(err_class "$ec")
+    ev "attempt $att for $U on $B failed after ${d}s (code $ec, $LAST_ERR): $(grep -m1 -E '\[ERROR\]' /tmp/kiosk.log | sed 's/.*\] - //' | cut -c1-150)"
+    txt="$(err_title $LAST_ERR), $L_P_RETRY"
+    sleep 5
+  done
+  ev "desktop not available for $U after $att attempts: $LAST_ERR"
+  return 2
+}
+
+# --- kiosk page (WEB_BUTTON=kiosk) --------------------------------------------------------------
+# A page opened without a network would stay on the error: wait for the network up to 60 s.
+kiosk_page(){
+  local url i; url=$(cfg KIOSK_URL); [ -z "$url" ] && return 1
+  for i in $(seq 1 60); do net_ok && break; sleep 1; done
+  ev "kiosk page: opening $url"
+  "$OTR/browser.sh" kiosk "$url"
+  ev "kiosk page: closed"
+}
+# Countdown of the login form in kiosk mode: if within 5 s nobody touches the screen, moves the mouse or
+# presses a key, close the form and mark "expired" (-> page). Any input stops it and the form stays.
+# Without mouse and keyboard the page starts by itself. Without xprintidle: plain countdown.
+KEXP=/tmp/otr-kiosk-expired
+kiosk_countdown(){
+  local t0 el idle i; t0=$(date +%s%3N)
+  for i in $(seq 1 50); do
+    sleep 0.1
+    if command -v xprintidle >/dev/null; then
+      idle=$(xprintidle 2>/dev/null); el=$(( $(date +%s%3N) - t0 ))
+      # input arrived after the form appeared (300 ms margin for the window to open): stopped, from now on
+      # the 5 minutes without input rule applies
+      [ -n "$idle" ] && [ "$idle" -lt $(( el - 300 )) ] && [ $el -gt 600 ] && { kiosk_idle; return; }
+    fi
+  done
+  touch $KEXP; pkill -f -- '--class=OtrLogin' 2>/dev/null
+}
+# kiosk stopped by hand and then left alone: after 5 minutes without input the page comes back
+kiosk_idle(){
+  local idle
+  while sleep 5; do idle=$(xprintidle 2>/dev/null); [ -n "$idle" ] && [ "$idle" -gt 300000 ] && break; done
+  touch $KEXP; pkill -f -- '--class=OtrLogin' 2>/dev/null
+}
+power_off(){ ev "power off ($1)"; sleep 1; systemctl poweroff; exit 0; }
+
+# --- main loop ----------------------------------------------------------------------------------
+# first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device)
+[ -z "$(cfg BROKER)" ] && { ev "no broker configured: settings dialog opened"; settings_dialog; }
+KSTOPPED=0   # 1 = somebody used the form: no countdown until we go back to the page
+while true; do
+  HOSTN=$(hostname 2>/dev/null)
+  WEB=$(cfg WEB_BUTTON); WEBBTN=()
+  case "$WEB" in app|browser) WEBBTN=(--button="$(cfg WEB_LABEL):7") ;; kiosk) WEBBTN=(--button="$L_KIOSK:7") ;; esac
+  KTXT=""; KPID=""; rm -f $KEXP
+  [ -z "$(cfg BROKER)" ] && KTXT="\n<small>$L_NO_BROKER</small>"
+  if [ "$WEB" = kiosk ]; then
+    if [ -z "$(cfg KIOSK_URL)" ]; then KTXT="\n<small>$L_K_NOPAGE</small>"
+    elif [ $KSTOPPED -eq 0 ]; then KTXT="\n<small>$L_K_COUNTDOWN</small>"; kiosk_countdown & KPID=$!
+    elif command -v xprintidle >/dev/null; then KTXT="\n<small>$L_K_IDLE</small>"; kiosk_idle & KPID=$!
+    fi
+  fi
+  # IP only if already there: the form does not wait for it (it is always shown in the settings dialog)
+  IPNOW=$(hostname -I 2>/dev/null | awk '{print $1}')
+  # Enter in the password field presses the LAST button: Sign in goes last with the highest code
+  OUT=$(yad --form $IMG --class=OtrLogin --title="$TITLE" \
+        --text="<b>$L_LOGIN_HEADING</b>   [ $HOSTN${IPNOW:+  -  IP $IPNOW} ]$KTXT" \
+        --separator="|" --field="$L_USER" --field="$L_PASSWORD:H" --focus-field=2 --width=430 --center \
+        --button="$L_SHUTDOWN:5" --button="⚙:3" "${WEBBTN[@]}" --button="$L_SIGNIN:10" "$DEF" "" 2>/dev/null)
+  rc=$?
+  # kiosk: nobody touched anything -> page; otherwise the form stays without countdown
+  if [ -n "$KPID" ]; then
+    kill $KPID 2>/dev/null; wait $KPID 2>/dev/null
+    if [ -f $KEXP ]; then rm -f $KEXP; KSTOPPED=0; kiosk_page; continue; fi
+    # stopped only when a button closed the form: closed by monitor_watch (late monitor) = draw it again
+    case $rc in 0|3|5|7|10) [ $KSTOPPED -eq 0 ] && ev "kiosk page: start stopped by the user"; KSTOPPED=1 ;; *) continue ;; esac
+  fi
+  if [ $rc -eq 5 ]; then
+    # dialog WITHOUT fields: Enter presses the FIRST button -> No goes first
+    yad $IMG --title="$TITLE" --width=360 --center --text="<b>$L_ASK_SHUTDOWN</b>" \
+        --button="$L_NO:1" --button="$L_YES_SHUTDOWN:5" 2>/dev/null
+    [ $? -eq 5 ] && power_off "Shut down button"
+    continue
+  fi
+  [ $rc -eq 3 ] && { settings_dialog; continue; }
+  if [ $rc -eq 7 ]; then
+    [ "$WEB" = kiosk ] && { KSTOPPED=0; kiosk_page; continue; }
+    "$OTR/browser.sh"; continue
+  fi
+  { [ $rc -eq 10 ] || [ $rc -eq 0 ]; } || { sleep 1; continue; }
+  U=$(echo "$OUT" | cut -d'|' -f1); P=$(echo "$OUT" | cut -d'|' -f2-); P=${P%|}
+  [ -z "$U" ] && U="$DEF"; [ -z "$P" ] && continue
+  OTHER=$(session_elsewhere "$U")
+  if [ -n "$OTHER" ]; then
+    # dialog WITHOUT fields: Enter presses the FIRST button -> Cancel (nobody drops a colleague by mistake)
+    yad $IMG --title="$TITLE" --width=470 --center --text="$(printf "$L_ELSEWHERE" "$U" "$OTHER")" \
+        --button="$L_CANCEL:1" --button="$L_CONNECT_ANYWAY:10" 2>/dev/null
+    [ $? -eq 10 ] || { ev "sign-in of $U cancelled: session already active on $OTHER"; continue; }
+    ev "session of $U already active on $OTHER: connecting here confirmed"
+  fi
+  MODE=""; DROPS=0
+  while true; do
+    session "$U" "$P" $MODE; res=$?
+    # dropped: back into the same session without asking (never the shutdown page); after 20 drops in a row
+    # back to the login. A session that stayed up at least 5 minutes resets the count.
+    if [ $res -eq 3 ]; then
+      [ "${SESS_SECS:-0}" -ge 300 ] && DROPS=0
+      DROPS=$((DROPS+1)); MODE=reconnect
+      [ $DROPS -le 20 ] && { sleep 2; continue; }
+      ev "too many drops in a row for $U: back to the login"; break
+    fi
+    if [ $res -eq 2 ] && [ "$MODE" = reconnect ]; then show_err "$LAST_ERR" "$U" "$L_E_NOTRESTORED"; break; fi
+    MODE=""; DROPS=0
+    if [ $res -eq 4 ]; then
+      # no reconnection; the user moved to the other device -> this one switches off after 30 s.
+      # Dialog WITHOUT fields: Enter presses the FIRST button -> Back to login; Resume here only by click
+      yad $IMG --title="$TITLE" --width=460 --center --text="$(printf "$L_TAKEN" "$U")" \
+          --timeout=30 --timeout-indicator=bottom \
+          --button="$L_BACK_LOGIN:1" --button="$L_RESUME_HERE:10" --button="$L_SHUTDOWN:5" 2>/dev/null
+      rc=$?
+      [ $rc -eq 10 ] && { ev "session of $U resumed on this device (user choice)"; continue; }
+      { [ $rc -eq 5 ] || [ $rc -eq 70 ]; } && power_off "session taken over by another device"
+      break
+    fi
+    if [ $res -eq 0 ]; then
+      OFF=$(cfg_num SHUTDOWN_SECS 10); TOPT=(); TXT=$L_END_ASK
+      [ "$OFF" -gt 0 ] && { TOPT=(--timeout="$OFF" --timeout-indicator=bottom); TXT=$(printf "$L_END_COUNTDOWN" "$OFF"); }
+      # dialog WITHOUT fields: Enter presses the FIRST button -> Connect goes first.
+      # 10/0 = Connect, 5 = Shut down, 70 = countdown expired, anything else = login
+      yad $IMG --title="$TITLE" --width=380 --center --text="<b>$L_END_TITLE</b>\n$TXT" "${TOPT[@]}" \
+          --button="$L_CONNECT:10" --button="$L_SHUTDOWN:5" 2>/dev/null
+      rc=$?
+      { [ $rc -eq 10 ] || [ $rc -eq 0 ]; } && continue
+      { [ $rc -eq 5 ] || [ $rc -eq 70 ]; } && power_off "after the session ended"
+      break
+    elif [ $res -eq 1 ]; then
+      yad --error --center --timeout=4 --text="${CRED_MSG:-$L_C_INVALID}" 2>/dev/null; break
+    else
+      show_err "$LAST_ERR" "$U"; break
+    fi
+  done
+done

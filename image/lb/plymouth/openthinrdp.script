@@ -1,0 +1,44 @@
+// Dark gradient: the colors are replaced at build time with BG_TOP/BG_BOTTOM of site.conf
+Window.SetBackgroundTopColor(@TOP@);
+Window.SetBackgroundBottomColor(@BOTTOM@);
+
+// centered logo, at most 40% of the screen width
+logo.image = Image("logo.png");
+sw = Window.GetWidth();
+sh = Window.GetHeight();
+maxw = sw * 0.40;
+if (logo.image.GetWidth() > maxw) {
+    scale = maxw / logo.image.GetWidth();
+    logo.image = logo.image.Scale(logo.image.GetWidth() * scale, logo.image.GetHeight() * scale);
+}
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX(sw / 2 - logo.image.GetWidth() / 2);
+logo.sprite.SetY(sh / 2 - logo.image.GetHeight() / 2);
+
+// animated dots under the logo
+dot.count = 5;
+for (i = 0; i < dot.count; i++) d.image[i] = Image.Text(".", 1, 1, 1);
+progress = 0;
+fun refresh() {
+    progress++;
+    n = Math.Int(progress / 15) % (dot.count + 1);
+    for (i = 0; i < dot.count; i++) {
+        if (i < n) {
+            d.sprite[i] = Sprite(d.image[i]);
+            d.sprite[i].SetX(sw / 2 - (dot.count * 8) / 2 + i * 8);
+            d.sprite[i].SetY(sh / 2 + logo.image.GetHeight() / 2 + 40);
+        } else {
+            d.sprite[i] = Sprite();
+        }
+    }
+}
+Plymouth.SetRefreshFunction(refresh);
+
+// messages (e.g. during a file system check)
+fun message(text) {
+    msg.image = Image.Text(text, 1, 1, 1);
+    msg.sprite = Sprite(msg.image);
+    msg.sprite.SetX(sw / 2 - msg.image.GetWidth() / 2);
+    msg.sprite.SetY(sh - 60);
+}
+Plymouth.SetMessageFunction(message);
