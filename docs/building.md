@@ -16,7 +16,8 @@ credentials and keys.
 
 See [image/site.example/README.md](../image/site.example/README.md). In short:
 
-- `build.conf`: installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
+- `build.conf`: `FIRMWARE` (`all`, the default: runs on any PC; `thinclient`: only the usual thin client firmware,
+  about 600 MB less), `INCLUDE_BROWSER`, installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
   of `otradmin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`backports`, `debian` or
   `site`), `AUTO_INSTALL`.
 - `site.conf`: default settings of every device.

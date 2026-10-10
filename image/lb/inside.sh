@@ -16,9 +16,10 @@ mkdir -p /lb && cd /lb
 CFG=(--distribution trixie --architectures amd64
   --archive-areas "main contrib non-free non-free-firmware" --backports true
   --debian-installer live --debian-installer-gui false --memtest none
-  # only the firmware listed in packages.list (by default live-build installs ALL of it: ~850 MB, mostly
-  # server network cards and GPUs a thin client never has), no recommended packages, fast compression
-  --firmware-chroot false --firmware-binary false --apt-recommends false
+  # FIRMWARE=all: every firmware package, so the image runs on any PC (the downloadable ISO);
+  # FIRMWARE=thinclient: only the set in packages.list, ~600 MB less. The installer copy of the firmware is
+  # never needed: the installation is offline. No recommended packages, fast compression.
+  --firmware-chroot "$([ "${FIRMWARE:-all}" = thinclient ] && echo false || echo true)" --firmware-binary false --apt-recommends false
   --chroot-squashfs-compression-type zstd --chroot-squashfs-compression-level 15
   --iso-volume "OpenThinRDP $V" --iso-application OpenThinRDP --image-name openthinrdp
   --bootappend-live "boot=live components quiet splash loglevel=3 systemd.show_status=false username=kiosk hostname=thinclient vt.global_cursor_default=0")

@@ -61,7 +61,8 @@ locales
 shim-signed
 grub-efi-amd64-signed
 
-# firmware for the usual thin client and small PC hardware: Intel and AMD graphics, Intel audio, Realtek
+# firmware for the usual thin client and small PC hardware (with FIRMWARE=all in build.conf live-build adds
+# every other firmware package too): Intel and AMD graphics, Intel audio, Realtek
 # network, Intel Wi-Fi. Anything else: EXTRA_FIRMWARE in build.conf (e.g. firmware-atheros firmware-mediatek)
 firmware-intel-graphics
 firmware-amd-graphics
