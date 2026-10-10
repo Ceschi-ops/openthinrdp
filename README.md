@@ -73,6 +73,11 @@ Clients connected to a Windows 11 VDI on Hyper-V; the system it comes from runs 
 Issues and pull requests are welcome. Please describe the hardware and the Windows side (broker, session
 host version) for anything related to connections or devices. Run `tests/run-tests.sh` (see its header).
 
+Security problems: please report them privately, see [SECURITY.md](SECURITY.md).
+
+**Wanted: a logo.** The current one is a quick placeholder. If you can design a better one (boot splash and a
+small version for the dialogs), open an issue or a pull request: you will be credited here.
+
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). OpenThinRDP uses FreeRDP (Apache 2.0) and Debian packages under

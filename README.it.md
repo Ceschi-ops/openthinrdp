@@ -44,6 +44,14 @@ disco senza chiedere**. Al primo avvio si apre la configurazione.
 
 La documentazione è in inglese nella cartella [docs](docs/).
 
+## Contribuire
+
+Issue e pull request sono benvenute, anche in italiano. I problemi di sicurezza vanno segnalati in privato,
+vedi [SECURITY.md](SECURITY.md).
+
+**Cercasi logo.** Quello attuale è provvisorio. Se sapete disegnarne uno migliore (splash di avvio e versione
+piccola per le finestre), aprite una issue o una pull request: vi ringrazieremo qui.
+
 ## Licenza
 
 Apache License 2.0, vedi [LICENSE](LICENSE).
