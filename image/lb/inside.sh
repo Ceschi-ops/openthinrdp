@@ -15,7 +15,11 @@ mkdir -p /lb && cd /lb
 # otherwise the installer starts without the preseed and stops at the first question
 CFG=(--distribution trixie --architectures amd64
   --archive-areas "main contrib non-free non-free-firmware" --backports true
-  --debian-installer live --debian-installer-gui true --memtest none
+  --debian-installer live --debian-installer-gui false --memtest none
+  # only the firmware listed in packages.list (by default live-build installs ALL of it: ~850 MB, mostly
+  # server network cards and GPUs a thin client never has), no recommended packages, fast compression
+  --firmware-chroot false --firmware-binary false --apt-recommends false
+  --chroot-squashfs-compression-type zstd --chroot-squashfs-compression-level 15
   --iso-volume "OpenThinRDP $V" --iso-application OpenThinRDP --image-name openthinrdp
   --bootappend-live "boot=live components quiet splash loglevel=3 systemd.show_status=false username=kiosk hostname=thinclient vt.global_cursor_default=0")
 if [ "${AUTO_INSTALL:-yes}" = yes ]; then
@@ -27,6 +31,19 @@ C=config/includes.chroot
 mkdir -p config/package-lists config/hooks/normal config/packages.chroot config/includes.binary/install \
   $C/etc/openthinrdp/ca $C/opt/openthinrdp/branding $C/usr/share/plymouth/themes/openthinrdp
 cp $B/image/lb/packages.list config/package-lists/openthinrdp.list.chroot
+# optional parts (build.conf): Chromium for the web button, extra firmware
+{ [ "${INCLUDE_BROWSER:-yes}" = no ] || printf 'chromium\nfonts-liberation2\n'
+  for f in ${EXTRA_FIRMWARE:-}; do echo "$f"; done; } > config/package-lists/openthinrdp-site.list.chroot
+# no documentation, manuals or translations a thin client never shows (licenses and the build languages
+# kept). In place before the packages are installed, and kept in the system for later updates.
+LANGS="en it ${LOCALE%%_*}"
+mkdir -p config/includes.chroot_before_packages/etc/dpkg/dpkg.cfg.d $C/etc/dpkg/dpkg.cfg.d
+{ echo "# OpenThinRDP: no documentation, manuals or translations on a thin client (licenses kept)"
+  printf 'path-exclude=%s\n' /usr/share/doc/* /usr/share/man/* /usr/share/info/* /usr/share/help/* /usr/share/locale/* /usr/lib/chromium/locales/*
+  echo "path-include=/usr/share/doc/*/copyright"; echo "path-include=/usr/share/locale/locale.alias"
+  for l in $(echo $LANGS | tr ' ' '\n' | sort -u); do echo "path-include=/usr/share/locale/$l/*"; echo "path-include=/usr/lib/chromium/locales/$l*.pak"; done; } \
+  > config/includes.chroot_before_packages/etc/dpkg/dpkg.cfg.d/01-openthinrdp-slim
+cp config/includes.chroot_before_packages/etc/dpkg/dpkg.cfg.d/01-openthinrdp-slim $C/etc/dpkg/dpkg.cfg.d/
 cp -a $B/rootfs/. $C/
 echo "$V" > $C/opt/openthinrdp/VERSION
 # site: settings, branding, certificates, credentials, keys, packages

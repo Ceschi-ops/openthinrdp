@@ -1,5 +1,10 @@
+# Packages of the image. Recommended packages are NOT installed (lb config --apt-recommends false): whatever
+# a feature needs must be listed here. Chromium and extra firmware are added by inside.sh from build.conf.
+
+# X session and kiosk
 xserver-xorg
 xinit
+xauth
 x11-xserver-utils
 x11-utils
 openbox
@@ -9,38 +14,59 @@ hsetroot
 numlockx
 xprintidle
 xdotool
+fonts-dejavu-core
+libgl1-mesa-dri
 plymouth
 plymouth-themes
+
+# audio (PipeWire runs in the user session of the kiosk)
+pipewire
 pipewire-pulse
 pipewire-alsa
 wireplumber
+dbus-user-session
+
+# smart cards
 pcscd
 libccid
 opensc
 pcsc-tools
+
+# video decoding on Intel
 intel-media-va-driver
 vainfo
-chromium
-libnss3-tools
-python3
+
+# network, management, updates
 ifupdown
 dhcpcd-base
 wpasupplicant
 iw
 ethtool
+iproute2
 cifs-utils
 sqv
+ca-certificates
 systemd-timesyncd
 unattended-upgrades
 openssh-server
 sudo
+python3
+libnss3-tools
 fuse3
+
+# system
 keyboard-configuration
 console-setup
 locales
 shim-signed
 grub-efi-amd64-signed
-firmware-linux-free
-firmware-misc-nonfree
+
+# firmware for the usual thin client and small PC hardware: Intel and AMD graphics, Intel audio, Realtek
+# network, Intel Wi-Fi. Anything else: EXTRA_FIRMWARE in build.conf (e.g. firmware-atheros firmware-mediatek)
+firmware-intel-graphics
+firmware-amd-graphics
+firmware-intel-sound
+firmware-sof-signed
 firmware-realtek
 firmware-iwlwifi
+firmware-misc-nonfree

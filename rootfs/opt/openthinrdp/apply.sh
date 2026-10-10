@@ -110,9 +110,11 @@ rm -f "$NEWR"
 
 # --- SSH: only key login, keys in /etc/openthinrdp/authorized_keys (management folder or image), no root
 S=/etc/ssh/sshd_config.d/openthinrdp.conf
-printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers admin\n' "$OTR_ETC/authorized_keys" > $S.new
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers otradmin\n' "$OTR_ETC/authorized_keys" > $S.new
 SC=0; cmp -s $S.new $S || { mv -f $S.new $S; SC=1; }; rm -f $S.new
 if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
+  # the image is built without host keys (every device must have its own): created on first use
+  ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1 || ssh-keygen -A >/dev/null 2>&1
   systemctl enable --now --no-block ssh >/dev/null 2>&1; [ $SC = 1 ] && systemctl try-reload-or-restart ssh >/dev/null 2>&1
 else systemctl disable --now --no-block ssh >/dev/null 2>&1; fi
 

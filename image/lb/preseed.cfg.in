@@ -19,12 +19,12 @@ d-i clock-setup/utc boolean true
 d-i time/zone string @TIMEZONE@
 d-i clock-setup/ntp boolean false
 
-# Accounts: root disabled; "admin" (already in the image, with sudo) gets the console password of
+# Accounts: root disabled; "otradmin" (already in the image, with sudo) gets the console password of
 # build.conf, or a locked password (SSH with a key only)
 d-i passwd/root-login boolean false
 d-i passwd/make-user boolean true
 d-i passwd/user-fullname string Administrator
-d-i passwd/username string admin
+d-i passwd/username string otradmin
 d-i passwd/user-password-crypted password @ADMIN_HASH@
 d-i user-setup/encrypt-home boolean false
 

@@ -17,7 +17,7 @@ credentials and keys.
 See [image/site.example/README.md](../image/site.example/README.md). In short:
 
 - `build.conf`: installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
-  of `admin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`backports`, `debian` or
+  of `otradmin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`backports`, `debian` or
   `site`), `AUTO_INSTALL`.
 - `site.conf`: default settings of every device.
 - `logo.png` (~200 px, dialogs), `splash.png` (~640 px, transparent, boot screen).
@@ -39,5 +39,5 @@ boot silent; the settings dialog opens if no broker is set.
 | Account | Purpose |
 |---|---|
 | `kiosk` | runs the X session and the kiosk, logs in automatically, no password, may only run `save-config.sh` as root |
-| `admin` | administration: SSH with a key (`SSH=on`), console with `ADMIN_PASSWORD_HASH`, sudo |
+| `otradmin` | administration: SSH with a key (`SSH=on`), console with `ADMIN_PASSWORD_HASH`, sudo |
 | `root` | locked |

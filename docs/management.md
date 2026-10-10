@@ -48,7 +48,7 @@ Before saving `common.conf` it lists the devices that would reject it.
 
 ## SSH keys
 
-With `SSH=on`, the `admin` account accepts only the keys in `/etc/openthinrdp/authorized_keys`: from the image
+With `SSH=on`, the `otradmin` account accepts only the keys in `/etc/openthinrdp/authorized_keys`: from the image
 (`image/site/authorized_keys`) or from `config\authorized_keys`. Removing `config\authorized_keys` after it
 was used revokes those keys and brings back the image ones.
 

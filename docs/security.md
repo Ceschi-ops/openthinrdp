@@ -11,7 +11,7 @@ keyboard is untrusted and that the management folder is readable by the devices 
 - **Settings dialog behind a PIN** (`SETTINGS_PIN_SHA256`). Without a PIN anyone at the device can point it to
   another broker. The "Terminal" button of the dialog opens a shell as the `kiosk` user.
 - **`kiosk` has one root privilege:** `save-config.sh`, which validates every value before touching the system.
-- **No password in the image.** `root` is locked; `admin` has no password unless you set a hash in
+- **No password in the image.** `root` is locked; `otradmin` has no password unless you set a hash in
   `build.conf`; SSH is off by default and accepts only keys.
 - **Signed updates.** A package is installed only with a valid signature of your key (verified with `sqv`)
   and a matching hash; never an older version.

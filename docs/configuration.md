@@ -61,7 +61,7 @@ microphone is then not redirected, so meeting apps do not fall back to an empty 
 |---|---|---|
 | `MGMT_SHARE` | | management folder, e.g. `\\fileserver\thinclients`, see [management.md](management.md) |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
-| `SSH` | `off` | `on` = SSH for the `admin` account, key login only |
+| `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 
 ## Web button and kiosk page
 
