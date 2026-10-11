@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="OpenThinRDP" width="480"></p>
+
 # OpenThinRDP
 
 A thin client operating system for Windows Remote Desktop, built on Debian 13 and FreeRDP 3, with the
@@ -81,9 +83,6 @@ Issues and pull requests are welcome. Please describe the hardware and the Windo
 host version) for anything related to connections or devices. Run `tests/run-tests.sh` (see its header).
 
 Security problems: please report them privately, see [SECURITY.md](SECURITY.md).
-
-**Wanted: a logo.** The current one is a quick placeholder. If you can design a better one (boot splash and a
-small version for the dialogs), open an issue or a pull request: you will be credited here.
 
 ## License
 

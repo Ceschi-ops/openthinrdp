@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="OpenThinRDP" width="480"></p>
+
 # OpenThinRDP
 
 Un sistema operativo per thin client Desktop remoto Windows, basato su Debian 13 e FreeRDP 3, con il
@@ -54,9 +56,6 @@ La documentazione è in inglese nella cartella [docs](docs/).
 
 Issue e pull request sono benvenute, anche in italiano. I problemi di sicurezza vanno segnalati in privato,
 vedi [SECURITY.md](SECURITY.md).
-
-**Cercasi logo.** Quello attuale è provvisorio. Se sapete disegnarne uno migliore (splash di avvio e versione
-piccola per le finestre), aprite una issue o una pull request: vi ringrazieremo qui.
 
 ## Licenza
 
