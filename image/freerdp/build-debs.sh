@@ -13,4 +13,8 @@ mkdir -p "$OUT"
 "$ENGINE" run --rm -e FREERDP_REPO="$FREERDP_REPO" -e FREERDP_COMMIT="$FREERDP_COMMIT" \
   -e FREERDP_VERSION_BASE="$FREERDP_VERSION_BASE" -e FREERDP_OTR_REVISION="$FREERDP_OTR_REVISION" \
   -v "$HERE/inside-debs.sh":/inside-debs.sh:ro -v "$OUT":/out debian:trixie bash /inside-debs.sh
-echo "Packages in $OUT"
+# one archive to attach to a release (package names have "~" and "+", which release asset names do not keep)
+TAR=openthinrdp-freerdp-${FREERDP_COMMIT:0:9}.tar
+(cd "$OUT" && tar -cf "../$TAR" *.deb SHA256SUMS)
+echo "Packages in $OUT, release archive out/freerdp/$TAR"
+echo "Its line for image/freerdp/SHA256SUMS: $(cd "$OUT/.." && sha256sum "$TAR")"

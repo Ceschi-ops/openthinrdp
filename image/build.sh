@@ -10,17 +10,19 @@ ENGINE=$(command -v docker || command -v podman) || { echo "Docker or Podman nee
 # out/cache keeps the downloaded packages between builds: rebuilds take a fraction of the time
 mkdir -p "$ROOT/out/cache"
 # FREERDP_FROM=openthinrdp (default): FreeRDP with UDP, see image/freerdp/freerdp.conf. The prebuilt packages
-# of the release, checked against image/freerdp/SHA256SUMS; without that file (or offline) they are built here.
+# of the release (one archive, checked against image/freerdp/SHA256SUMS); without that file, or when the
+# download fails, they are built here.
 if [ "$(sed -n 's/^FREERDP_FROM=//p' "$SITE/build.conf" | tail -1)" = openthinrdp ]; then
   . "$HERE/freerdp/freerdp.conf"
   FD=$ROOT/out/freerdp/$FREERDP_COMMIT
   if [ ! -f "$FD/SHA256SUMS" ] && [ -s "$HERE/freerdp/SHA256SUMS" ]; then
-    echo "Downloading the FreeRDP packages ($FREERDP_RELEASE_URL)"
-    mkdir -p "$FD.part"
-    if (cd "$FD.part" && for f in $(awk '{print $2}' "$HERE/freerdp/SHA256SUMS"); do curl -fsSL -o "$f" "$FREERDP_RELEASE_URL/$f" || exit 1; done \
-        && sha256sum -c --quiet "$HERE/freerdp/SHA256SUMS"); then
-      cp "$HERE/freerdp/SHA256SUMS" "$FD.part/" && rm -rf "$FD" && mv "$FD.part" "$FD"
-    else echo "Download failed or packages do not match SHA256SUMS: building them"; rm -rf "$FD.part"; fi
+    TAR=$(awk '{print $2}' "$HERE/freerdp/SHA256SUMS")
+    echo "Downloading the FreeRDP packages: $FREERDP_RELEASE_URL/$TAR"
+    rm -rf "$FD.part"; mkdir -p "$FD.part"
+    if curl -fsSL -o "$FD.part/$TAR" "$FREERDP_RELEASE_URL/$TAR" \
+       && (cd "$FD.part" && sha256sum -c --quiet "$HERE/freerdp/SHA256SUMS" && tar -xf "$TAR" && rm "$TAR" && sha256sum -c --quiet SHA256SUMS); then
+      rm -rf "$FD"; mv "$FD.part" "$FD"
+    else echo "Download failed or the archive does not match SHA256SUMS: building the packages"; rm -rf "$FD.part"; fi
   fi
   [ -f "$FD/SHA256SUMS" ] || "$HERE/freerdp/build-debs.sh"
 fi
