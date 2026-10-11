@@ -82,6 +82,18 @@
   SavedCommon            = 'Saved {0} - the devices apply it within 5 minutes (result in the {1} column).'
   SavedKeys              = 'Saved {0}: {1} -> {2} keys.'
   UpdNone                = 'none published'
+  BtnImportRelease       = 'Release from GitHub...'
+  RelTitle               = 'Release from GitHub'
+  RelNotFound            = "No release found at {0}`r`n`r`n{1}"
+  RelNotValid            = 'The LATEST.txt of the release is not valid: nothing copied.'
+  RelBadSignature        = 'Release {0}: the signature is NOT the one of the project key. Nothing copied: do not use it, and report it in the project security advisories.'
+  RelNotNewer            = 'Release {0} is not newer than the one already in updates\ ({1}): nothing to do.'
+  RelBadHash             = 'The package {0} does not match the hash in LATEST.txt (incomplete download?): nothing copied.'
+  RelSigChecked          = 'Signature of the project key: checked.'
+  RelSigNotChecked       = 'Signature not checked here (gpg or the project key not found on this PC): every device checks it before installing.'
+  RelConfirm             = "Copy release {0} into updates\ of the management folder?`r`nNow published: {1}.`r`n{2}`r`n`r`nThe devices with UPDATE_FROM = share install it within 5 minutes, never during a session."
+  RelDone                = 'Release {0} published in updates\. The devices show it in the Software update column as they install it.'
+  RelCopyFailed          = "Copy into updates\ failed:`r`n{0}"
   UpdNoVersion           = 'LATEST.txt without version'
   UpdNotSigned           = '{0} (NOT signed: the devices ignore it)'
 

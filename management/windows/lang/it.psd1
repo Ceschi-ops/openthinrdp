@@ -75,6 +75,18 @@
   SavedCommon            = 'Salvato {0} - le postazioni lo applicano entro 5 minuti (esito nella colonna {1}).'
   SavedKeys              = 'Salvato {0}: chiavi da {1} a {2}.'
   UpdNone                = 'nessuno pubblicato'
+  BtnImportRelease       = 'Release da GitHub...'
+  RelTitle               = 'Release da GitHub'
+  RelNotFound            = "Nessuna release trovata in {0}`r`n`r`n{1}"
+  RelNotValid            = 'Il LATEST.txt della release non è valido: non è stato copiato niente.'
+  RelBadSignature        = 'Release {0}: la firma NON è quella della chiave del progetto. Non è stato copiato niente: non usatela e segnalatelo negli avvisi di sicurezza del progetto.'
+  RelNotNewer            = 'La release {0} non è più nuova di quella già in updates\ ({1}): niente da fare.'
+  RelBadHash             = 'Il pacchetto {0} non corrisponde all''hash di LATEST.txt (download incompleto?): non è stato copiato niente.'
+  RelSigChecked          = 'Firma della chiave del progetto: verificata.'
+  RelSigNotChecked       = 'Firma non verificata qui (gpg o la chiave del progetto non si trovano su questo PC): ogni postazione la verifica prima di installare.'
+  RelConfirm             = "Copiare la release {0} in updates\ della cartella di gestione?`r`nOra pubblicato: {1}.`r`n{2}`r`n`r`nLe postazioni con UPDATE_FROM = share la installano entro 5 minuti, mai durante una sessione."
+  RelDone                = 'Release {0} pubblicata in updates\. Le postazioni la mostrano nella colonna dell''aggiornamento software man mano che la installano.'
+  RelCopyFailed          = "Copia in updates\ non riuscita:`r`n{0}"
   UpdNoVersion           = 'LATEST.txt senza versione'
   UpdNotSigned           = '{0} (NON firmato: le postazioni lo ignorano)'
 

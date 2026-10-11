@@ -459,6 +459,94 @@ function Get-PublishedUpdate {
 }
 
 # ---------------------------------------------------------------------------------------------
+# A GitHub release into updates\: the latest release (pre-releases excluded) of UPDATE_GITHUB (common.conf,
+# else the project default), for the devices with UPDATE_FROM=share. The devices check the project signature
+# themselves; here the package hash is always checked, the signature too when gpg is available (Git for
+# Windows has it) and the project key is next to this tool (rootfs/opt/openthinrdp/keys in the repository).
+# ---------------------------------------------------------------------------------------------
+$script:ReleaseKey = Join-Path $PSScriptRoot '..\..\rootfs\opt\openthinrdp\keys\openthinrdp-release.asc'
+$script:ReleaseFileRx = '^openthinrdp-update-[0-9A-Za-z._-]+\.tar\.gz$'
+function Get-ReleaseRepo {
+  $r = (Read-ConfFile $script:CommonFile)['UPDATE_GITHUB']
+  if ($r -and $r -cmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { $r } else { (Get-Setting 'UPDATE_GITHUB').Default }
+}
+# one file of a release: from GitHub, or from a local folder (tests)
+function Get-ReleaseFile([string]$base, [string]$name, [string]$dest) {
+  if ($base -match '^https?://') { Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $dest -TimeoutSec 300 -ErrorAction Stop }
+  else { Copy-Item -LiteralPath (Join-Path $base $name) -Destination $dest -ErrorAction Stop }
+}
+# $true = good signature of the key, $false = bad, $null = not checked here (no gpg, or no key file)
+function Test-ReleaseSignature([string]$sig, [string]$file, [string]$keyFile) {
+  $gpg = @("$env:ProgramFiles\Git\usr\bin\gpg.exe", (Get-Command gpg.exe -ErrorAction SilentlyContinue).Source) |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+  if (-not $gpg -or -not $keyFile -or -not (Test-Path -LiteralPath $keyFile)) { return $null }
+  $gh = Join-Path $env:TEMP "otr-gpg-$(Get-Random)"; New-Item -ItemType Directory $gh | Out-Null
+  # the gpg of Git for Windows is an MSYS program: it wants /c/x/y (C:\x and C:/x are read as relative paths),
+  # and //server/share; Gpg4win wants Windows paths
+  $msys = $gpg -like '*\usr\bin\gpg.exe'
+  $p = { param($x) $q = (Resolve-Path -LiteralPath $x).ProviderPath
+         if (-not $msys) { $q } elseif ($q -like '\\*') { $q -replace '\\', '/' } else { '/' + $q.Substring(0, 1).ToLower() + ($q.Substring(2) -replace '\\', '/') } }
+  # gpg writes its notes on stderr: with "Stop", Windows PowerShell 5.1 turns them into errors even with 2>$null
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $gpg --homedir (& $p $gh) --batch --quiet --import (& $p $keyFile) 2>$null | Out-Null
+    & $gpg --homedir (& $p $gh) --batch --quiet --verify (& $p $sig) (& $p $file) 2>$null | Out-Null
+    $LASTEXITCODE -eq 0
+  } finally { Remove-Item -LiteralPath $gh -Recurse -Force -ErrorAction SilentlyContinue }
+}
+# version order as "sort -V" on the devices: the numbers inside compare as numbers
+function Compare-Version([string]$a, [string]$b) {
+  $pa = @($a -split '[^0-9A-Za-z]+'); $pb = @($b -split '[^0-9A-Za-z]+')
+  for ($i = 0; $i -lt [Math]::Max($pa.Count, $pb.Count); $i++) {
+    $x = if ($i -lt $pa.Count) { $pa[$i] } else { '' }; $y = if ($i -lt $pb.Count) { $pb[$i] } else { '' }
+    if ($x -match '^[0-9]+$' -and $y -match '^[0-9]+$') { $c = ([long]$x).CompareTo([long]$y) } else { $c = [string]::CompareOrdinal($x, $y) }
+    if ($c) { return [Math]::Sign($c) }
+  }
+  0
+}
+# Downloads and checks the release into a temporary folder. Ok = $false with Message, or the release:
+# Version, File, Signature ($true / $null = not checked here), Dir (temporary folder for Publish-Release)
+function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) {
+  if (-not $base) { $base = "https://github.com/$(Get-ReleaseRepo)/releases/latest/download" }
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  $tmp = Join-Path $env:TEMP "otr-release-$(Get-Random)"; New-Item -ItemType Directory $tmp | Out-Null
+  $fail = { param($m) Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; [pscustomobject]@{ Ok = $false; Message = $m } }
+  try { Get-ReleaseFile $base 'LATEST.txt' "$tmp\LATEST.txt"; Get-ReleaseFile $base 'LATEST.txt.sig' "$tmp\LATEST.txt.sig" }
+  catch { return (& $fail (Get-Text 'RelNotFound' $base $_.Exception.Message)) }
+  $l = Read-Lines "$tmp\LATEST.txt"
+  $field = { param($lines, $k) ([string]($lines | Where-Object { $_ -match "^$k=" } | Select-Object -First 1) -replace "^$k=", '').Trim() }
+  $v = & $field $l 'version'; $f = & $field $l 'file'; $h = & $field $l 'sha256'
+  if ($v -cnotmatch '^[0-9A-Za-z._-]+$' -or $f -cnotmatch $script:ReleaseFileRx -or $h -cnotmatch '^[0-9a-f]{64}$') { return (& $fail (Get-Text 'RelNotValid')) }
+  $sig = Test-ReleaseSignature "$tmp\LATEST.txt.sig" "$tmp\LATEST.txt" $keyFile
+  if ($sig -eq $false) { return (& $fail (Get-Text 'RelBadSignature' $v)) }
+  $cur = Join-Path $script:Folder 'updates\LATEST.txt'
+  if (Test-Path -LiteralPath $cur) {
+    $cv = & $field (Read-Lines $cur) 'version'
+    if ($cv -and (Compare-Version $v $cv) -le 0) { return (& $fail (Get-Text 'RelNotNewer' $v $cv)) }
+  }
+  try { Get-ReleaseFile $base $f "$tmp\$f" } catch { return (& $fail (Get-Text 'RelNotFound' "$base/$f" $_.Exception.Message)) }
+  if ((Get-FileHash -LiteralPath "$tmp\$f" -Algorithm SHA256).Hash.ToLower() -ne $h) { return (& $fail (Get-Text 'RelBadHash' $f)) }
+  [pscustomobject]@{ Ok = $true; Version = $v; File = $f; Hash = $h; Signature = $sig; Dir = $tmp; Source = $base }
+}
+# Copies a checked release into updates\: package first, then signature and index (a device never sees an
+# index that points to a missing package); the last 3 packages are kept. Removes the temporary folder.
+function Publish-Release($rel) {
+  try {
+    $u = Join-Path $script:Folder 'updates'
+    if (-not (Test-Path -LiteralPath $u)) { New-Item -ItemType Directory -Path $u | Out-Null }
+    Copy-Item -LiteralPath (Join-Path $rel.Dir $rel.File) -Destination (Join-Path $u $rel.File) -Force -ErrorAction Stop
+    if ((Get-FileHash -LiteralPath (Join-Path $u $rel.File) -Algorithm SHA256).Hash.ToLower() -ne $rel.Hash) { throw (Get-Text 'RelBadHash' $rel.File) }
+    foreach ($n in 'LATEST.txt.sig', 'LATEST.txt') {
+      Copy-Item -LiteralPath (Join-Path $rel.Dir $n) -Destination (Join-Path $u "$n.new") -Force -ErrorAction Stop
+      Move-Item -LiteralPath (Join-Path $u "$n.new") -Destination (Join-Path $u $n) -Force -ErrorAction Stop
+    }
+    Get-ChildItem -LiteralPath $u -Filter 'openthinrdp-update-*.tar.gz' | Where-Object Name -ne $rel.File |
+      Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 | Remove-Item -Force
+    Add-ChangeLog ("release {0} copied into updates\ from {1} (signature {2})" -f $rel.Version, $rel.Source, $(if ($rel.Signature) { 'checked here' } else { 'not checked here: the devices check it' }))
+  } finally { Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# ---------------------------------------------------------------------------------------------
 # Writing the .conf files: replaces the existing lines (also commented ones) and keeps the comments
 #   $managed = KEY -> value (active line) or $null (commented line: not managed from here)
 #   $renameMac = MAC of a device being renamed ('' = remove the mark, $null = leave it as it is)
@@ -837,9 +925,10 @@ $topPanel = New-Object System.Windows.Forms.Panel
 $topPanel.Dock = 'Top'; $topPanel.Height = 38
 $btnRefresh = New-Button 'BtnRefresh' 120 26
 $btnOpen = New-Button 'BtnOpenFolder' 110 26
+$btnRelease = New-Button 'BtnImportRelease' 150 26
 $lblNote = New-Object System.Windows.Forms.Label
 $lblNote.Text = Get-Text 'NoteDevices'
-Set-ButtonRow $topPanel @($btnRefresh, $btnOpen) $lblNote 6
+Set-ButtonRow $topPanel @($btnRefresh, $btnOpen, $btnRelease) $lblNote 6
 
 $split = New-Object System.Windows.Forms.SplitContainer
 $split.Dock = 'Fill'; $split.Orientation = 'Horizontal'
@@ -1142,6 +1231,17 @@ foreach ($g in @($gridDev, $gridCom)) { $g.add_CurrentCellDirtyStateChanged({ pa
 $list.add_SelectedIndexChanged({ if ($list.SelectedItems.Count -eq 1) { Show-Device $list.SelectedItems[0].Tag } })
 $btnRefresh.add_Click({ Update-DeviceList; if ($script:Selected) { $n = $script:Selected.File; $q = $script:Devices | Where-Object File -eq $n | Select-Object -First 1; if ($q) { Show-Device $q } } })
 $btnOpen.add_Click({ Start-Process explorer.exe $script:Folder })
+$btnRelease.add_Click({
+  $form.Cursor = 'WaitCursor'
+  try { $rel = Get-Release } catch { $rel = [pscustomobject]@{ Ok = $false; Message = $_.Exception.Message } } finally { $form.Cursor = 'Default' }
+  if (-not $rel.Ok) { Show-Message (Get-Text 'RelTitle') $rel.Message 'Information'; return }
+  $sigText = if ($rel.Signature) { Get-Text 'RelSigChecked' } else { Get-Text 'RelSigNotChecked' }
+  if (-not (Confirm-Action (Get-Text 'RelTitle') (Get-Text 'RelConfirm' $rel.Version (Get-PublishedUpdate) $sigText) 'Button2')) {
+    Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue; return }
+  try { Publish-Release $rel; Show-Message (Get-Text 'RelTitle') (Get-Text 'RelDone' $rel.Version) 'Information' }
+  catch { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error' }
+  Update-DeviceList
+})
 $btnSaveDev.add_Click({ Save-Device })
 $btnReloadDev.add_Click({ Update-DeviceGrid })
 $btnClearDev.add_Click({ Clear-Device })
