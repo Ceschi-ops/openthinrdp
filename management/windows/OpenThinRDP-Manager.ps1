@@ -10,12 +10,18 @@
   is wrong: here the same rules run BEFORE writing. Every overwritten file is copied to config\backup\ first,
   every change goes to config\changes.log.
   Start:  OpenThinRDP-Manager.cmd [-Folder \\fileserver\thinclients]   (no -Folder = choose it, the last one is remembered)
-  Tests:  . .\OpenThinRDP-Manager.ps1 -Folder <path> -FunctionsOnly     (loads the functions, no window)
+                                  [-Language en|it]                    (no -Language = the Windows display language
+                                                                        when lang\ has a file for it, else English)
+  Texts:  every text of the window is in lang\en.psd1, translated in lang\<language>.psd1 (UTF-8 with BOM);
+          a key missing from a translation shows the English text. Setting keys, values, the files written
+          and config\changes.log stay in English: the devices and other tools read them.
+  Tests:  . .\OpenThinRDP-Manager.ps1 -Folder <path> -FunctionsOnly [-Language en]   (loads the functions, no window)
           $env:OTR_MANAGER_SCREENSHOT = <file.png> (+ $env:OTR_MANAGER_TAB = 0, 1 or 2): draws the window into
           the PNG instead of showing it, then exits
 #>
 param(
   [string]$Folder,
+  [string]$Language,       # en, it, ... (a file in lang\); empty = the Windows display language
   [switch]$FunctionsOnly   # for tests: load the functions without opening the window
 )
 $ErrorActionPreference = 'Stop'
@@ -45,8 +51,17 @@ public class OtrColumnSorter : System.Collections.IComparer {
     // the Uptime column, and "N min/hours/days" in the state of the devices that stopped reporting
     static readonly Regex RxDuration = new Regex(@"\d+\s+(year|week|day|hour|minute)s?(\s*,\s*\d+\s+(year|week|day|hour|minute)s?)*");
     static readonly Regex RxPart = new Regex(@"(\d+)\s+(year|week|day|hour|minute)");
+    // units in the language of the window (the state column: "3 ore", "2 giorni"), added with AddUnit
+    static readonly System.Collections.Generic.Dictionary<string, long> Units = new System.Collections.Generic.Dictionary<string, long>();
+    static Regex RxUnits = null;
+    public static void AddUnit(string word, long minutes) {
+        Units[word] = minutes;
+        string[] w = new string[Units.Count]; Units.Keys.CopyTo(w, 0);
+        for (int i = 0; i < w.Length; i++) w[i] = Regex.Escape(w[i]);
+        RxUnits = new Regex(@"\b(\d+)\s+(" + string.Join("|", w) + @")\b");
+    }
     public static string Durations(string s) {
-        return RxDuration.Replace(s, delegate(Match u) {
+        string r = RxDuration.Replace(s, delegate(Match u) {
             long m = 0;
             foreach (Match p in RxPart.Matches(u.Value)) {
                 long n = long.Parse(p.Groups[1].Value);
@@ -57,6 +72,8 @@ public class OtrColumnSorter : System.Collections.IComparer {
             }
             return m + " min";
         });
+        if (RxUnits != null) { r = RxUnits.Replace(r, delegate(Match u) { return (long.Parse(u.Groups[1].Value) * Units[u.Groups[2].Value]) + " min"; }); }
+        return r;
     }
     public static int Natural(string a, string b) {
         int i = 0, j = 0;
@@ -102,6 +119,53 @@ public static class OtrCrypto {
 '@
 }
 
+# ---------------------------------------------------------------------------------------------
+# Language: lang\en.psd1 has every text of the window, lang\<xx>.psd1 replaces the ones it translates
+# (a key missing or empty there keeps the English text, never an empty label)
+# ---------------------------------------------------------------------------------------------
+$script:LangDir = Join-Path $PSScriptRoot 'lang'
+function Read-LanguageTexts([string]$dir, [string]$lang) {
+  $t = @{}
+  $en = Import-PowerShellDataFile -LiteralPath (Join-Path $dir 'en.psd1')
+  foreach ($k in $en.Keys) { $t[$k] = $en[$k] }
+  $f = Join-Path $dir "$lang.psd1"
+  if ($lang -and $lang -ne 'en' -and (Test-Path -LiteralPath $f)) {
+    try { $tr = Import-PowerShellDataFile -LiteralPath $f } catch { Write-Warning "$f not readable, English texts used: $($_.Exception.Message)"; $tr = @{} }
+    foreach ($k in $tr.Keys) { if ($tr[$k]) { $t[$k] = $tr[$k] } }
+  }
+  $t
+}
+# -Language when given, else the Windows display language; English when lang\ has no file for it
+function Select-Language([string]$wanted) {
+  $lang = if ($wanted) { $wanted.ToLower() } else { (Get-UICulture).TwoLetterISOLanguageName.ToLower() }
+  if ($lang -cmatch '^[a-z]{2,3}$' -and (Test-Path -LiteralPath (Join-Path $script:LangDir "$lang.psd1"))) { return $lang }
+  if ($wanted -and $wanted -ne 'en') { Write-Warning "No language file lang\$wanted.psd1: English texts used" }
+  'en'
+}
+# a text of the window; with values after the key it is a format string ({0}, {1}...). An unknown key
+# shows the key itself.
+function Get-Text([string]$Key) {
+  $t = $script:Text[$Key]
+  if (-not $t) { $t = $Key }
+  if ($args.Count) { $t -f $args } else { $t }
+}
+try {
+  $script:Language = Select-Language $Language
+  $script:Text = Read-LanguageTexts $script:LangDir $script:Language
+} catch {
+  # the window is started hidden (OpenThinRDP-Manager.cmd): without a message box nobody would see why
+  $m = "Cannot read the texts of the window in $($script:LangDir): $($_.Exception.Message)"
+  if (-not $FunctionsOnly) { [void][System.Windows.Forms.MessageBox]::Show($m, 'OpenThinRDP Manager', 'OK', 'Error') }
+  throw $m
+}
+# the state column sorts "45 min" before "3 hours" also in the words of the language
+foreach ($u in @(@('DurMinutes', 1), @('DurHours', 60), @('DurDays', 1440))) {
+  $w = ((Get-Text $u[0]) -replace '\{0\}', '').Trim(); if ($w) { [OtrColumnSorter]::AddUnit($w, $u[1]) }
+}
+# typed in a secret cell, these keep the saved Wi-Fi key / settings PIN ("(saved)" / "(set)" in English)
+$script:MarkSaved = Get-Text 'MarkSaved'
+$script:MarkSet = Get-Text 'MarkSet'
+
 $script:Utf8 = New-Object System.Text.UTF8Encoding $false
 $script:StaleMinutes = 15     # same threshold as SUMMARY.csv written by the devices: over it = off or offline
 # keys that identify a device: central-apply.sh ignores them in common.conf
@@ -123,69 +187,72 @@ function Get-HostFile($name) { Join-Path $script:ConfigDir "$name.conf" }
 # ---------------------------------------------------------------------------------------------
 # Settings: the keys of defaults.conf on the device (+ HOSTNAME, + WIFI_PSK which never leaves this tool
 # as a password). Type = which save-config.sh rule applies. Default = project default (defaults.conf),
-# proposed in common.conf when no device reports the key yet.
+# proposed in common.conf when no device reports the key yet (a value: never translated).
+# Name and description of each setting: Label_<KEY> and Help_<KEY> in lang\*.psd1; groups: Section*.
 # ---------------------------------------------------------------------------------------------
 $script:Section = ''
-function Set-Section($name) { $script:Section = $name }
-function New-Setting($key, $label, $type, $default, $help, $choices = $null) {
-  [pscustomobject]@{ Key = $key; Label = $label; Type = $type; Default = $default; Help = $help; Choices = $choices
+function Set-Section($textKey) { $script:Section = Get-Text $textKey }
+function New-Setting($key, $type, $default, $choices = $null) {
+  [pscustomobject]@{ Key = $key; Label = (Get-Text "Label_$key"); Type = $type; Default = $default; Help = (Get-Text "Help_$key"); Choices = $choices
                      HostOnly = ($script:HostOnly -contains $key); Section = $script:Section }
 }
 $script:Settings = @(
-  (Set-Section 'Remote desktop')
-  (New-Setting 'HOSTNAME'          'Hostname'                    'host'      ''  'Letters, digits and hyphen, not only digits (e.g. thinclient21). When the device reports with the new name, this tool moves its exceptions to the new file.')
-  (New-Setting 'DEFAULT_USER'      'Default user'                'user'      ''  'User name pre-filled in the login form (e.g. jdoe or EXAMPLE\jdoe).')
-  (New-Setting 'BROKER'            'Broker'                      'name'      ''  'RD Connection Broker (or a single session host), name or IP. Used from the next connection.')
-  (New-Setting 'BROKER_FALLBACK'   'Fallback brokers'            'names'     ''  'Space separated: tried in turn when the broker does not answer after 2 attempts.')
-  (New-Setting 'DOMAIN'            'Domain'                      'name'      ''  'Windows domain of the users. Used from the next connection.')
-  (New-Setting 'LOAD_BALANCE_INFO' 'RDS collection'              'collection' '' 'As in the .rdp file (loadbalanceinfo), e.g. tsv://VMResource.1.MY_COLLECTION')
-  (New-Setting 'TRANSPORT'         'Transport'                   'choice'    'auto' 'auto = UDP, and TCP when UDP is blocked or fails; udp = UDP only (a connection without UDP is closed and retried, after 3 tries an error); tcp = TCP only. Used from the next connection.' @('auto', 'udp', 'tcp'))
-  (New-Setting 'RDP_AUTH'          'Authentication'              'choice'    'negotiate' 'negotiate = Kerberos then NTLM; ntlm = NTLM only (when Kerberos breaks on the broker redirect, "Ticket/authenticator don''t match").' @('negotiate', 'ntlm'))
-  (New-Setting 'RDP_CERT'          'Server certificate'          'choice'    'tofu' 'tofu = trust on first use; ignore = accept any; verify = must be trusted.' @('tofu', 'ignore', 'verify'))
-  (New-Setting 'RDP_GFX'           'Graphics pipeline (/gfx)'    'gfx'       'progressive,AVC420:off,AVC444:off' 'Options for /gfx. Without a server GPU, progressive without H.264 keeps text pixel exact.')
-  (New-Setting 'RDP_KEYBOARD'      'RDP keyboard layout'         'rdpkbd'    ''  'Layout sent to Windows (/kbd:layout), e.g. 0x00000409. Empty = derived from Keyboard.')
-  (New-Setting 'RDP_EXTRA'         'Extra FreeRDP options'       'extra'     ''  'Appended to xfreerdp3 as they are (advanced). Letters, digits, space and / : + , . _ = # - only.')
-  (New-Setting 'SESSION_THRESHOLD' 'Session threshold (s)'       'threshold' '10' '5-120: a session that ends within these seconds from sign-in counts as a failed attempt and is retried.')
-  (New-Setting 'SHUTDOWN_SECS'     'Shutdown (s)'                'shutdown'  '10' 'Seconds before switching off after the user disconnects (0 = never, max 3600).')
-  (Set-Section 'USB')
-  (New-Setting 'USB_MODE'          'USB mode'                    'choice'    'all' 'all = every USB device except keyboards, mice, touch screens, hubs, network adapters and smart card readers goes to Windows whole; disks = USB sticks as network drives, smart cards through /smartcard.' @('all', 'disks'))
-  (New-Setting 'USB_REDIRECT'      'USB devices passed whole'    'usb'       ''  'VID:PID, space separated (e.g. 1eaf:0009): always passed whole, also in disks mode.')
-  (Set-Section 'Network')
-  (New-Setting 'NETMODE'           'Network'                     'choice'    'dhcp' 'dhcp or static. IP address, netmask and gateway are used only with static.' @('dhcp', 'static'))
-  (New-Setting 'IPADDR'            'IP address'                  'ip'        ''  'Only with Network = static.')
-  (New-Setting 'NETMASK'           'Netmask'                     'mask'      '255.255.255.0' 'e.g. 255.255.255.0 (used only with a static address).')
-  (New-Setting 'GATEWAY'           'Gateway'                     'ip'        ''  'Used only with a static address; must be in the same network as the IP address.')
-  (New-Setting 'DNS1'              'Primary DNS'                 'ip'        ''  'Empty = the ones from DHCP. Required with a static address.')
-  (New-Setting 'DNS2'              'Secondary DNS'               'ip'        ''  'Optional.')
-  (New-Setting 'NTP'               'Time servers (NTP)'          'names'     ''  'Space separated. Empty = the Debian pool.')
-  (New-Setting 'WIFI'              'Wi-Fi'                       'choice'    'off' 'on = use Wi-Fi when no cable is connected. A device without a Wi-Fi adapter REJECTS a configuration with Wi-Fi on.' @('off', 'on'))
-  (New-Setting 'WIFI_SSID'         'Wi-Fi network (SSID)'        'ssid'      ''  '1 to 32 characters, no quotes, | or backslash.')
-  (New-Setting 'WIFI_COUNTRY'      'Wi-Fi country'               'country'   ''  'Two letters (e.g. US) or empty.')
-  (New-Setting 'WIFI_PSK'          'Wi-Fi password'              'psk'       ''  'Type the password (8-63 characters) or a 64 hex digit key: only the WPA key computed for the SSID goes to the file, never the password. (saved) = keep the current key.')
-  (Set-Section 'Management')
-  (New-Setting 'MGMT_SHARE'        'Management folder'           'share'     ''  'Where the devices report and read this configuration (\\server\share). A wrong value cuts the devices off from this tool.')
-  (New-Setting 'SECURITY_UPDATES'  'Security updates'            'choice'    'on' 'Debian security updates (FreeRDP is never updated automatically).' @('off', 'on'))
-  (New-Setting 'SSH'               'SSH'                         'choice'    'off' 'Remote administration: login as admin only with the keys of the SSH keys tab.' @('off', 'on'))
-  (Set-Section 'Web button and kiosk page')
-  (New-Setting 'WEB_BUTTON'        'Web button'                  'choice'    'none' 'none = no button; app = web address as an app window, only allowed sites; browser = free browsing, web address as home page; kiosk = kiosk page full screen at power on (5 s to stop it from the login form).' @('none', 'app', 'browser', 'kiosk'))
-  (New-Setting 'WEB_LABEL'         'Web button label'            'text'      'Web' 'Text of the button. No angle brackets, &, |, quotes, dollar or backslash.')
-  (New-Setting 'WEB_URL'           'Web address'                 'url'       ''  'http(s) address for app and browser (e.g. https://intranet.example.com/).')
-  (New-Setting 'WEB_ALLOW'         'Allowed sites (app)'         'urls'      ''  'URL prefixes, space separated, that can be opened in app mode. The web address is always allowed.')
-  (New-Setting 'KIOSK_URL'         'Kiosk page'                  'url'       ''  'http(s) page shown full screen in kiosk mode (e.g. https://www.example.com/page).')
-  (New-Setting 'KIOSK_RELOAD_MIN'  'Reload kiosk page (min)'     'reload'    '10' 'Reload the kiosk page every N minutes when nobody is using it (0 = never, max 1440).')
-  (Set-Section 'Power schedule')
-  (New-Setting 'POWER_ON_TIME'     'Power on at (hh:mm)'         'time'      ''  'Empty = never. Uses the RTC wake alarm: the firmware must let it through (some BIOSes need a deep sleep option disabled).')
-  (New-Setting 'POWER_OFF_TIME'    'Power off at (hh:mm)'        'time'      ''  'Empty = never. 60 s warning with Cancel; with an open remote session the device waits for it to end.')
-  (New-Setting 'POWER_ON_DAYS'     'Power on days'               'days'      '1234567' 'Digits of the days: 1 = Monday ... 7 = Sunday (e.g. 12345 = Monday to Friday).')
-  (Set-Section 'Look and language')
-  (New-Setting 'LANGUAGE'          'Language'                    'lang'      'en' 'Two letters: en or it, or any language file added to the image.')
-  (New-Setting 'KEYBOARD'          'Keyboard'                    'kbd'       'us' 'Keyboard layout (X11/console), e.g. us, it, de, fr.')
-  (New-Setting 'TITLE'             'Title'                       'text'      'Remote desktop' 'Window titles and login form heading.')
-  (New-Setting 'LOGO'              'Logo'                        'logo'      '/opt/openthinrdp/branding/logo.png' 'Full path of a PNG on the device, about 200 px wide.')
-  (New-Setting 'BG_TOP'            'Background top color'        'color'     '#1b2733' '#rrggbb, gradient behind the splash logo.')
-  (New-Setting 'BG_BOTTOM'         'Background bottom color'     'color'     '#000000' '#rrggbb, gradient behind the splash logo.')
-  (New-Setting 'SUPPORT_TEXT'      'Support text'                'text'      ''  'Extra line in error messages, e.g. Call the IT desk, ext. 123. Empty = a generic sentence.')
-  (New-Setting 'SETTINGS_PIN_SHA256' 'Settings PIN'              'pin'       ''  'Protects the settings dialog. Type the PIN (only its SHA-256 goes to the file) or a 64 hex digit hash; empty = no PIN. (set) = keep the current one.')
+  (Set-Section 'SectionRemoteDesktop')
+  (New-Setting 'HOSTNAME'            'host'       '')
+  (New-Setting 'DEFAULT_USER'        'user'       '')
+  (New-Setting 'BROKER'              'name'       '')
+  (New-Setting 'BROKER_FALLBACK'     'names'      '')
+  (New-Setting 'DOMAIN'              'name'       '')
+  (New-Setting 'LOAD_BALANCE_INFO'   'collection' '')
+  (New-Setting 'TRANSPORT'           'choice'     'auto' @('auto', 'udp', 'tcp'))
+  (New-Setting 'RDP_AUTH'            'choice'     'negotiate' @('negotiate', 'ntlm'))
+  (New-Setting 'RDP_CERT'            'choice'     'tofu' @('tofu', 'ignore', 'verify'))
+  (New-Setting 'RDP_GFX'             'gfx'        'progressive,AVC420:off,AVC444:off')
+  (New-Setting 'RDP_KEYBOARD'        'rdpkbd'     '')
+  (New-Setting 'RDP_EXTRA'           'extra'      '')
+  (New-Setting 'SESSION_THRESHOLD'   'threshold'  '10')
+  (New-Setting 'SHUTDOWN_SECS'       'shutdown'   '10')
+  (Set-Section 'SectionUsb')
+  (New-Setting 'USB_MODE'            'choice'     'all' @('all', 'disks'))
+  (New-Setting 'USB_REDIRECT'        'usb'        '')
+  (Set-Section 'SectionNetwork')
+  (New-Setting 'NETMODE'             'choice'     'dhcp' @('dhcp', 'static'))
+  (New-Setting 'IPADDR'              'ip'         '')
+  (New-Setting 'NETMASK'             'mask'       '255.255.255.0')
+  (New-Setting 'GATEWAY'             'ip'         '')
+  (New-Setting 'DNS1'                'ip'         '')
+  (New-Setting 'DNS2'                'ip'         '')
+  (New-Setting 'NTP'                 'names'      '')
+  (New-Setting 'WIFI'                'choice'     'off' @('off', 'on'))
+  (New-Setting 'WIFI_SSID'           'ssid'       '')
+  (New-Setting 'WIFI_COUNTRY'        'country'    '')
+  (New-Setting 'WIFI_PSK'            'psk'        '')
+  (Set-Section 'SectionManagement')
+  (New-Setting 'MGMT_SHARE'          'share'      '')
+  (New-Setting 'SECURITY_UPDATES'    'choice'     'on' @('off', 'on'))
+  (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
+  (New-Setting 'UPDATE_GITHUB'       'repo'       'Ceschi-ops/openthinrdp')
+  (New-Setting 'SSH'                 'choice'     'off' @('off', 'on'))
+  (Set-Section 'SectionWeb')
+  (New-Setting 'WEB_BUTTON'          'choice'     'none' @('none', 'app', 'browser', 'kiosk'))
+  (New-Setting 'WEB_LABEL'           'text'       'Web')
+  (New-Setting 'WEB_URL'             'url'        '')
+  (New-Setting 'WEB_ALLOW'           'urls'       '')
+  (New-Setting 'KIOSK_URL'           'url'        '')
+  (New-Setting 'KIOSK_RELOAD_MIN'    'reload'     '10')
+  (Set-Section 'SectionPower')
+  (New-Setting 'POWER_ON_TIME'       'time'       '')
+  (New-Setting 'POWER_OFF_TIME'      'time'       '')
+  (New-Setting 'POWER_ON_DAYS'       'days'       '1234567')
+  (Set-Section 'SectionLook')
+  (New-Setting 'LANGUAGE'            'lang'       'en')
+  (New-Setting 'KEYBOARD'            'kbd'        'us')
+  (New-Setting 'TITLE'               'text'       'Remote desktop')
+  (New-Setting 'LOGO'                'logo'       '/opt/openthinrdp/branding/logo.png')
+  (New-Setting 'BG_TOP'              'color'      '#1b2733')
+  (New-Setting 'BG_BOTTOM'           'color'      '#000000')
+  (New-Setting 'SUPPORT_TEXT'        'text'       '')
+  (New-Setting 'SETTINGS_PIN_SHA256' 'pin'        '')
 )
 function Get-Setting($key) { $script:Settings | Where-Object Key -eq $key | Select-Object -First 1 }
 
@@ -229,40 +296,41 @@ function Test-Text([string]$v) { ($v -cnotmatch $script:Rx.BadText) -and $v.Leng
 # error for a single value, or $null when it is good
 function Test-SettingValue([string]$key, [string]$v) {
   $s = Get-Setting $key
-  if (-not $s) { return "Unknown setting $key" }
+  if (-not $s) { return (Get-Text 'ErrUnknownSetting' $key) }
   $L = $s.Label
   # a line break would put a second KEY= line in the file, read by the device as a separate setting
-  if ($v -match '[\x00-\x1f\x7f]') { return "${L}: line breaks and control characters are not allowed" }
+  if ($v -match '[\x00-\x1f\x7f]') { return (Get-Text 'ErrControlChars' $L) }
   switch ($s.Type) {
-    'host'       { if ($v -cnotmatch $script:Rx.Host -or $v -cmatch '^[0-9]+$') { return 'Hostname not valid (letters, digits and hyphen; not only digits)' } }
-    'user'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.User) { return 'Default user not valid' } }
-    'name'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.Name) { return "$L not valid" } }
-    'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return "${L}: value not valid '$t'" } } }
-    'collection' { if ($v -cnotmatch $script:Rx.Collection) { return 'RDS collection not valid (e.g. tsv://VMResource.1.MY_COLLECTION)' } }
-    'choice'     { if ($s.Choices -notcontains $v) { return "${L}: choose one of $($s.Choices -join ', ')" } }
-    'gfx'        { if ($v -cnotmatch $script:Rx.Gfx) { return "${L}: letters, digits, : and , only" } }
-    'rdpkbd'     { if ($v -cnotmatch $script:Rx.RdpKbd) { return "${L} not valid (e.g. 0x00000409)" } }
-    'extra'      { if ($v -cnotmatch $script:Rx.Extra) { return "$L contain characters that are not allowed" } }
-    'threshold'  { if ($v -cnotmatch '^[0-9]{1,3}$' -or [int]$v -lt 5 -or [int]$v -gt 120) { return 'Session threshold: seconds from 5 to 120' } }
-    'shutdown'   { if ($v -cnotmatch '^[0-9]{1,4}$' -or [int]$v -gt 3600) { return 'Shutdown: seconds from 0 (never) to 3600' } }
-    'usb'        { if (((Split-List $v) -join ' ').ToLower() -cnotmatch $script:Rx.Usb) { return 'USB devices: VID:PID separated by spaces (e.g. 1eaf:0009)' } }
-    'ip'         { if ($v -ne '' -and -not (Test-Ip $v)) { return "$L not valid" } }
-    'mask'       { if ($v -ne '' -and -not (Test-Mask $v)) { return 'Netmask not valid (e.g. 255.255.255.0)' } }
-    'ssid'       { if ($v.Length -gt 32 -or $v -match '["|\\]') { return 'Wi-Fi network (SSID) not valid (max 32 characters, no quotes, | or backslash)' } }
-    'country'    { if ($v.ToUpper() -cnotmatch '^([A-Z]{2})?$') { return 'Wi-Fi country: two letters (e.g. US) or empty' } }
-    'psk'        { if ($v -ne '(saved)' -and $v -cnotmatch $script:Rx.Hex64 -and ($v.Length -lt 8 -or $v.Length -gt 63)) { return 'Wi-Fi password: 8 to 63 characters' } }
-    'share'      { if ($v -ne '' -and $v -cnotmatch $script:Rx.Share) { return 'Management folder not valid (e.g. \\fileserver\thinclients)' } }
-    'text'       { if (-not (Test-Text $v)) { return "$L contains characters that are not allowed (angle brackets, &, |, quotes, dollar, backslash) or is over 200 characters" } }
-    'url'        { if ($v -ne '' -and $v -cnotmatch $script:Rx.Url) { return "$L not valid (e.g. https://www.example.com/page)" } }
-    'urls'       { foreach ($t in (Split-List $v)) { if ($t -cnotmatch $script:Rx.Url) { return "Allowed site not valid: $t" } } }
-    'reload'     { if ($v -cnotmatch '^[0-9]{1,4}$' -or [int]$v -gt 1440) { return 'Kiosk page reload: minutes from 0 (never) to 1440' } }
-    'time'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.Time) { return "${L}: time hh:mm (e.g. 07:30) or empty" } }
-    'days'       { if ($v -cnotmatch '^[1-7 ,;]*$') { return 'Power on days: digits 1 (Monday) to 7 (Sunday), e.g. 12345' } }
-    'lang'       { if ($v.ToLower() -cnotmatch '^[a-z]{2}$') { return 'Language: two letters (e.g. en)' } }
-    'kbd'        { if ($v -cnotmatch $script:Rx.Kbd) { return 'Keyboard layout not valid (e.g. us, it, de)' } }
-    'logo'       { if ($v -cnotmatch $script:Rx.Logo) { return 'Logo: full path of a .png file' } }
-    'color'      { if ($v -cnotmatch $script:Rx.Color) { return "$L not valid (#rrggbb)" } }
-    'pin'        { if ($v.Length -gt 64) { return 'Settings PIN: at most 64 characters' } }
+    'host'       { if ($v -cnotmatch $script:Rx.Host -or $v -cmatch '^[0-9]+$') { return (Get-Text 'ErrHostname') } }
+    'user'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.User) { return (Get-Text 'ErrUser') } }
+    'name'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrNotValid' $L) } }
+    'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrListValue' $L $t) } } }
+    'collection' { if ($v -cnotmatch $script:Rx.Collection) { return (Get-Text 'ErrCollection') } }
+    'repo'       { if ($v -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { return (Get-Text 'ErrRepo') } }
+    'choice'     { if ($s.Choices -notcontains $v) { return (Get-Text 'ErrChoice' $L ($s.Choices -join ', ')) } }
+    'gfx'        { if ($v -cnotmatch $script:Rx.Gfx) { return (Get-Text 'ErrGfx' $L) } }
+    'rdpkbd'     { if ($v -cnotmatch $script:Rx.RdpKbd) { return (Get-Text 'ErrRdpKbd' $L) } }
+    'extra'      { if ($v -cnotmatch $script:Rx.Extra) { return (Get-Text 'ErrExtra' $L) } }
+    'threshold'  { if ($v -cnotmatch '^[0-9]{1,3}$' -or [int]$v -lt 5 -or [int]$v -gt 120) { return (Get-Text 'ErrThreshold') } }
+    'shutdown'   { if ($v -cnotmatch '^[0-9]{1,4}$' -or [int]$v -gt 3600) { return (Get-Text 'ErrShutdown') } }
+    'usb'        { if (((Split-List $v) -join ' ').ToLower() -cnotmatch $script:Rx.Usb) { return (Get-Text 'ErrUsb') } }
+    'ip'         { if ($v -ne '' -and -not (Test-Ip $v)) { return (Get-Text 'ErrNotValid' $L) } }
+    'mask'       { if ($v -ne '' -and -not (Test-Mask $v)) { return (Get-Text 'ErrNetmask') } }
+    'ssid'       { if ($v.Length -gt 32 -or $v -match '["|\\]') { return (Get-Text 'ErrSsid') } }
+    'country'    { if ($v.ToUpper() -cnotmatch '^([A-Z]{2})?$') { return (Get-Text 'ErrCountry') } }
+    'psk'        { if ($v -ne $script:MarkSaved -and $v -cnotmatch $script:Rx.Hex64 -and ($v.Length -lt 8 -or $v.Length -gt 63)) { return (Get-Text 'ErrPsk') } }
+    'share'      { if ($v -ne '' -and $v -cnotmatch $script:Rx.Share) { return (Get-Text 'ErrShare') } }
+    'text'       { if (-not (Test-Text $v)) { return (Get-Text 'ErrText' $L) } }
+    'url'        { if ($v -ne '' -and $v -cnotmatch $script:Rx.Url) { return (Get-Text 'ErrUrl' $L) } }
+    'urls'       { foreach ($t in (Split-List $v)) { if ($t -cnotmatch $script:Rx.Url) { return (Get-Text 'ErrAllowedSite' $t) } } }
+    'reload'     { if ($v -cnotmatch '^[0-9]{1,4}$' -or [int]$v -gt 1440) { return (Get-Text 'ErrReload') } }
+    'time'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.Time) { return (Get-Text 'ErrTime' $L) } }
+    'days'       { if ($v -cnotmatch '^[1-7 ,;]*$') { return (Get-Text 'ErrDays') } }
+    'lang'       { if ($v.ToLower() -cnotmatch '^[a-z]{2}$') { return (Get-Text 'ErrLanguage') } }
+    'kbd'        { if ($v -cnotmatch $script:Rx.Kbd) { return (Get-Text 'ErrKeyboard') } }
+    'logo'       { if ($v -cnotmatch $script:Rx.Logo) { return (Get-Text 'ErrLogo') } }
+    'color'      { if ($v -cnotmatch $script:Rx.Color) { return (Get-Text 'ErrColor' $L) } }
+    'pin'        { if ($v.Length -gt 64) { return (Get-Text 'ErrPin') } }
   }
   $null
 }
@@ -297,33 +365,34 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
 function Test-EffectiveConfig($r, $status) {
   $e = @()
   if ($r['NETMODE'] -eq 'static') {
-    if (-not (Test-Ip $r['IPADDR'])) { $e += 'With a static address a valid IP address is required' }
-    if (-not (Test-Mask $r['NETMASK'])) { $e += 'With a static address a valid netmask is required (e.g. 255.255.255.0)' }
-    if (-not (Test-Ip $r['GATEWAY'])) { $e += 'With a static address a valid gateway is required' }
+    if (-not (Test-Ip $r['IPADDR'])) { $e += Get-Text 'ErrStaticIp' }
+    if (-not (Test-Mask $r['NETMASK'])) { $e += Get-Text 'ErrStaticMask' }
+    if (-not (Test-Ip $r['GATEWAY'])) { $e += Get-Text 'ErrStaticGateway' }
     if ((Test-Ip $r['IPADDR']) -and (Test-Mask $r['NETMASK']) -and (Test-Ip $r['GATEWAY'])) {
       $m = ConvertTo-IpNumber $r['NETMASK']
-      if (((ConvertTo-IpNumber $r['IPADDR']) -band $m) -ne ((ConvertTo-IpNumber $r['GATEWAY']) -band $m)) { $e += "The gateway $($r['GATEWAY']) is not in the same network as the IP address $($r['IPADDR'])" }
+      if (((ConvertTo-IpNumber $r['IPADDR']) -band $m) -ne ((ConvertTo-IpNumber $r['GATEWAY']) -band $m)) { $e += Get-Text 'ErrSubnet' $r['GATEWAY'] $r['IPADDR'] }
     }
-    if (-not (Test-Ip $r['DNS1'])) { $e += 'With a static address the primary DNS is required' }
+    if (-not (Test-Ip $r['DNS1'])) { $e += Get-Text 'ErrStaticDns' }
   }
-  if ($r['WEB_BUTTON'] -in 'app', 'browser' -and -not $r['WEB_URL']) { $e += "Web button = $($r['WEB_BUTTON']) needs a web address" }
-  if ($r['WEB_BUTTON'] -eq 'kiosk' -and -not $r['KIOSK_URL']) { $e += 'Web button = kiosk needs a kiosk page' }
+  if ($r['WEB_BUTTON'] -in 'app', 'browser' -and -not $r['WEB_URL']) { $e += Get-Text 'ErrWebNeedsUrl' $r['WEB_BUTTON'] }
+  if ($r['WEB_BUTTON'] -eq 'kiosk' -and -not $r['KIOSK_URL']) { $e += Get-Text 'ErrKioskNeedsUrl' }
+  if ($r['UPDATE_FROM'] -eq 'share' -and -not $r['MGMT_SHARE']) { $e += Get-Text 'ErrUpdateNeedsShare' }
   if ($r['WIFI'] -eq 'on') {
-    if (-not $r['WIFI_SSID'] -or (Test-SettingValue 'WIFI_SSID' $r['WIFI_SSID'])) { $e += 'Wi-Fi on needs a valid network name (SSID)' }
-    if ($status -and $status['WIFI_STATUS'] -eq 'no adapter') { $e += 'Wi-Fi on, but this device has no Wi-Fi adapter' }
+    if (-not $r['WIFI_SSID'] -or (Test-SettingValue 'WIFI_SSID' $r['WIFI_SSID'])) { $e += Get-Text 'ErrWifiNeedsSsid' }
+    if ($status -and $status['WIFI_STATUS'] -eq 'no adapter') { $e += Get-Text 'ErrWifiNoAdapter' }
   }
   $e
 }
 
 function Get-WpaKey([string]$passphrase, [string]$ssid) { [OtrCrypto]::WpaPsk($passphrase, $ssid) }
 function Get-PinHash([string]$pin) { [OtrCrypto]::Sha256($pin) }
-# what the user typed in a secret cell -> what goes to the file ("(saved)"/"(set)" = keep the previous one)
+# what the user typed in a secret cell -> what goes to the file (MarkSaved/MarkSet = keep the previous one)
 function ConvertTo-WpaKey($v, $ssid) { if ($v -cmatch $script:Rx.Hex64) { $v.ToLower() } else { Get-WpaKey $v $ssid } }
 function ConvertTo-PinHash($v) { if ($v -eq '') { '' } elseif ($v -cmatch $script:Rx.Hex64) { $v.ToLower() } else { Get-PinHash $v } }
 function Format-Value($k, $v) {
-  if ($null -eq $v) { '(not managed)' }
-  elseif ($k -eq 'WIFI_PSK') { '(WPA key)' }
-  elseif ($k -eq 'SETTINGS_PIN_SHA256') { if ($v) { '(PIN set)' } else { '(no PIN)' } }
+  if ($null -eq $v) { Get-Text 'ValNotManaged' }
+  elseif ($k -eq 'WIFI_PSK') { Get-Text 'ValWpaKey' }
+  elseif ($k -eq 'SETTINGS_PIN_SHA256') { if ($v) { Get-Text 'ValPinSet' } else { Get-Text 'ValNoPin' } }
   else { "'$v'" }
 }
 
@@ -353,7 +422,7 @@ function Read-StatusFile($f) {
 function Get-ReportTime($s) {
   try { [datetime]::ParseExact($s['UPDATED'], 'yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture) } catch { $null }
 }
-function Format-Minutes($m) { if ($m -lt 120) { "$m min" } elseif ($m -lt 2880) { "$([int]($m / 60)) hours" } else { "$([int]($m / 1440)) days" } }
+function Format-Minutes($m) { if ($m -lt 120) { Get-Text 'DurMinutes' $m } elseif ($m -lt 2880) { Get-Text 'DurHours' ([int]($m / 60)) } else { Get-Text 'DurDays' ([int]($m / 1440)) } }
 
 function Get-Devices {
   $list = @()
@@ -364,18 +433,18 @@ function Get-Devices {
     if (-not $s['HOSTNAME']) { continue }
     $when = Get-ReportTime $s; if (-not $when) { $when = $f.LastWriteTime }
     $min = [int]((Get-Date) - $when).TotalMinutes
-    $state = 'ok'; $color = [System.Drawing.Color]::FromArgb(220, 245, 220)
-    if ($min -gt $script:StaleMinutes) { $state = "off or offline ($(Format-Minutes $min))"; $color = [System.Drawing.Color]::FromArgb(230, 230, 230) }
-    elseif ($s['FAILED_UNITS'] -and $s['FAILED_UNITS'] -ne 'none') { $state = 'FAILED units'; $color = [System.Drawing.Color]::FromArgb(255, 205, 205) }
-    elseif ($s['CENTRAL_CONFIG'] -like 'REJECTED*') { $state = 'config REJECTED'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
-    elseif ($s['SHARE_UPDATE'] -like 'ERROR*' -or $s['SHARE_UPDATE'] -like 'IGNORED*') { $state = 'update ERROR'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
-    elseif ($s['REBOOT_REQUIRED'] -eq 'yes') { $state = 'reboot recommended'; $color = [System.Drawing.Color]::FromArgb(255, 245, 190) }
-    $list += [pscustomobject]@{ Name = $s['HOSTNAME']; File = $f.BaseName; State = $state; Color = $color; Minutes = $min; When = $when; S = $s }
+    $state = Get-Text 'StateOk'; $color = [System.Drawing.Color]::FromArgb(220, 245, 220)
+    if ($min -gt $script:StaleMinutes) { $state = Get-Text 'StateOffline' (Format-Minutes $min); $color = [System.Drawing.Color]::FromArgb(230, 230, 230) }
+    elseif ($s['FAILED_UNITS'] -and $s['FAILED_UNITS'] -ne 'none') { $state = Get-Text 'StateFailedUnits'; $color = [System.Drawing.Color]::FromArgb(255, 205, 205) }
+    elseif ($s['CENTRAL_CONFIG'] -like 'REJECTED*') { $state = Get-Text 'StateRejected'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
+    elseif ($s['SHARE_UPDATE'] -like 'ERROR*' -or $s['SHARE_UPDATE'] -like 'IGNORED*') { $state = Get-Text 'StateUpdateError'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
+    elseif ($s['REBOOT_REQUIRED'] -eq 'yes') { $state = Get-Text 'StateReboot'; $color = [System.Drawing.Color]::FromArgb(255, 245, 190) }
+    $list += [pscustomobject]@{ Name = $s['HOSTNAME']; File = $f.BaseName; State = $state; OldName = $false; Color = $color; Minutes = $min; When = $when; S = $s }
   }
   # same MAC under two names = the old name left behind by a rename (normally the device removes it itself)
   foreach ($g in @($list | Where-Object { $_.S['MAC'] } | Group-Object { $_.S['MAC'] } | Where-Object Count -gt 1)) {
     $sorted = @($g.Group | Sort-Object When -Descending)
-    $sorted | Select-Object -Skip 1 | ForEach-Object { $_.State = "old name (now $($sorted[0].Name))" }
+    $sorted | Select-Object -Skip 1 | ForEach-Object { $_.State = Get-Text 'StateOldName' $sorted[0].Name; $_.OldName = $true }
   }
   @($list | Sort-Object Name)
 }
@@ -383,10 +452,10 @@ function Get-Devices {
 # updates\LATEST.txt, read only: the devices install only what is signed (management/publish)
 function Get-PublishedUpdate {
   $f = Join-Path $script:Folder 'updates\LATEST.txt'
-  if (-not (Test-Path -LiteralPath $f)) { return 'none published' }
+  if (-not (Test-Path -LiteralPath $f)) { return (Get-Text 'UpdNone') }
   $v = (Read-Lines $f | Where-Object { $_ -match '^version=' } | Select-Object -First 1) -replace '^version=', ''
-  if (-not $v) { return 'LATEST.txt without version' }
-  if (Test-Path -LiteralPath "$f.sig") { "$v" } else { "$v (NOT signed: the devices ignore it)" }
+  if (-not $v) { return (Get-Text 'UpdNoVersion') }
+  if (Test-Path -LiteralPath "$f.sig") { "$v" } else { Get-Text 'UpdNotSigned' $v }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -490,18 +559,18 @@ function Get-DeviceSavePlan($dev, $managed) {
       # the WPA key depends on the SSID: computed here for the network the device will use
       $ssid = if ($err.Count) { $null } else { $r['WIFI_SSID'] }
       if ($err.Count) { }
-      elseif (-not $ssid) { $err += 'The Wi-Fi password needs the network name (SSID)' }
-      elseif ($v -eq '(saved)') {
+      elseif (-not $ssid) { $err += Get-Text 'ErrPskNeedsSsid' }
+      elseif ($v -eq $script:MarkSaved) {
         # the saved key was computed for the SSID in force when it was written: this file, else common.conf,
         # else the device's own
         $oldSsid = if ($before.Contains('WIFI_SSID')) { $before['WIFI_SSID'] } elseif ($common.Contains('WIFI_SSID')) { $common['WIFI_SSID'] } else { $dev.S['CFG_WIFI_SSID'] }
-        if (-not $before['WIFI_PSK']) { $err += 'Wi-Fi password: type it (no key is saved for this device)' }
-        elseif ($oldSsid -cne $ssid) { $err += "Wi-Fi password: type it again, the saved key belongs to network '$oldSsid'" }
+        if (-not $before['WIFI_PSK']) { $err += Get-Text 'ErrPskNoKeyDevice' }
+        elseif ($oldSsid -cne $ssid) { $err += Get-Text 'ErrPskOtherNetwork' $oldSsid }
         else { $final[$k] = $before['WIFI_PSK'] }
       } else { $final[$k] = ConvertTo-WpaKey $v $ssid }
     }
     elseif ($k -eq 'SETTINGS_PIN_SHA256') {
-      if ($v -eq '(set)') { if ($before.Contains($k)) { $final[$k] = $before[$k] } else { $err += 'Settings PIN: type it (none is saved for this device)' } }
+      if ($v -eq $script:MarkSet) { if ($before.Contains($k)) { $final[$k] = $before[$k] } else { $err += Get-Text 'ErrPinNoneDevice' } }
       else { $final[$k] = ConvertTo-PinHash $v }
     }
     else { $final[$k] = ConvertTo-Canonical $k $v }
@@ -513,16 +582,16 @@ function Get-DeviceSavePlan($dev, $managed) {
   $mac = ''
   if ($null -ne $final['HOSTNAME'] -and $final['HOSTNAME'] -ne $dev.Name) {
     $mac = [string]$dev.S['MAC']
-    $notes += "The device takes the name $($final['HOSTNAME']) within 5 minutes. When it reports with the new name this tool moves these exceptions to $($final['HOSTNAME']).conf by itself."
+    $notes += Get-Text 'NoteRename' $final['HOSTNAME']
   }
-  if ($null -ne $final['NETMODE'] -or $null -ne $final['IPADDR']) { $notes += 'Network changes: the device changes address right after reading them (an open session may drop and reconnect).' }
+  if ($null -ne $final['NETMODE'] -or $null -ne $final['IPADDR']) { $notes += Get-Text 'NoteNetwork' }
   [pscustomobject]@{ File = $f; Errors = $err; Values = $final; Changes = $changes; Notes = $notes; RenameMac = $mac }
 }
 
 function Get-CommonSavePlan($managed, $devices) {
   $err = @(); $warn = @(); $notes = @()
   foreach ($k in @($managed.Keys)) {
-    if ($script:HostOnly -contains $k -and $null -ne $managed[$k]) { $err += "$k can only be set for a single device"; continue }
+    if ($script:HostOnly -contains $k -and $null -ne $managed[$k]) { $err += Get-Text 'ErrHostOnlyInCommon' $k; continue }
     if ($null -ne $managed[$k]) { $e = Test-SettingValue $k $managed[$k]; if ($e) { $err += $e } }
   }
   $before = Read-ConfFile $script:CommonFile
@@ -533,32 +602,33 @@ function Get-CommonSavePlan($managed, $devices) {
     elseif ($k -eq 'WIFI_PSK') {
       # every device computes nothing: the key in common.conf is valid only for the SSID managed here too
       $ssid = $managed['WIFI_SSID']
-      if (-not $ssid) { $err += 'The Wi-Fi password in common.conf needs the network name (SSID) managed in common.conf too' }
-      elseif ($v -eq '(saved)') {
-        if (-not $before['WIFI_PSK']) { $err += 'Wi-Fi password: type it (no key is saved in common.conf)' }
-        elseif ($before['WIFI_SSID'] -cne $ssid) { $err += "Wi-Fi password: type it again, the saved key belongs to network '$($before['WIFI_SSID'])'" }
+      if (-not $ssid) { $err += Get-Text 'ErrPskNeedsSsidCommon' }
+      elseif ($v -eq $script:MarkSaved) {
+        if (-not $before['WIFI_PSK']) { $err += Get-Text 'ErrPskNoKeyCommon' }
+        elseif ($before['WIFI_SSID'] -cne $ssid) { $err += Get-Text 'ErrPskOtherNetwork' $before['WIFI_SSID'] }
         else { $final[$k] = $before['WIFI_PSK'] }
       } else { $final[$k] = ConvertTo-WpaKey $v $ssid }
     }
     elseif ($k -eq 'SETTINGS_PIN_SHA256') {
-      if ($v -eq '(set)') { if ($before.Contains($k)) { $final[$k] = $before[$k] } else { $err += 'Settings PIN: type it (none is saved in common.conf)' } }
+      if ($v -eq $script:MarkSet) { if ($before.Contains($k)) { $final[$k] = $before[$k] } else { $err += Get-Text 'ErrPinNoneCommon' } }
       else { $final[$k] = ConvertTo-PinHash $v }
     }
     else { $final[$k] = ConvertTo-Canonical $k $v }
   }
   # combinations that every device would reject, whatever it has of its own
-  if ($final['WEB_BUTTON'] -in 'app', 'browser' -and $final['WEB_URL'] -eq '') { $err += "Web button = $($final['WEB_BUTTON']) for every device with an empty web address" }
-  if ($final['WEB_BUTTON'] -eq 'kiosk' -and $final['KIOSK_URL'] -eq '') { $err += 'Web button = kiosk for every device with an empty kiosk page' }
-  if ($final['WIFI'] -eq 'on' -and $final['WIFI_SSID'] -eq '') { $err += 'Wi-Fi on for every device with an empty network name (SSID)' }
+  if ($final['WEB_BUTTON'] -in 'app', 'browser' -and $final['WEB_URL'] -eq '') { $err += Get-Text 'ErrWebEmptyAll' $final['WEB_BUTTON'] }
+  if ($final['WEB_BUTTON'] -eq 'kiosk' -and $final['KIOSK_URL'] -eq '') { $err += Get-Text 'ErrKioskEmptyAll' }
+  if ($final['WIFI'] -eq 'on' -and $final['WIFI_SSID'] -eq '') { $err += Get-Text 'ErrWifiEmptyAll' }
+  if ($final['UPDATE_FROM'] -eq 'share' -and $final['MGMT_SHARE'] -eq '') { $err += Get-Text 'ErrUpdateNeedsShare' }
   if (-not $err.Count) {
     # each known device as it will be: a device that rejects keeps its previous configuration (all of it)
     $commonVals = @{}; foreach ($k in @($final.Keys)) { if ($null -ne $final[$k]) { $commonVals[$k] = $final[$k] } }
-    foreach ($d in @($devices | Where-Object { $_.State -notlike 'old name*' })) {
+    foreach ($d in @($devices | Where-Object { -not $_.OldName })) {
       $hc = Read-ConfFile (Get-HostFile $d.Name)
       foreach ($e in @(Test-EffectiveConfig (Get-EffectiveConfig $d.S $commonVals $hc) $d.S)) { $warn += "$($d.Name): $e" }
       # a key of its own computed with the SSID of common.conf goes wrong when that SSID changes
       if ($hc.Contains('WIFI_PSK') -and -not $hc.Contains('WIFI_SSID') -and $null -ne $final['WIFI_SSID'] -and $final['WIFI_SSID'] -cne $before['WIFI_SSID']) {
-        $warn += "$($d.Name): its own Wi-Fi key was computed for network '$($before['WIFI_SSID'])': type its password again in its exceptions"
+        $warn += Get-Text 'WarnOwnWifiKey' $d.Name $before['WIFI_SSID']
       }
     }
   }
@@ -568,7 +638,7 @@ function Get-CommonSavePlan($managed, $devices) {
   }
   $risky = @($final.Keys | Where-Object { $_ -in 'BROKER', 'DOMAIN', 'LOAD_BALANCE_INFO', 'MGMT_SHARE', 'NETMASK', 'GATEWAY', 'DNS1', 'WIFI', 'SSH', 'SETTINGS_PIN_SHA256' } |
              Where-Object { $(if ($before.Contains($_)) { $before[$_] } else { $null }) -cne $final[$_] })
-  if ($risky.Count) { $notes += "ATTENTION: $($risky -join ', ') changed for EVERY device. A wrong broker, domain or management folder leaves all devices without a connection or without this tool. Check twice." }
+  if ($risky.Count) { $notes += Get-Text 'NoteRisky' ($risky -join ', ') }
   [pscustomobject]@{ File = $script:CommonFile; Errors = $err; Warnings = $warn; Values = $final; Changes = $changes; Notes = $notes }
 }
 
@@ -587,7 +657,7 @@ function Test-AuthorizedKeys([string]$text) {
   foreach ($l in ($text -split "`r?`n")) {
     $n++; $t = $l.Trim()
     if ($t -eq '' -or $t.StartsWith('#')) { continue }
-    if ($t -cnotmatch $script:Rx.SshKey) { $err += "Line ${n}: not a public key in OpenSSH format (type, ONE space, key, optional comment)" }
+    if ($t -cnotmatch $script:Rx.SshKey) { $err += Get-Text 'ErrKeyLine' $n }
   }
   $err
 }
@@ -680,7 +750,7 @@ function Confirm-Action($title, $text, $default = 'Button1') {
 # no default path: every installation has its own folder; the last one chosen is proposed
 if (-not $Folder) {
   $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-  $dlg.Description = 'Management folder of the thin clients (the one that contains status\ and config\)'
+  $dlg.Description = Get-Text 'FolderDialog'
   $dlg.ShowNewFolderButton = $false
   $last = Get-LastFolder; if ($last) { $dlg.SelectedPath = $last }
   if ($dlg.ShowDialog() -ne 'OK' -or -not $dlg.SelectedPath) { return }
@@ -688,19 +758,63 @@ if (-not $Folder) {
   Set-ManagementFolder $Folder
 }
 if (-not (Test-Path -LiteralPath $script:Folder)) {
-  Show-Message 'Folder not found' "Cannot reach $($script:Folder).`r`nCheck the network and the permissions on the folder." 'Error'
+  Show-Message (Get-Text 'FolderNotFoundTitle') (Get-Text 'FolderNotFoundText' $script:Folder) 'Error'
   return
 }
 if (-not (Test-Path -LiteralPath $script:StatusDir) -and -not (Test-Path -LiteralPath $script:ConfigDir)) {
-  if (-not (Confirm-Action 'Management folder' "$($script:Folder) has no status\ or config\ folder yet: no device has reported here.`r`n`r`nUse it anyway?" 'Button2')) { return }
+  if (-not (Confirm-Action (Get-Text 'EmptyFolderTitle') (Get-Text 'EmptyFolderText' $script:Folder) 'Button2')) { return }
 }
 if (-not $env:OTR_MANAGER_SCREENSHOT) { Save-LastFolder $script:Folder }
 
 $fontBase = New-Object System.Drawing.Font('Segoe UI', 9)
 $fontMono = New-Object System.Drawing.Font('Consolas', 9)
 $fontBold = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+
+# Sizes from the texts, so that longer translations fit: a column is never narrower than its title or
+# than the samples given (labels, placeholders), a button never narrower than its text.
+function Get-TextWidth($text, $font = $fontBase) { [System.Windows.Forms.TextRenderer]::MeasureText([string]$text, $font).Width }
+function Get-FitWidth($width, $texts, $font = $fontBase, $pad = 16) {
+  foreach ($t in @($texts)) { $width = [Math]::Max($width, (Get-TextWidth $t $font) + $pad) }
+  $width
+}
+function New-Button($textKey, $minWidth, $height) {
+  $b = New-Object System.Windows.Forms.Button; $b.Text = Get-Text $textKey; $b.Font = $fontBase
+  $b.Size = New-Object System.Drawing.Size((Get-FitWidth $minWidth $b.Text -pad 20), $height)
+  $b
+}
+function Measure-Note($text, $width) {
+  [System.Windows.Forms.TextRenderer]::MeasureText([string]$text, $fontBase, (New-Object System.Drawing.Size([Math]::Max(50, $width), 0)), [System.Windows.Forms.TextFormatFlags]::WordBreak).Height
+}
+# a row of buttons and a note after them: the note takes the rest of the width and wraps, and the panel
+# grows when the note needs more lines than its usual height holds
+function Set-ButtonRow($panel, $buttons, $note, $top) {
+  $note.AutoSize = $false; $note.Font = $fontBase
+  $x = 8; foreach ($b in $buttons) { $b.Location = New-Object System.Drawing.Point($x, $top); $x = $b.Right + 6 }; $x += 6
+  $panel.Tag = @{ Buttons = $buttons; Note = $note; Top = $top; X = $x; MinHeight = $panel.Height }
+  $panel.Controls.AddRange(@($buttons + $note))
+  $panel.add_Resize({ param($p, $e) Update-ButtonRow $p })
+  # the height is set from the Layout event of the container: it runs before the container arranges its
+  # docked children. A height changed later (e.g. in Resize) is not applied to the neighbours.
+  $panel.add_ParentChanged({ param($p, $e)
+    if ($p.Parent) { $p.Parent.add_Layout({ param($c, $e)
+      foreach ($q in $c.Controls) { if ($q.Tag -is [hashtable] -and $q.Tag.ContainsKey('Note')) { Set-ButtonRowHeight $q $c.DisplayRectangle.Width } } }) } })
+  Update-ButtonRow $panel
+}
+function Set-ButtonRowHeight($p, $width) {
+  $t = $p.Tag; $h = Measure-Note $t.Note.Text ($width - $t.X - 8)
+  $need = if ($h -gt $t.Buttons[0].Height) { [Math]::Max($t.MinHeight, $t.Top - 1 + $h + 2 + $t.Top) } else { $t.MinHeight }
+  if ($p.Height -ne $need) { $p.Height = $need }
+}
+function Update-ButtonRow($p) {
+  $t = $p.Tag; $w = [Math]::Max(100, $p.ClientSize.Width - $t.X - 8)
+  $h = Measure-Note $t.Note.Text $w; $bh = $t.Buttons[0].Height
+  # one line: centred on the buttons, as before; more lines: from the top of the buttons
+  $y = if ($h -le $bh) { $t.Top + [int][Math]::Floor(($bh - $h) / 2) } else { $t.Top - 1 }
+  $t.Note.SetBounds($t.X, $y, $w, [Math]::Max($h + 2, $p.ClientSize.Height - $y))
+}
+
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'OpenThinRDP Manager - ' + $script:Folder
+$form.Text = Get-Text 'WindowTitle' $script:Folder
 $form.Size = New-Object System.Drawing.Size(1280, 820)
 $form.MinimumSize = New-Object System.Drawing.Size(1000, 640)
 $form.StartPosition = 'CenterScreen'
@@ -713,32 +827,31 @@ $barText.Spring = $true; $barText.TextAlign = 'MiddleLeft'
 
 $tabs = New-Object System.Windows.Forms.TabControl
 $tabs.Dock = 'Fill'
-$tabDevices = New-Object System.Windows.Forms.TabPage 'Devices'
-$tabCommon = New-Object System.Windows.Forms.TabPage 'Common settings (all devices)'
-$tabKeys = New-Object System.Windows.Forms.TabPage 'SSH keys'
+$tabDevices = New-Object System.Windows.Forms.TabPage (Get-Text 'TabDevices')
+$tabCommon = New-Object System.Windows.Forms.TabPage (Get-Text 'TabCommon')
+$tabKeys = New-Object System.Windows.Forms.TabPage (Get-Text 'TabKeys')
 $tabs.TabPages.AddRange(@($tabDevices, $tabCommon, $tabKeys))
 
 # ---------------- Devices tab ----------------
 $topPanel = New-Object System.Windows.Forms.Panel
 $topPanel.Dock = 'Top'; $topPanel.Height = 38
-$btnRefresh = New-Object System.Windows.Forms.Button
-$btnRefresh.Text = 'Refresh list'; $btnRefresh.Location = '8,6'; $btnRefresh.Size = '120,26'
-$btnOpen = New-Object System.Windows.Forms.Button
-$btnOpen.Text = 'Open folder'; $btnOpen.Location = '134,6'; $btnOpen.Size = '110,26'
+$btnRefresh = New-Button 'BtnRefresh' 120 26
+$btnOpen = New-Button 'BtnOpenFolder' 110 26
 $lblNote = New-Object System.Windows.Forms.Label
-$lblNote.AutoSize = $true; $lblNote.Location = '256,11'
-$lblNote.Text = 'Devices send their status and read the central configuration every 5 minutes (and at boot). The list refreshes by itself every minute.'
-$topPanel.Controls.AddRange(@($btnRefresh, $btnOpen, $lblNote))
+$lblNote.Text = Get-Text 'NoteDevices'
+Set-ButtonRow $topPanel @($btnRefresh, $btnOpen) $lblNote 6
 
 $split = New-Object System.Windows.Forms.SplitContainer
 $split.Dock = 'Fill'; $split.Orientation = 'Horizontal'
 
 $list = New-Object System.Windows.Forms.ListView
 $list.Dock = 'Fill'; $list.View = 'Details'; $list.FullRowSelect = $true; $list.MultiSelect = $false; $list.HideSelection = $false; $list.GridLines = $true
-foreach ($c in @(@('State', 160), @('Hostname', 110), @('Software', 95), @('Web button', 125), @('IP', 120), @('Default user', 105), @('Session', 140),
-                 @('Last report', 115), @('Transport', 150), @('Share update', 200), @('Wi-Fi', 210), @('MAC', 125), @('Uptime', 120), @('Network', 60),
-                 @('FreeRDP', 150), @('Central config', 220), @('Security updates', 210))) {
-  [void]$list.Columns.Add($c[0], $c[1])
+foreach ($c in @(@('ColState', 160), @('ColHostname', 110), @('ColSoftware', 95), @('ColWebButton', 125), @('ColIp', 120), @('ColDefaultUser', 105), @('ColSession', 140),
+                 @('ColLastReport', 115), @('ColTransport', 150), @('ColShareUpdate', 200), @('ColWifi', 210), @('ColMac', 125), @('ColUptime', 120), @('ColNetwork', 60),
+                 @('ColFreeRdp', 150), @('ColCentralConfig', 220), @('ColSecurityUpdates', 210))) {
+  # room for the sort arrow too
+  $title = Get-Text $c[0]
+  [void]$list.Columns.Add($title, (Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14))
 }
 # click on a header = sort by that column, second click = reverse; the arrow shows which.
 # The chosen order stays when the list refreshes by itself.
@@ -759,9 +872,9 @@ $split.Panel1.Controls.Add($list)
 
 $detail = New-Object System.Windows.Forms.TabControl
 $detail.Dock = 'Fill'
-$tabStatus = New-Object System.Windows.Forms.TabPage 'Status'
-$tabEvents = New-Object System.Windows.Forms.TabPage 'Events'
-$tabDevSettings = New-Object System.Windows.Forms.TabPage 'Settings of this device'
+$tabStatus = New-Object System.Windows.Forms.TabPage (Get-Text 'TabStatus')
+$tabEvents = New-Object System.Windows.Forms.TabPage (Get-Text 'TabEvents')
+$tabDevSettings = New-Object System.Windows.Forms.TabPage (Get-Text 'TabDeviceSettings')
 $detail.TabPages.AddRange(@($tabDevSettings, $tabStatus, $tabEvents))
 function New-TextView { $t = New-Object System.Windows.Forms.TextBox; $t.Multiline = $true; $t.ReadOnly = $true; $t.ScrollBars = 'Both'; $t.WordWrap = $false; $t.Dock = 'Fill'; $t.Font = $fontMono; $t.BackColor = [System.Drawing.Color]::White; $t }
 $txtStatus = New-TextView; $tabStatus.Controls.Add($txtStatus)
@@ -774,50 +887,58 @@ function New-Grid {
   $g.add_DataError({ param($s, $e) $e.ThrowException = $false })
   $g
 }
-function Add-TextColumn($g, $title, $width, $readOnly) {
-  $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $col.HeaderText = $title; $col.ReadOnly = $readOnly; $col.SortMode = 'NotSortable'
-  if ($width) { $col.Width = $width } else { $col.AutoSizeMode = 'Fill' }
+function Add-TextColumn($g, $titleKey, $width, $readOnly, $samples = @(), $boldSamples = @()) {
+  $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $col.HeaderText = Get-Text $titleKey; $col.ReadOnly = $readOnly; $col.SortMode = 'NotSortable'
+  if ($width) { $col.Width = Get-FitWidth (Get-FitWidth (Get-FitWidth $width $col.HeaderText) $samples $fontBase 10) $boldSamples $fontBold 12 } else { $col.AutoSizeMode = 'Fill' }
   [void]$g.Columns.Add($col)
 }
+function Add-CheckColumn($g, $titleKey, $width) {
+  $col = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn; $col.HeaderText = Get-Text $titleKey
+  $col.Width = Get-FitWidth $width $col.HeaderText $fontBase 14; [void]$g.Columns.Add($col)
+}
+# the first column holds the setting names and the group titles (bold)
+$labels = @($script:Settings | ForEach-Object { $_.Label })
+$sections = @($script:Settings | ForEach-Object { $_.Section } | Select-Object -Unique)
 # exceptions grid of the selected device
 $gridDev = New-Grid
-Add-TextColumn $gridDev 'Setting' 175 $true; Add-TextColumn $gridDev 'On the device now' 210 $true; Add-TextColumn $gridDev 'From common.conf' 200 $true
-Add-TextColumn $gridDev 'Exception for this device' 230 $false
-$colUse = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn; $colUse.HeaderText = 'Use exception'; $colUse.Width = 95; [void]$gridDev.Columns.Add($colUse)
-Add-TextColumn $gridDev 'Help' $null $true
+Add-TextColumn $gridDev 'ColSetting' 175 $true $labels $sections; Add-TextColumn $gridDev 'ColOnDevice' 210 $true
+Add-TextColumn $gridDev 'ColFromCommon' 200 $true @((Get-Text 'ValDeviceDecides'), (Get-Text 'ValDeviceOnly'))
+Add-TextColumn $gridDev 'ColException' 230 $false
+Add-CheckColumn $gridDev 'ColUseException' 95
+Add-TextColumn $gridDev 'ColHelp' $null $true
 $devPanel = New-Object System.Windows.Forms.Panel; $devPanel.Dock = 'Bottom'; $devPanel.Height = 40
-$btnSaveDev = New-Object System.Windows.Forms.Button; $btnSaveDev.Text = 'Save exceptions'; $btnSaveDev.Location = '8,7'; $btnSaveDev.Size = '130,27'
-$btnReloadDev = New-Object System.Windows.Forms.Button; $btnReloadDev.Text = 'Undo changes'; $btnReloadDev.Location = '144,7'; $btnReloadDev.Size = '130,27'
-$btnClearDev = New-Object System.Windows.Forms.Button; $btnClearDev.Text = 'Remove all exceptions'; $btnClearDev.Location = '280,7'; $btnClearDev.Size = '160,27'
-$lblDev = New-Object System.Windows.Forms.Label; $lblDev.AutoSize = $true; $lblDev.Location = '452,13'
-$lblDev.Text = 'Tick "Use exception" to decide the value for this device only; without the tick common.conf or the device itself decide.'
-$devPanel.Controls.AddRange(@($btnSaveDev, $btnReloadDev, $btnClearDev, $lblDev))
+$btnSaveDev = New-Button 'BtnSaveExceptions' 130 27
+$btnReloadDev = New-Button 'BtnUndo' 130 27
+$btnClearDev = New-Button 'BtnRemoveExceptions' 160 27
+$lblDev = New-Object System.Windows.Forms.Label
+$lblDev.Text = Get-Text 'NoteDevice' (Get-Text 'ColUseException')
+Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev) $lblDev 7
 $tabDevSettings.Controls.Add($gridDev); $tabDevSettings.Controls.Add($devPanel)
 $split.Panel2.Controls.Add($detail)
 $tabDevices.Controls.Add($split); $tabDevices.Controls.Add($topPanel)
 
 # ---------------- Common settings tab ----------------
 $gridCom = New-Grid
-Add-TextColumn $gridCom 'Setting' 190 $true; Add-TextColumn $gridCom 'Value for every device' 300 $false
-$colManaged = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn; $colManaged.HeaderText = 'Managed here'; $colManaged.Width = 100; [void]$gridCom.Columns.Add($colManaged)
-Add-TextColumn $gridCom 'Help' $null $true
+Add-TextColumn $gridCom 'ColSetting' 190 $true $labels $sections;Add-TextColumn $gridCom 'ColValueAll' 300 $false
+Add-CheckColumn $gridCom 'ColManagedHere' 100
+Add-TextColumn $gridCom 'ColHelp' $null $true
 $comPanel = New-Object System.Windows.Forms.Panel; $comPanel.Dock = 'Bottom'; $comPanel.Height = 58
-$btnSaveCom = New-Object System.Windows.Forms.Button; $btnSaveCom.Text = 'Save common.conf'; $btnSaveCom.Location = '8,7'; $btnSaveCom.Size = '140,27'
-$btnReloadCom = New-Object System.Windows.Forms.Button; $btnReloadCom.Text = 'Undo changes'; $btnReloadCom.Location = '154,7'; $btnReloadCom.Size = '130,27'
-$lblCom = New-Object System.Windows.Forms.Label; $lblCom.AutoSize = $true; $lblCom.Location = '296,6'
-$lblCom.Text = "Applies to EVERY device within 5 minutes. A key ""Managed here"" WINS over the settings dialog of each device (changed on the device, it comes back).`r`nWithout the tick each device decides. Exceptions of a single device (Devices tab) win over these. One wrong value = the device rejects the whole configuration."
-$comPanel.Controls.AddRange(@($btnSaveCom, $btnReloadCom, $lblCom))
+$btnSaveCom = New-Button 'BtnSaveCommon' 140 27
+$btnReloadCom = New-Button 'BtnUndo' 130 27
+$lblCom = New-Object System.Windows.Forms.Label
+$lblCom.Text = Get-Text 'NoteCommon' (Get-Text 'ColManagedHere') (Get-Text 'TabDevices')
+Set-ButtonRow $comPanel @($btnSaveCom, $btnReloadCom) $lblCom 7
 $tabCommon.Controls.Add($gridCom); $tabCommon.Controls.Add($comPanel)
 
 # ---------------- SSH keys tab ----------------
 $txtKeys = New-Object System.Windows.Forms.TextBox
 $txtKeys.Multiline = $true; $txtKeys.ScrollBars = 'Both'; $txtKeys.WordWrap = $false; $txtKeys.Dock = 'Fill'; $txtKeys.Font = $fontMono; $txtKeys.AcceptsReturn = $true
 $keysPanel = New-Object System.Windows.Forms.Panel; $keysPanel.Dock = 'Bottom'; $keysPanel.Height = 58
-$btnSaveKeys = New-Object System.Windows.Forms.Button; $btnSaveKeys.Text = 'Save authorized_keys'; $btnSaveKeys.Location = '8,7'; $btnSaveKeys.Size = '150,27'
-$btnReloadKeys = New-Object System.Windows.Forms.Button; $btnReloadKeys.Text = 'Undo changes'; $btnReloadKeys.Location = '164,7'; $btnReloadKeys.Size = '130,27'
-$lblKeys = New-Object System.Windows.Forms.Label; $lblKeys.AutoSize = $true; $lblKeys.Location = '306,6'
-$lblKeys.Text = "One public key per line (ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256/384/521, sk-ssh-ed25519@openssh.com); lines starting with # are notes.`r`nDevices with SSH = on accept the user admin only with these keys, within 5 minutes. An empty list removes every key from the devices."
-$keysPanel.Controls.AddRange(@($btnSaveKeys, $btnReloadKeys, $lblKeys))
+$btnSaveKeys = New-Button 'BtnSaveKeys' 150 27
+$btnReloadKeys = New-Button 'BtnUndo' 130 27
+$lblKeys = New-Object System.Windows.Forms.Label
+$lblKeys.Text = Get-Text 'NoteKeys'
+Set-ButtonRow $keysPanel @($btnSaveKeys, $btnReloadKeys) $lblKeys 7
 $tabKeys.Controls.Add($txtKeys); $tabKeys.Controls.Add($keysPanel)
 
 $form.Controls.Add($tabs); $form.Controls.Add($bar)
@@ -854,7 +975,7 @@ function Update-DeviceList {
   try {
     $renamed = @(Complete-Renames)
     $script:Devices = @(Get-Devices)
-  } catch { $barText.Text = "ERROR reading $($script:Folder): $($_.Exception.Message)"; return }
+  } catch { $barText.Text = Get-Text 'ErrReadFolder' $script:Folder $_.Exception.Message; return }
   $sel = if ($script:Selected) { $script:Selected.File } else { $null }
   $list.BeginUpdate(); $list.Items.Clear()
   foreach ($d in $script:Devices) {
@@ -863,7 +984,7 @@ function Update-DeviceList {
     $web = [string]$s['CFG_WEB_BUTTON']
     # schedule "07:30-19:00" (power on - power off) next to the web button mode
     if ($s['CFG_POWER_ON_TIME'] -or $s['CFG_POWER_OFF_TIME']) { $web += " $($s['CFG_POWER_ON_TIME'])-$($s['CFG_POWER_OFF_TIME'])" }
-    $sec = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $sec += ", last: $($s['LAST_UPDATE'])" }
+    $sec = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $sec = Get-Text 'LastUpdate' $sec $s['LAST_UPDATE'] }
     foreach ($v in @($d.Name, ([string]$s['SOFTWARE']).Trim(), $web, $s['IP'], $s['DEFAULT_USER'], $s['SESSION'], ('{0:yyyy-MM-dd HH:mm}' -f $d.When), $s['TRANSPORT'],
                      $s['SHARE_UPDATE'], $s['WIFI_STATUS'], $s['MAC'], $s['UPTIME'], $s['NETWORK'], $s['FREERDP'], $s['CENTRAL_CONFIG'], $sec)) { [void]$it.SubItems.Add([string]$v) }
     $it.BackColor = $d.Color; $it.Tag = $d
@@ -875,7 +996,7 @@ function Update-DeviceList {
   if ($list.SelectedItems.Count) { $list.SelectedItems[0].EnsureVisible() }
   $on = @($script:Devices | Where-Object { $_.Minutes -le $script:StaleMinutes }).Count
   $upd = try { Get-PublishedUpdate } catch { '?' }
-  $barText.Text = "{0}   -   {1} devices, {2} reporting   -   published update: {3}   -   refreshed at {4:HH:mm:ss}{5}" -f $script:Folder, $script:Devices.Count, $on, $upd, (Get-Date), $(if ($renamed.Count) { "   -   rename completed: $($renamed -join ', ')" } else { '' })
+  $barText.Text = Get-Text 'StatusBar' $script:Folder $script:Devices.Count $on $upd (Get-Date) $(if ($renamed.Count) { Get-Text 'StatusRenamed' ($renamed -join ', ') } else { '' })
 }
 
 function Show-Device($d) {
@@ -889,10 +1010,10 @@ function Show-Device($d) {
 
 # value reported by the device for a setting (the secrets never come back as such)
 function Get-ReportedValue($d, $s) {
-  if ($s.Key -eq 'WIFI_PSK') { return '(never read back)' }
+  if ($s.Key -eq 'WIFI_PSK') { return (Get-Text 'ValNeverReadBack') }
   $v = if ($s.Key -eq 'HOSTNAME') { $d.S['HOSTNAME'] } else { $d.S["CFG_$($s.Key)"] }
   if ($null -eq $v) { return $null }
-  if ($s.Key -eq 'SETTINGS_PIN_SHA256') { if ($v) { return '(set)' } else { return '(no PIN)' } }
+  if ($s.Key -eq 'SETTINGS_PIN_SHA256') { if ($v) { return $script:MarkSet } else { return (Get-Text 'ValNoPin') } }
   $v
 }
 
@@ -905,24 +1026,24 @@ function Update-DeviceGrid {
   foreach ($s in $script:Settings) {
     if ($s.Section -ne $section) { $section = $s.Section; Add-SectionRow $gridDev $section 4 }
     $now = Get-ReportedValue $d $s
-    $nowText = if ($null -eq $now) { '(not reported)' } else { $now }
-    $fromCommon = if ($s.HostOnly) { '(device only)' } elseif ($common.Contains($s.Key)) { $common[$s.Key] } else { '(not managed: the device decides)' }
-    if ($s.Key -eq 'WIFI_PSK' -and $common.Contains($s.Key)) { $fromCommon = '(saved)' }
-    if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $common.Contains($s.Key)) { $fromCommon = if ($common[$s.Key]) { '(set)' } else { '(no PIN)' } }
+    $nowText = if ($null -eq $now) { Get-Text 'ValNotReported' } else { $now }
+    $fromCommon = if ($s.HostOnly) { Get-Text 'ValDeviceOnly' } elseif ($common.Contains($s.Key)) { $common[$s.Key] } else { Get-Text 'ValDeviceDecides' }
+    if ($s.Key -eq 'WIFI_PSK' -and $common.Contains($s.Key)) { $fromCommon = $script:MarkSaved }
+    if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $common.Contains($s.Key)) { $fromCommon = if ($common[$s.Key]) { $script:MarkSet } else { Get-Text 'ValNoPin' } }
     $i = $gridDev.Rows.Add(); $r = $gridDev.Rows[$i]
     $r.Cells[0].Value = $s.Label; $r.Cells[1].Value = [string]$nowText; $r.Cells[2].Value = [string]$fromCommon; $r.Tag = $s
     $use = $exc.Contains($s.Key)
     # without an exception the cell proposes the current value: ticking the box alone pins it
     $init = if ($use) { $exc[$s.Key] } elseif ($null -ne $now -and $s.Key -ne 'SETTINGS_PIN_SHA256') { $now } else { '' }
-    if ($s.Key -eq 'WIFI_PSK') { $init = if ($use) { '(saved)' } else { '' } }
-    if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $use) { $init = if ($exc[$s.Key]) { '(set)' } else { '' } }
+    if ($s.Key -eq 'WIFI_PSK') { $init = if ($use) { $script:MarkSaved } else { '' } }
+    if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $use) { $init = if ($exc[$s.Key]) { $script:MarkSet } else { '' } }
     Set-Cell $r 3 $s $init
     $r.Cells[4].Value = $use; $r.Cells[5].Value = $s.Help
     if ($use) { $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(255, 250, 215) }
   }
   $ign = @(Get-IgnoredKeys $exc)
-  $tabDevSettings.Text = "Settings of this device ($($d.Name))"
-  if ($ign.Count) { $barText.Text = "$($d.Name).conf contains keys the devices ignore: $($ign -join ', ')" }
+  $tabDevSettings.Text = Get-Text 'TabDeviceSettingsOf' $d.Name
+  if ($ign.Count) { $barText.Text = Get-Text 'IgnoredKeysDevice' $d.Name ($ign -join ', ') }
   $gridDev.CurrentCell = $null
   $script:Loading = $false
 }
@@ -942,14 +1063,14 @@ function Update-CommonGrid {
     $v = if ($common.Contains($s.Key)) { $common[$s.Key] } elseif ($commented.ContainsKey($s.Key)) { $commented[$s.Key] } else {
       $dd = $script:Devices | Where-Object { $null -ne $_.S["CFG_$($s.Key)"] } | Select-Object -First 1
       if ($dd) { $dd.S["CFG_$($s.Key)"] } else { $s.Default } }
-    if ($s.Key -eq 'WIFI_PSK') { $v = if ($common.Contains('WIFI_PSK')) { '(saved)' } else { '' } }
-    if ($s.Key -eq 'SETTINGS_PIN_SHA256') { $v = if ($common[$s.Key]) { '(set)' } else { '' } }
+    if ($s.Key -eq 'WIFI_PSK') { $v = if ($common.Contains('WIFI_PSK')) { $script:MarkSaved } else { '' } }
+    if ($s.Key -eq 'SETTINGS_PIN_SHA256') { $v = if ($common[$s.Key]) { $script:MarkSet } else { '' } }
     Set-Cell $r 1 $s $v
     $r.Cells[2].Value = $common.Contains($s.Key); $r.Cells[3].Value = $s.Help
     if ($common.Contains($s.Key)) { $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(225, 240, 255) }
   }
   $ign = @(Get-IgnoredKeys $common -Common)
-  if ($ign.Count) { $barText.Text = "common.conf contains keys the devices ignore there: $($ign -join ', ')" }
+  if ($ign.Count) { $barText.Text = Get-Text 'IgnoredKeysCommon' ($ign -join ', ') }
   $gridCom.CurrentCell = $null
   $script:Loading = $false
 }
@@ -963,20 +1084,20 @@ function Save-Device {
   $d = $script:Selected; if (-not $d) { return }
   [void]$gridDev.EndEdit()
   $plan = Get-DeviceSavePlan $d (Get-GridValues $gridDev 3 4)
-  if ($plan.Errors.Count) { Show-Message 'Values not valid' ("Not saved, to fix:`r`n`r`n- " + ($plan.Errors -join "`r`n- ")); return }
-  if (-not $plan.Changes.Count) { Show-Message 'No changes' 'There are no changes to save.' 'Information'; return }
+  if ($plan.Errors.Count) { Show-Message (Get-Text 'MsgInvalidTitle') ((Get-Text 'MsgNotSaved') + "`r`n`r`n- " + ($plan.Errors -join "`r`n- ")); return }
+  if (-not $plan.Changes.Count) { Show-Message (Get-Text 'MsgNoChangesTitle') (Get-Text 'MsgNoChanges') 'Information'; return }
   $extra = if ($plan.Notes.Count) { "`r`n`r`n" + ($plan.Notes -join "`r`n`r`n") } else { '' }
-  if (-not (Confirm-Action "Save the exceptions of $($d.Name)?" ("Changes for $($d.Name):`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra))) { return }
-  try { [void](Write-ConfFile $plan.File $plan.Values $script:HostHeader $plan.RenameMac) } catch { Show-Message 'Error' "Save failed: $($_.Exception.Message)" 'Error'; return }
-  $barText.Text = "Saved $($plan.File) - the device applies it within 5 minutes (result in the Central config column)."
+  if (-not (Confirm-Action (Get-Text 'ConfirmSaveDeviceTitle' $d.Name) ((Get-Text 'ConfirmSaveDevice' $d.Name) + "`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra))) { return }
+  try { [void](Write-ConfFile $plan.File $plan.Values $script:HostHeader $plan.RenameMac) } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'SavedDevice' $plan.File (Get-Text 'ColCentralConfig')
   Update-DeviceGrid
 }
 
 function Clear-Device {
   $d = $script:Selected; if (-not $d) { return }
   $f = Get-HostFile $d.Name
-  if (-not (Test-Path -LiteralPath $f)) { Show-Message 'No exceptions' "$($d.Name) has no exceptions." 'Information'; return }
-  if (-not (Confirm-Action 'Remove the exceptions?' "Remove every exception of $($d.Name)?`r`nThe device keeps its current values; from now on common.conf and the device itself decide.`r`n(The file is kept in config\backup.)")) { return }
+  if (-not (Test-Path -LiteralPath $f)) { Show-Message (Get-Text 'MsgNoExceptionsTitle') (Get-Text 'MsgNoExceptions' $d.Name) 'Information'; return }
+  if (-not (Confirm-Action (Get-Text 'ConfirmRemoveTitle') (Get-Text 'ConfirmRemove' $d.Name))) { return }
   Move-Item -LiteralPath $f -Destination (Get-BackupPath $f)
   Add-ChangeLog "$($d.Name).conf: all exceptions removed"
   Update-DeviceGrid
@@ -985,31 +1106,31 @@ function Clear-Device {
 function Save-Common {
   [void]$gridCom.EndEdit()
   $plan = Get-CommonSavePlan (Get-GridValues $gridCom 1 2) $script:Devices
-  if ($plan.Errors.Count) { Show-Message 'Values not valid' ("Not saved, to fix:`r`n`r`n- " + ($plan.Errors -join "`r`n- ")); return }
-  if (-not $plan.Changes.Count) { Show-Message 'No changes' 'There are no changes to save.' 'Information'; return }
+  if ($plan.Errors.Count) { Show-Message (Get-Text 'MsgInvalidTitle') ((Get-Text 'MsgNotSaved') + "`r`n`r`n- " + ($plan.Errors -join "`r`n- ")); return }
+  if (-not $plan.Changes.Count) { Show-Message (Get-Text 'MsgNoChangesTitle') (Get-Text 'MsgNoChanges') 'Information'; return }
   $extra = ''
   if ($plan.Warnings.Count) {
-    $w = @($plan.Warnings | Select-Object -First 15); if ($plan.Warnings.Count -gt 15) { $w += "... and $($plan.Warnings.Count - 15) more" }
-    $extra += "`r`n`r`nThese devices will REJECT the whole central configuration (they keep the previous one):`r`n- " + ($w -join "`r`n- ")
+    $w = @($plan.Warnings | Select-Object -First 15); if ($plan.Warnings.Count -gt 15) { $w += Get-Text 'MsgMoreWarnings' ($plan.Warnings.Count - 15) }
+    $extra += "`r`n`r`n" + (Get-Text 'MsgWillReject') + "`r`n- " + ($w -join "`r`n- ")
   }
   if ($plan.Notes.Count) { $extra += "`r`n`r`n" + ($plan.Notes -join "`r`n`r`n") }
   # with problems the safe answer is No
   $def = if ($plan.Warnings.Count -or $plan.Notes.Count) { 'Button2' } else { 'Button1' }
-  if (-not (Confirm-Action 'Save common.conf?' ("Changes for EVERY device (within 5 minutes):`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra) $def)) { return }
-  try { [void](Write-ConfFile $plan.File $plan.Values $script:CommonHeader) } catch { Show-Message 'Error' "Save failed: $($_.Exception.Message)" 'Error'; return }
-  $barText.Text = "Saved $($plan.File) - the devices apply it within 5 minutes (result in the Central config column)."
+  if (-not (Confirm-Action (Get-Text 'ConfirmSaveCommonTitle') ((Get-Text 'ConfirmSaveCommon') + "`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra) $def)) { return }
+  try { [void](Write-ConfFile $plan.File $plan.Values $script:CommonHeader) } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'SavedCommon' $plan.File (Get-Text 'ColCentralConfig')
   Update-CommonGrid
   if ($script:Selected) { Update-DeviceGrid }
 }
 
 function Save-Keys {
   $err = @(Test-AuthorizedKeys $txtKeys.Text)
-  if ($err.Count) { Show-Message 'Keys not valid' ("Not saved: the devices would drop these lines.`r`n`r`n- " + ($err -join "`r`n- ")); return }
+  if ($err.Count) { Show-Message (Get-Text 'MsgKeysInvalidTitle') ((Get-Text 'MsgKeysNotSaved') + "`r`n`r`n- " + ($err -join "`r`n- ")); return }
   $n = @(Get-KeyLines $txtKeys.Text).Count
-  $msg = if ($n) { "Save $n key(s)? Devices with SSH = on use them within 5 minutes." } else { 'The list is EMPTY: every device removes all SSH keys and nobody can log in over SSH. Save anyway?' }
-  if (-not (Confirm-Action 'Save authorized_keys?' $msg $(if ($n) { 'Button1' } else { 'Button2' }))) { return }
-  try { $r = Save-AuthorizedKeys $txtKeys.Text } catch { Show-Message 'Error' "Save failed: $($_.Exception.Message)" 'Error'; return }
-  $barText.Text = "Saved $($script:KeysFile): $($r.Before) -> $($r.After) keys."
+  $msg = if ($n) { Get-Text 'ConfirmSaveKeys' $n } else { Get-Text 'ConfirmSaveKeysEmpty' }
+  if (-not (Confirm-Action (Get-Text 'ConfirmSaveKeysTitle') $msg $(if ($n) { 'Button1' } else { 'Button2' }))) { return }
+  try { $r = Save-AuthorizedKeys $txtKeys.Text } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'SavedKeys' $script:KeysFile $r.Before $r.After
   Update-KeysView
 }
 

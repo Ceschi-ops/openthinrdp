@@ -1,0 +1,294 @@
+﻿# OpenThinRDP Manager: testi in italiano. Salvare in UTF-8 CON BOM (Windows PowerShell 5.1 legge i file
+# senza BOM come ANSI). {0}, {1}... sono i valori inseriti dal programma: vanno lasciati.
+# Una chiave che manca qui viene presa da en.psd1.
+@{
+  # ---- finestra ----
+  WindowTitle            = 'Gestione OpenThinRDP - {0}'
+  TabDevices             = 'Postazioni'
+  TabCommon              = 'Impostazioni comuni (tutte le postazioni)'
+  TabKeys                = 'Chiavi SSH'
+  BtnRefresh             = 'Aggiorna elenco'
+  BtnOpenFolder          = 'Apri cartella'
+  NoteDevices            = "Le postazioni inviano lo stato e leggono la configurazione centrale ogni 5 minuti (e all'avvio). L'elenco si aggiorna da solo ogni minuto."
+  TabStatus              = 'Stato'
+  TabEvents              = 'Eventi'
+  TabDeviceSettings      = 'Impostazioni di questa postazione'
+  TabDeviceSettingsOf    = 'Impostazioni di questa postazione ({0})'
+
+  # ---- colonne dell'elenco ----
+  ColState               = 'Stato'
+  ColHostname            = 'Nome macchina'
+  ColSoftware            = 'Software'
+  ColWebButton           = 'Pulsante web'
+  ColIp                  = 'IP'
+  ColDefaultUser         = 'Utente predefinito'
+  ColSession             = 'Sessione'
+  ColLastReport          = 'Ultimo invio'
+  ColTransport           = 'Trasporto'
+  ColShareUpdate         = 'Aggiornamento dalla cartella'
+  ColWifi                = 'Wi-Fi'
+  ColMac                 = 'MAC'
+  ColUptime              = 'Accesa da'
+  ColNetwork             = 'Rete'
+  ColFreeRdp             = 'FreeRDP'
+  ColCentralConfig       = 'Configurazione centrale'
+  ColSecurityUpdates     = 'Aggiornamenti di sicurezza'
+  LastUpdate             = '{0}, ultimo: {1}'
+
+  # ---- griglie delle impostazioni ----
+  ColSetting             = 'Impostazione'
+  ColOnDevice            = 'Sulla postazione ora'
+  ColFromCommon          = 'Da common.conf'
+  ColException           = 'Eccezione per questa postazione'
+  ColUseException        = 'Usa eccezione'
+  ColHelp                = 'Spiegazione'
+  ColValueAll            = 'Valore per tutte le postazioni'
+  ColManagedHere         = 'Gestito da qui'
+  BtnSaveExceptions      = 'Salva eccezioni'
+  BtnUndo                = 'Annulla modifiche'
+  BtnRemoveExceptions    = 'Togli tutte le eccezioni'
+  NoteDevice             = 'Spunta "{0}" per decidere il valore solo per questa postazione; senza spunta decidono common.conf o la postazione stessa.'
+  BtnSaveCommon          = 'Salva common.conf'
+  NoteCommon             = "Valgono per TUTTE le postazioni entro 5 minuti. Una chiave ""{0}"" VINCE sulla configurazione di ogni postazione (se la si cambia dalla postazione, torna questa).`r`nSenza spunta decide ogni postazione. Le eccezioni di una singola postazione (scheda {1}) vincono su queste. Un solo valore sbagliato = la postazione rifiuta tutta la configurazione."
+  BtnSaveKeys            = 'Salva authorized_keys'
+  NoteKeys               = "Una chiave pubblica per riga (ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256/384/521, sk-ssh-ed25519@openssh.com); le righe che iniziano con # sono note.`r`nLe postazioni con SSH = on accettano l'utente otradmin solo con queste chiavi, entro 5 minuti. Un elenco vuoto toglie tutte le chiavi dalle postazioni."
+
+  # ---- valori mostrati nelle griglie ----
+  ValNotReported         = '(non inviato)'
+  ValDeviceOnly          = '(solo per postazione)'
+  ValDeviceDecides       = '(non gestito: decide la postazione)'
+  ValNeverReadBack       = '(non si rilegge)'
+  ValNoPin               = '(nessun PIN)'
+  ValNotManaged          = '(non gestito)'
+  ValWpaKey              = '(chiave WPA)'
+  ValPinSet              = '(PIN impostato)'
+  MarkSaved              = '(salvata)'
+  MarkSet                = '(impostato)'
+
+  # ---- barra di stato ----
+  StatusBar              = '{0}   -   {1} postazioni, {2} accese   -   aggiornamento pubblicato: {3}   -   aggiornato alle {4:HH:mm:ss}{5}'
+  StatusRenamed          = '   -   cambio nome completato: {0}'
+  ErrReadFolder          = 'ERRORE nella lettura di {0}: {1}'
+  IgnoredKeysDevice      = '{0}.conf contiene chiavi che le postazioni ignorano: {1}'
+  IgnoredKeysCommon      = 'common.conf contiene chiavi che lì le postazioni ignorano: {0}'
+  SavedDevice            = 'Salvato {0} - la postazione lo applica entro 5 minuti (esito nella colonna {1}).'
+  SavedCommon            = 'Salvato {0} - le postazioni lo applicano entro 5 minuti (esito nella colonna {1}).'
+  SavedKeys              = 'Salvato {0}: chiavi da {1} a {2}.'
+  UpdNone                = 'nessuno pubblicato'
+  UpdNoVersion           = 'LATEST.txt senza versione'
+  UpdNotSigned           = '{0} (NON firmato: le postazioni lo ignorano)'
+
+  # ---- stato delle postazioni (prima colonna) ----
+  StateOk                = 'ok'
+  StateOffline           = 'spenta o fuori rete ({0})'
+  StateFailedUnits       = 'servizi IN ERRORE'
+  StateRejected          = 'configurazione RIFIUTATA'
+  StateUpdateError       = 'aggiornamento IN ERRORE'
+  StateReboot            = 'riavvio consigliato'
+  StateOldName           = 'nome vecchio (ora {0})'
+  DurMinutes             = '{0} min'
+  DurHours               = '{0} ore'
+  DurDays                = '{0} giorni'
+
+  # ---- avvio ----
+  FolderDialog           = 'Cartella di gestione delle postazioni (quella che contiene status\ e config\)'
+  FolderNotFoundTitle    = 'Cartella non trovata'
+  FolderNotFoundText     = "Non riesco a raggiungere {0}.`r`nControllare la rete e i permessi sulla cartella."
+  EmptyFolderTitle       = 'Cartella di gestione'
+  EmptyFolderText        = "{0} non ha ancora una cartella status\ o config\: nessuna postazione ha inviato lo stato qui.`r`n`r`nUsarla comunque?"
+
+  # ---- messaggi al salvataggio ----
+  MsgInvalidTitle        = 'Valori non validi'
+  MsgNotSaved            = 'Non salvato, da correggere:'
+  MsgNoChangesTitle      = 'Nessuna modifica'
+  MsgNoChanges           = 'Non ci sono modifiche da salvare.'
+  MsgErrorTitle          = 'Errore'
+  MsgSaveFailed          = 'Salvataggio non riuscito: {0}'
+  ConfirmSaveDeviceTitle = 'Salvare le eccezioni di {0}?'
+  ConfirmSaveDevice      = 'Modifiche per {0}:'
+  MsgNoExceptionsTitle   = 'Nessuna eccezione'
+  MsgNoExceptions        = '{0} non ha eccezioni.'
+  ConfirmRemoveTitle     = 'Togliere le eccezioni?'
+  ConfirmRemove          = "Togliere tutte le eccezioni di {0}?`r`nLa postazione tiene i valori attuali; da ora decidono common.conf e la postazione stessa.`r`n(Il file viene conservato in config\backup.)"
+  MsgWillReject          = 'Queste postazioni RIFIUTERANNO tutta la configurazione centrale (tengono quella precedente):'
+  MsgMoreWarnings        = '... e altre {0}'
+  ConfirmSaveCommonTitle = 'Salvare common.conf?'
+  ConfirmSaveCommon      = 'Modifiche per TUTTE le postazioni (entro 5 minuti):'
+  MsgKeysInvalidTitle    = 'Chiavi non valide'
+  MsgKeysNotSaved        = 'Non salvato: le postazioni scarterebbero queste righe.'
+  ConfirmSaveKeysTitle   = 'Salvare authorized_keys?'
+  ConfirmSaveKeys        = 'Salvare {0} chiavi? Le postazioni con SSH = on le usano entro 5 minuti.'
+  ConfirmSaveKeysEmpty   = "L'elenco è VUOTO: ogni postazione toglie tutte le chiavi SSH e nessuno può più entrare via SSH. Salvare comunque?"
+
+  # ---- note nella conferma del salvataggio ----
+  NoteRename             = 'La postazione prende il nome {0} entro 5 minuti. Quando invia lo stato col nome nuovo, questo programma sposta da solo queste eccezioni in {0}.conf.'
+  NoteNetwork            = "Modifiche di rete: la postazione cambia indirizzo appena le legge (una sessione aperta può cadere e riconnettersi)."
+  NoteRisky              = 'ATTENZIONE: {0} cambiato per TUTTE le postazioni. Un broker, un dominio o una cartella di gestione sbagliati lasciano tutte le postazioni senza connessione o fuori da questo programma. Controllare due volte.'
+  WarnOwnWifiKey         = "{0}: la sua chiave Wi-Fi è stata calcolata per la rete '{1}': riscriverne la password nelle sue eccezioni"
+
+  # ---- controlli dei singoli valori ----
+  ErrUnknownSetting      = 'Impostazione sconosciuta {0}'
+  ErrControlChars        = '{0}: a capo e caratteri di controllo non ammessi'
+  ErrHostname            = 'Nome macchina non valido (lettere, cifre e trattino; non solo cifre)'
+  ErrUser                = 'Utente predefinito non valido'
+  ErrNotValid            = '{0}: valore non valido'
+  ErrListValue           = "{0}: valore non valido '{1}'"
+  ErrCollection          = 'Raccolta RDS non valida (es. tsv://VMResource.1.MIA_RACCOLTA)'
+  ErrRepo                = 'Repository GitHub non valido: proprietario/repository'
+  ErrChoice              = '{0}: scegliere fra {1}'
+  ErrGfx                 = '{0}: solo lettere, cifre, : e ,'
+  ErrRdpKbd              = '{0}: valore non valido (es. 0x00000410)'
+  ErrExtra               = '{0}: contiene caratteri non ammessi'
+  ErrThreshold           = 'Soglia sessione: secondi da 5 a 120'
+  ErrShutdown            = 'Spegnimento: secondi da 0 (mai) a 3600'
+  ErrUsb                 = 'Dispositivi USB: VID:PID separati da spazio (es. 1eaf:0009)'
+  ErrNetmask             = 'Netmask non valida (es. 255.255.255.0)'
+  ErrSsid                = 'Rete Wi-Fi (SSID) non valida (max 32 caratteri, senza virgolette, | o barra rovescia)'
+  ErrCountry             = 'Paese Wi-Fi: due lettere (es. IT) o vuoto'
+  ErrPsk                 = 'Password Wi-Fi: da 8 a 63 caratteri'
+  ErrShare               = 'Cartella di gestione non valida (es. \\fileserver\thinclients)'
+  ErrText                = '{0}: contiene caratteri non ammessi (parentesi angolari, &, |, virgolette, dollaro, barra rovescia) o supera i 200 caratteri'
+  ErrUrl                 = '{0}: valore non valido (es. https://www.esempio.it/pagina)'
+  ErrAllowedSite         = 'Sito ammesso non valido: {0}'
+  ErrReload              = 'Ricarica pagina kiosk: minuti da 0 (mai) a 1440'
+  ErrTime                = '{0}: orario hh:mm (es. 07:30) o vuoto'
+  ErrDays                = 'Giorni di accensione: cifre da 1 (lunedì) a 7 (domenica), es. 12345'
+  ErrLanguage            = 'Lingua: due lettere (es. it)'
+  ErrKeyboard            = 'Tastiera non valida (es. it, us, de)'
+  ErrLogo                = 'Logo: percorso completo di un file .png'
+  ErrColor               = '{0}: colore non valido (#rrggbb)'
+  ErrPin                 = 'PIN della configurazione: al massimo 64 caratteri'
+  ErrKeyLine             = 'Riga {0}: non è una chiave pubblica in formato OpenSSH (tipo, UNO spazio, chiave, commento facoltativo)'
+
+  # ---- controlli della configurazione risultante ----
+  ErrStaticIp            = "Con l'indirizzo statico serve un indirizzo IP valido"
+  ErrStaticMask          = "Con l'indirizzo statico serve una netmask valida (es. 255.255.255.0)"
+  ErrStaticGateway       = "Con l'indirizzo statico serve un gateway valido"
+  ErrSubnet              = "Il gateway {0} non è nella stessa rete dell'indirizzo IP {1}"
+  ErrStaticDns           = "Con l'indirizzo statico serve il DNS primario"
+  ErrWebNeedsUrl         = 'Pulsante web = {0}: serve un indirizzo web'
+  ErrKioskNeedsUrl       = 'Pulsante web = kiosk: serve la pagina kiosk'
+  ErrUpdateNeedsShare    = 'Aggiornamenti software = share: serve la cartella di gestione'
+  ErrWifiNeedsSsid       = 'Wi-Fi on: serve un nome di rete (SSID) valido'
+  ErrWifiNoAdapter       = 'Wi-Fi on, ma questa postazione non ha una scheda Wi-Fi'
+  ErrPskNeedsSsid        = 'Per la password Wi-Fi serve il nome della rete (SSID)'
+  ErrPskNoKeyDevice      = 'Password Wi-Fi: va scritta (per questa postazione non è salvata nessuna chiave)'
+  ErrPskOtherNetwork     = "Password Wi-Fi: va riscritta, la chiave salvata è della rete '{0}'"
+  ErrPinNoneDevice       = 'PIN della configurazione: va scritto (per questa postazione non ne è salvato nessuno)'
+  ErrHostOnlyInCommon    = '{0} si può impostare solo per una singola postazione'
+  ErrPskNeedsSsidCommon  = 'La password Wi-Fi in common.conf ha bisogno del nome della rete (SSID) gestito anch''esso in common.conf'
+  ErrPskNoKeyCommon      = 'Password Wi-Fi: va scritta (in common.conf non è salvata nessuna chiave)'
+  ErrPinNoneCommon       = 'PIN della configurazione: va scritto (in common.conf non ne è salvato nessuno)'
+  ErrWebEmptyAll         = 'Pulsante web = {0} per tutte le postazioni con l''indirizzo web vuoto'
+  ErrKioskEmptyAll       = 'Pulsante web = kiosk per tutte le postazioni con la pagina kiosk vuota'
+  ErrWifiEmptyAll        = 'Wi-Fi on per tutte le postazioni con il nome della rete (SSID) vuoto'
+
+  # ---- gruppi di impostazioni ----
+  SectionRemoteDesktop   = 'Desktop remoto'
+  SectionUsb             = 'USB'
+  SectionNetwork         = 'Rete'
+  SectionManagement      = 'Gestione'
+  SectionWeb             = 'Pulsante web e pagina kiosk'
+  SectionPower           = 'Accensione e spegnimento'
+  SectionLook            = 'Aspetto e lingua'
+
+  # ---- impostazioni: Label_<CHIAVE> = nome, Help_<CHIAVE> = spiegazione ----
+  Label_HOSTNAME            = 'Nome macchina'
+  Help_HOSTNAME             = 'Lettere, cifre e trattino, non solo cifre (es. thinclient21). Quando la postazione invia lo stato col nome nuovo, questo programma sposta le sue eccezioni nel file nuovo.'
+  Label_DEFAULT_USER        = 'Utente predefinito'
+  Help_DEFAULT_USER         = 'Utente proposto nel form di accesso (es. mrossi o ESEMPIO\mrossi).'
+  Label_BROKER              = 'Broker'
+  Help_BROKER               = 'RD Connection Broker (o un singolo host di sessione), nome o IP. Vale dalla connessione successiva.'
+  Label_BROKER_FALLBACK     = 'Broker di riserva'
+  Help_BROKER_FALLBACK      = 'Separati da spazio: provati a turno se il broker non risponde dopo 2 tentativi.'
+  Label_DOMAIN              = 'Dominio'
+  Help_DOMAIN               = 'Dominio Windows degli utenti. Vale dalla connessione successiva.'
+  Label_LOAD_BALANCE_INFO   = 'Raccolta RDS'
+  Help_LOAD_BALANCE_INFO    = 'Come nel file .rdp (loadbalanceinfo), es. tsv://VMResource.1.MIA_RACCOLTA'
+  Label_TRANSPORT           = 'Trasporto'
+  Help_TRANSPORT            = 'auto = UDP, e TCP se UDP è bloccato o non funziona; udp = solo UDP (una connessione senza UDP viene chiusa e ritentata, dopo 3 tentativi un errore); tcp = solo TCP. Vale dalla connessione successiva.'
+  Label_RDP_AUTH            = 'Autenticazione'
+  Help_RDP_AUTH             = 'negotiate = Kerberos e poi NTLM; ntlm = solo NTLM (quando Kerberos si rompe sul reindirizzamento del broker, "Ticket/authenticator don''t match").'
+  Label_RDP_CERT            = 'Certificato del server'
+  Help_RDP_CERT             = 'tofu = fiducia al primo uso; ignore = accetta qualsiasi certificato; verify = deve essere attendibile.'
+  Label_RDP_GFX             = 'Pipeline grafica (/gfx)'
+  Help_RDP_GFX              = 'Opzioni di /gfx. Senza GPU sul server, progressive senza H.264 tiene il testo preciso al pixel.'
+  Label_RDP_KEYBOARD        = 'Layout tastiera RDP'
+  Help_RDP_KEYBOARD         = 'Layout inviato a Windows (/kbd:layout), es. 0x00000410. Vuoto = ricavato da Tastiera.'
+  Label_RDP_EXTRA           = 'Opzioni FreeRDP aggiuntive'
+  Help_RDP_EXTRA            = 'Aggiunte così come sono a xfreerdp3 (avanzato). Solo lettere, cifre, spazio e / : + , . _ = # -'
+  Label_SESSION_THRESHOLD   = 'Soglia sessione (s)'
+  Help_SESSION_THRESHOLD    = "5-120: una sessione che finisce entro questi secondi dall'accesso conta come tentativo fallito e viene ritentata."
+  Label_SHUTDOWN_SECS       = 'Spegnimento (s)'
+  Help_SHUTDOWN_SECS        = "Secondi prima di spegnere dopo la disconnessione dell'utente (0 = mai, max 3600)."
+  Label_USB_MODE            = 'Modo USB'
+  Help_USB_MODE             = 'all = ogni dispositivo USB tranne tastiere, mouse, touch screen, hub, schede di rete e lettori di smart card va a Windows intero; disks = chiavette USB come dischi di rete, smart card tramite /smartcard.'
+  Label_USB_REDIRECT        = 'USB sempre interi (VID:PID)'
+  Help_USB_REDIRECT         = 'VID:PID, separati da spazio (es. 1eaf:0009): passati sempre interi, anche nel modo disks.'
+  Label_NETMODE             = 'Rete'
+  Help_NETMODE              = 'dhcp o static. Indirizzo IP, netmask e gateway valgono solo con static.'
+  Label_IPADDR              = 'Indirizzo IP'
+  Help_IPADDR               = 'Solo con Rete = static.'
+  Label_NETMASK             = 'Netmask'
+  Help_NETMASK              = "es. 255.255.255.0 (vale solo con l'indirizzo statico)."
+  Label_GATEWAY             = 'Gateway'
+  Help_GATEWAY              = "Vale solo con l'indirizzo statico; deve essere nella stessa rete dell'indirizzo IP."
+  Label_DNS1                = 'DNS primario'
+  Help_DNS1                 = "Vuoto = quelli del DHCP. Obbligatorio con l'indirizzo statico."
+  Label_DNS2                = 'DNS secondario'
+  Help_DNS2                 = 'Facoltativo.'
+  Label_NTP                 = 'Server ora (NTP)'
+  Help_NTP                  = 'Separati da spazio. Vuoto = il pool Debian.'
+  Label_WIFI                = 'Wi-Fi'
+  Help_WIFI                 = 'on = usa il Wi-Fi quando nessun cavo è collegato. Una postazione senza scheda Wi-Fi RIFIUTA una configurazione con Wi-Fi on.'
+  Label_WIFI_SSID           = 'Rete Wi-Fi (SSID)'
+  Help_WIFI_SSID            = 'Da 1 a 32 caratteri, senza virgolette, | o barra rovescia.'
+  Label_WIFI_COUNTRY        = 'Paese Wi-Fi'
+  Help_WIFI_COUNTRY         = 'Due lettere (es. IT) o vuoto.'
+  Label_WIFI_PSK            = 'Password Wi-Fi'
+  Help_WIFI_PSK             = "Scrivere la password (8-63 caratteri) o una chiave di 64 cifre esadecimali: nel file va solo la chiave WPA calcolata per l'SSID, mai la password. (salvata) = resta la chiave attuale."
+  Label_MGMT_SHARE          = 'Cartella di gestione'
+  Help_MGMT_SHARE           = 'Dove le postazioni inviano lo stato e leggono questa configurazione (\\server\share). Un valore sbagliato taglia fuori le postazioni da questo programma.'
+  Label_SECURITY_UPDATES    = 'Aggiornamenti di sicurezza'
+  Help_SECURITY_UPDATES     = 'Aggiornamenti di sicurezza di Debian (FreeRDP non viene mai aggiornato in automatico).'
+  Label_UPDATE_FROM         = 'Aggiornamenti software'
+  Help_UPDATE_FROM          = 'Aggiornamenti di OpenThinRDP, firmati, mai durante una sessione. github = le release, controllate ogni 6 ore; share = la cartella updates della cartella di gestione (decidete voi quando); off = nessuno.'
+  Label_UPDATE_GITHUB       = 'Repository GitHub'
+  Help_UPDATE_GITHUB        = 'Da dove arrivano le release (proprietario/repository). Da cambiare solo per un proprio fork.'
+  Label_SSH                 = 'SSH'
+  Help_SSH                  = 'Amministrazione remota: accesso come otradmin solo con le chiavi della scheda Chiavi SSH.'
+  Label_WEB_BUTTON          = 'Pulsante web'
+  Help_WEB_BUTTON           = "none = nessun pulsante; app = indirizzo web in una finestra app, solo i siti ammessi; browser = navigazione libera, indirizzo web come pagina iniziale; kiosk = pagina kiosk a schermo intero all'accensione (5 s per fermarla dal form di accesso)."
+  Label_WEB_LABEL           = 'Etichetta del pulsante web'
+  Help_WEB_LABEL            = 'Testo del pulsante. Senza parentesi angolari, &, |, virgolette, dollaro o barra rovescia.'
+  Label_WEB_URL             = 'Indirizzo web'
+  Help_WEB_URL              = 'Indirizzo http(s) per app e browser (es. https://intranet.esempio.it/).'
+  Label_WEB_ALLOW           = 'Siti ammessi (app)'
+  Help_WEB_ALLOW            = "Inizi di URL, separati da spazio, che si possono aprire nel modo app. L'indirizzo web è sempre ammesso."
+  Label_KIOSK_URL           = 'Pagina kiosk'
+  Help_KIOSK_URL            = 'Pagina http(s) mostrata a schermo intero nel modo kiosk (es. https://www.esempio.it/pagina).'
+  Label_KIOSK_RELOAD_MIN    = 'Ricarica pagina kiosk (min)'
+  Help_KIOSK_RELOAD_MIN     = 'Ricarica la pagina kiosk ogni N minuti quando nessuno la usa (0 = mai, max 1440).'
+  Label_POWER_ON_TIME       = 'Accensione alle (hh:mm)'
+  Help_POWER_ON_TIME        = "Vuoto = mai. Usa la sveglia RTC: il firmware deve lasciarla passare (in alcuni BIOS va disattivata un'opzione di risparmio energetico profondo)."
+  Label_POWER_OFF_TIME      = 'Spegnimento alle (hh:mm)'
+  Help_POWER_OFF_TIME       = 'Vuoto = mai. Avviso di 60 s con Annulla; con una sessione remota aperta la postazione aspetta che finisca.'
+  Label_POWER_ON_DAYS       = 'Giorni di accensione'
+  Help_POWER_ON_DAYS        = 'Cifre dei giorni: 1 = lunedì ... 7 = domenica (es. 12345 = da lunedì a venerdì).'
+  Label_LANGUAGE            = 'Lingua'
+  Help_LANGUAGE             = "Due lettere: en o it, o un altro file di lingua aggiunto all'immagine."
+  Label_KEYBOARD            = 'Tastiera'
+  Help_KEYBOARD             = 'Layout della tastiera (X11/console), es. it, us, de, fr.'
+  Label_TITLE               = 'Titolo'
+  Help_TITLE                = 'Titoli delle finestre e intestazione del form di accesso.'
+  Label_LOGO                = 'Logo'
+  Help_LOGO                 = 'Percorso completo di un PNG sulla postazione, largo circa 200 px.'
+  Label_BG_TOP              = 'Colore dello sfondo in alto'
+  Help_BG_TOP               = '#rrggbb, sfumatura dietro il logo di avvio.'
+  Label_BG_BOTTOM           = 'Colore dello sfondo in basso'
+  Help_BG_BOTTOM            = '#rrggbb, sfumatura dietro il logo di avvio.'
+  Label_SUPPORT_TEXT        = "Testo dell'assistenza"
+  Help_SUPPORT_TEXT         = "Riga in più nei messaggi di errore, es. Chiamare l'assistenza, interno 123. Vuoto = una frase generica."
+  Label_SETTINGS_PIN_SHA256 = 'PIN della configurazione'
+  Help_SETTINGS_PIN_SHA256  = 'Protegge la configurazione della postazione. Scrivere il PIN (nel file va solo il suo SHA-256) o un hash di 64 cifre esadecimali; vuoto = nessun PIN. (impostato) = resta quello attuale.'
+}

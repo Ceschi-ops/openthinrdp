@@ -52,6 +52,8 @@ once and the release is retried at every run.
 The Windows manager (`management/windows/OpenThinRDP-Manager.cmd`) shows the devices, their status and events,
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
 Before saving `common.conf` it lists the devices that would reject it.
+It is available in English and Italian: it follows the Windows display language (English for any language
+without a file in `management/windows/lang/`), or `-Language en` / `-Language it` chooses one.
 
 ## SSH keys
 
