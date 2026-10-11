@@ -42,7 +42,7 @@ FreeRDP master with:
 
 - pull request #13608: the UDP transport;
 - pull request #13674: a deadlock between USB hotplug and the closing of the USB channel;
-- a fix for a client that hangs on disconnect when a redirected USB device has a transfer pending;
+- pull request #13677: a fix for a client that hangs on disconnect when a redirected USB device has a transfer pending;
 - pull request #13618 (already in FreeRDP master, newer than the base of #13608): no real USB device reset,
   cancelled transfers complete normally. Some USB devices (e.g. tachograph download keys) stall without it.
 
