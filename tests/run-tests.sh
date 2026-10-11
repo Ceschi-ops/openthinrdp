@@ -94,6 +94,27 @@ printf 'HOSTNAME=kiosk-test\r\n' > $OTR_LIB/central-host.conf
 $OTR/central-apply.sh
 ok "host file may set HOSTNAME" 'grep -q "^applied" $OTR_LIB/central-status'
 
+# --- central values win over local changes; keys removed centrally go back to the defaults
+: > $OTR_LIB/central-host.conf
+printf 'USB_MODE=disks\nNTP=a.example.com\n' > $OTR_LIB/central-common.conf
+$OTR/central-apply.sh
+sed -i 's/^USB_MODE=.*/USB_MODE=all/' $OTR_CONF            # someone changes it in the settings dialog
+$OTR/central-apply.sh
+ok "a local change of a central key is overwritten" 'grep -qx "USB_MODE=disks" $OTR_CONF'
+printf 'NTP=a.example.com\n' > $OTR_LIB/central-common.conf # USB_MODE removed from common.conf
+$OTR/central-apply.sh
+ok "a key removed centrally leaves the device settings" '! grep -q "^USB_MODE=" $OTR_CONF && [ "$(cfg USB_MODE)" = all ]'
+ok "the release is logged" 'grep -q "back to the defaults: USB_MODE" $OTR_EVENTS'
+ok "the other central key stays" 'grep -qx "NTP=a.example.com" $OTR_CONF'
+printf 'WEB_BUTTON=app\nWEB_URL=https://intranet.example.com/\n' > $OTR_LIB/central-common.conf
+$OTR/central-apply.sh
+printf 'WEB_BUTTON=app\n' > $OTR_LIB/central-common.conf   # URL removed, button kept: not valid
+$OTR/central-apply.sh
+ok "an invalid release is refused and the key kept" 'grep -q "^WEB_URL=https://intranet.example.com/" $OTR_CONF && grep -q "NOT released" $OTR_EVENTS'
+ok "the refused key stays managed for the next run" 'grep -qx WEB_URL $OTR_LIB/central-managed'
+: > $OTR_LIB/central-common.conf; $OTR/central-apply.sh
+ok "everything released when the central files are empty" '! grep -qE "^(WEB_BUTTON|WEB_URL|NTP)=" $OTR_CONF'
+
 # --- status file: no Wi-Fi key, PIN only as (set)
 printf 'SETTINGS_PIN_SHA256=%s\n' "$(printf 1234 | sha256sum | cut -c1-64)" >> $OTR_CONF
 $OTR/report.sh >/dev/null 2>&1

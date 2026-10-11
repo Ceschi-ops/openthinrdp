@@ -10,11 +10,16 @@
 ST=$OTR_LIB/central-status
 COMMON=$OTR_LIB/central-common.conf
 HOSTF=$OTR_LIB/central-host.conf
+# Central values win: a key set centrally is written into the device settings again every time, so a change made
+# in the settings dialog lasts only until the next run. A key REMOVED from the central files is removed from the
+# device settings too (it goes back to site.conf or the defaults), otherwise devices would keep the last central
+# value and quietly differ from the ones installed later.
+MANAGED=$OTR_LIB/central-managed
 # keys that only the file of a single device may set (they identify the device)
 HOST_ONLY="HOSTNAME DEFAULT_USER NETMODE IPADDR"
 KEYS="$(cfg_keys | tr '\n' ' ')WIFI_PSK"
 
-[ -f "$COMMON" ] || [ -f "$HOSTF" ] || { echo "no central configuration" > "$ST"; exit 0; }
+[ -f "$COMMON" ] || [ -f "$HOSTF" ] || [ -s "$MANAGED" ] || { echo "no central configuration" > "$ST"; exit 0; }
 
 # files written on Windows: CRLF, BOM, spaces around "=", comments with # or ;
 read_conf(){ sed '1s/^\xEF\xBB\xBF//' "$1" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]*=[[:space:]]*/=/; s/[[:space:]]+$//' | grep -E '^[A-Z][A-Z0-9_]*='; }
@@ -30,6 +35,33 @@ merge "$COMMON" common
 merge "$HOSTF" host
 
 T=$(mktemp); E=$(mktemp); chmod 600 "$T" "$E"; trap 'rm -f "$T" "$E"' EXIT
+: > "$E"
+# keys that were managed centrally and are no longer in the central files: back to site.conf / the defaults.
+# HOSTNAME and WIFI_PSK are not stored in the settings file and stay as they are.
+RELEASED=""
+for k in $(cat "$MANAGED" 2>/dev/null); do
+  [ -z "${GIVEN[$k]+x}" ] && [ "$k" != HOSTNAME ] && [ "$k" != WIFI_PSK ] && grep -q "^$k=" "$OTR_CONF" && RELEASED="$RELEASED $k"
+done
+if [ -n "$RELEASED" ]; then
+  cp -p "$OTR_CONF" "$OTR_CONF.central-backup"
+  for k in $RELEASED; do sed -i "/^$k=/d" "$OTR_CONF"; done
+  # the settings without those keys must still be valid (e.g. no WEB_BUTTON=app left without its WEB_URL)
+  if MSG=$("$OTR/save-config.sh" "$E" 2>&1); then
+    ev "central configuration: keys no longer managed centrally, back to the defaults:$RELEASED"
+  else
+    mv -f "$OTR_CONF.central-backup" "$OTR_CONF"
+    # reported once per set of keys; they stay managed and are retried at the next run
+    if [ "$(cat "$OTR_LIB/central-release-failed" 2>/dev/null)" != "$RELEASED" ]; then
+      ev "central configuration: keys removed centrally NOT released, the result would be invalid:$RELEASED ($(echo "$MSG" | tr '\n' ' '))"
+      echo "$RELEASED" > "$OTR_LIB/central-release-failed"
+    fi
+    KEEP=$RELEASED
+  fi
+  rm -f "$OTR_CONF.central-backup"
+fi
+# from now on the keys of the central files (plus any that could not be released yet) are the managed ones
+{ for k in "${!GIVEN[@]}" ${KEEP:-}; do echo "$k"; done; } | sort -u > "$MANAGED"
+[ -f "$COMMON" ] || [ -f "$HOSTF" ] || { echo "no central configuration${RELEASED:+ (released:$RELEASED)}" > "$ST"; exit 0; }
 # current settings, stored form
 : > "$E"
 declare -A CUR NEW

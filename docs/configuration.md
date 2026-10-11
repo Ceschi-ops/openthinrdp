@@ -7,6 +7,11 @@ Every setting is a `KEY=value` line. A device reads them in this order, the firs
 3. `/opt/openthinrdp/defaults.conf`: project defaults
 
 An empty value in a higher file clears a lower one on purpose (e.g. `TITLE=` in the device file).
+
+The device file is written by the settings dialog **and** by the central settings, and the central settings
+win: in practice the order is `config\<hostname>.conf` > `config\common.conf` > settings dialog > `site.conf` >
+defaults. A key removed from the central files goes back to `site.conf`/defaults, so all devices stay alike
+(see [management.md](management.md)).
 Values are validated by `save-config.sh` with the same rules wherever they come from (dialog, central
 settings, manager); invalid central settings are refused as a whole and the previous ones stay.
 

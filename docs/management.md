@@ -40,7 +40,14 @@ Files saved on Windows are fine (BOM, CRLF, spaces around `=`, `#` and `;` comme
   keeping the previous settings;
 - keeps the last good copy when the folder is unreachable.
 
-Removing a key from the files does not reset it on the devices: set it explicitly to the value you want.
+Central values win: a key in the central files is written into the device settings at every run (every 5
+minutes and at boot), so a change made in the settings dialog of a device lasts only until then. Keys that the
+central files do not set stay as set on the device.
+
+Removing a key from the central files gives it back to the device defaults: the device drops it from its
+settings and follows `site.conf` or the project defaults again, like a device installed today. If the result
+would not be valid (e.g. removing `WEB_URL` while `WEB_BUTTON=app` stays), the key is kept, the event is logged
+once and the release is retried at every run.
 
 The Windows manager (`management/windows/OpenThinRDP-Manager.cmd`) shows the devices, their status and events,
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
