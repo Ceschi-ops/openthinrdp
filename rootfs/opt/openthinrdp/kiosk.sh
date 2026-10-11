@@ -207,9 +207,16 @@ settings_dialog(){
   share=$(cfg MGMT_SHARE); um=$(cfg USB_MODE); ur=$(cfg USB_REDIRECT); su=$(cfg SECURITY_UPDATES); tr=$(cfg TRANSPORT)
   wb=$(cfg WEB_BUTTON); wu=$(cfg WEB_URL); ku=$(cfg KIOSK_URL); kr=$(cfg_num KIOSK_RELOAD_MIN 10)
   pon=$(cfg POWER_ON_TIME); poff=$(cfg POWER_OFF_TIME); pdays=$(cfg POWER_ON_DAYS); wf=$(cfg WIFI); ws=$(cfg WIFI_SSID); ln=$(cfg LANGUAGE)
+  # two columns: on one column the dialog does not fit a 1440x900 screen and Save disappears. Below 900 px
+  # (1366x768, 1280x1024 is fine but 1024x768 is not) even two columns are taller than the screen: the form
+  # scrolls inside a window as high as the screen, so the buttons stay visible
+  local sw sh; local -a geo=(--width=1150)
+  read -r sw sh < <(xdpyinfo 2>/dev/null | awk '/dimensions:/{split($2, a, "x"); print a[1], a[2]; exit}')
+  if [ -n "$sh" ] && { [ "$sh" -lt 900 ] || [ "$sw" -lt 1170 ]; }; then
+    geo=(--scroll --width=$(( sw < 1170 ? sw - 20 : 1150 )) --height=$(( sh - 40 )))
+  fi
   while true; do
-    # two columns: on one column the dialog does not fit a 1440x900 screen and Save disappears
-    out=$(yad --form --title="$L_SETTINGS" --columns=2 --width=1150 --center --separator="|" \
+    out=$(yad --form --title="$L_SETTINGS" --columns=2 "${geo[@]}" --center --separator="|" \
           --text="<b>$L_SETTINGS</b>\n<small>$L_SETTINGS_HELP</small>" \
           --field="$L_F_HOSTNAME" --field="$L_F_USER" --field="$L_F_BROKER" --field="$L_F_FALLBACK" \
           --field="$L_F_DOMAIN" --field="$L_F_COLLECTION" --field="$L_F_NETWORK:CB" --field="$L_F_IP" \
