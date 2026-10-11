@@ -17,7 +17,7 @@ ok(){ if eval "$2"; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: $1
 T=$(mktemp)
 
 # --- layers: device > site > defaults
-ok "default when nothing set" '[ "$(cfg TRANSPORT)" = tcp ]'
+ok "default when nothing set" '[ "$(cfg TRANSPORT)" = auto ]'
 printf 'TRANSPORT=udp\nTITLE=Site title\n' > /etc/openthinrdp/site.conf
 ok "site overrides default" '[ "$(cfg TRANSPORT)" = udp ]'
 printf 'TRANSPORT=tcp\n' > /etc/openthinrdp/openthinrdp.conf
@@ -67,6 +67,8 @@ printf 'NETMODE=Statico\nIPADDR=192.0.2.10\nNETMASK=255.255.255.0\nGATEWAY=192.0
 ok "static alias normalized" '$OTR/save-config.sh "$T" --print 2>&1 | grep -qx "NETMODE=static"'
 printf 'IPADDR=garbage\n' > "$T"
 ok "invalid address cleared in DHCP mode" '$OTR/save-config.sh "$T" --print 2>&1 | grep -qx "IPADDR="'
+tr_of(){ printf 'TRANSPORT=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^TRANSPORT=//p'; }
+ok "transport modes kept, anything else is auto" '[ "$(tr_of UDP)" = udp ] && [ "$(tr_of tcp)" = tcp ] && [ "$(tr_of auto)" = auto ] && [ "$(tr_of garbage)" = auto ]'
 
 # --- real save: only given keys end in the device file
 : > /etc/openthinrdp/openthinrdp.conf

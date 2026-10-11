@@ -4,8 +4,12 @@ set -e
 . /etc/openthinrdp/build.env
 OTR=/opt/openthinrdp
 
-# FreeRDP: newer from trixie-backports (USB and graphics fixes), unless the site brings its own packages
+# FreeRDP: the OpenThinRDP build with UDP (image/freerdp), Debian's from trixie-backports or trixie, or the
+# site's own packages
 case "$FREERDP_FROM" in
+  openthinrdp)
+    dpkg -s freerdp3-x11 >/dev/null 2>&1 || { echo "FREERDP_FROM=openthinrdp but freerdp3-x11 is not installed"; exit 1; }
+    xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' || { echo "the FreeRDP installed has no UDP transport"; exit 1; } ;;
   backports) apt-get install -y --no-install-recommends -t trixie-backports freerdp3-x11 ;;
   site)      dpkg -s freerdp3-x11 >/dev/null 2>&1 || { echo "FREERDP_FROM=site but no freerdp3-x11 in debs/"; exit 1; } ;;
   *)         apt-get install -y --no-install-recommends freerdp3-x11 ;;

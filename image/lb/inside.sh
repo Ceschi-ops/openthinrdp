@@ -59,6 +59,12 @@ sed -e "s/@TOP@/$(rgb "$(get BG_TOP)")/" -e "s/@BOTTOM@/$(rgb "$(get BG_BOTTOM)"
 cp $S/ca/*.crt $C/etc/openthinrdp/ca/ 2>/dev/null || true
 for f in smb.cred update-key.asc authorized_keys; do [ -f $S/$f ] && cp $S/$f $C/etc/openthinrdp/; done
 cp $S/debs/*.deb config/packages.chroot/ 2>/dev/null || true
+# FreeRDP with UDP (build.sh fetched or built it); the debug symbols in debug/ stay out of the image
+if [ "$FREERDP_FROM" = openthinrdp ]; then
+  . $B/image/freerdp/freerdp.conf
+  cp /out/freerdp/$FREERDP_COMMIT/*.deb config/packages.chroot/
+  echo freerdp3-x11 >> config/package-lists/openthinrdp-site.list.chroot
+fi
 printf 'LOCALE=%s\nTIMEZONE=%s\nKEYBOARD=%s\nFREERDP_FROM=%s\nADMIN_PASSWORD_HASH=%s\n' "$LOCALE" "$TIMEZONE" "$KEYBOARD" "$FREERDP_FROM" "${ADMIN_PASSWORD_HASH:-}" > $C/etc/openthinrdp/build.env
 cp $B/image/lb/hook.chroot config/hooks/normal/0100-openthinrdp.hook.chroot
 sed -e "s|@LOCALE@|$LOCALE|" -e "s|@KEYBOARD@|$KEYBOARD|" -e "s|@TIMEZONE@|$TIMEZONE|" -e "s|@ADMIN_HASH@|${ADMIN_PASSWORD_HASH:-!}|" \

@@ -26,7 +26,7 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 | `DOMAIN` | | Windows domain of the users |
 | `LOAD_BALANCE_INFO` | | RDS collection, as `loadbalanceinfo` in the .rdp file, e.g. `tsv://VMResource.1.VDI` |
 | `DEFAULT_USER` | | user name pre-filled in the sign-in form |
-| `TRANSPORT` | `tcp` | `udp` needs a FreeRDP with `WITH_RDPEUDP=ON`, see [udp.md](udp.md) |
+| `TRANSPORT` | `auto` | `auto` = UDP, TCP when UDP is blocked or fails; `udp` = UDP only; `tcp` = TCP only. See [udp.md](udp.md) |
 | `RDP_AUTH` | `negotiate` | `ntlm` = NTLM only (when Kerberos fails on the broker redirect) |
 | `RDP_CERT` | `tofu` | `ignore`, `tofu` (trust on first use) or `verify` |
 | `RDP_GFX` | `progressive,AVC420:off,AVC444:off` | `/gfx` options. Without a GPU on the server this keeps text pixel exact |

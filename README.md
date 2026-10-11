@@ -1,6 +1,7 @@
 # OpenThinRDP
 
-A thin client operating system for Windows Remote Desktop, built on Debian 13 and FreeRDP 3.
+A thin client operating system for Windows Remote Desktop, built on Debian 13 and FreeRDP 3, with the
+**UDP transport** that FreeRDP does not ship yet.
 
 Turn small PCs or old thin clients into kiosks that boot straight into a sign-in form, connect through an
 RD Connection Broker to the user's desktop, and are managed from a shared folder: status of every device,
@@ -16,6 +17,12 @@ Clients connected to a Windows 11 VDI on Hyper-V; the system it comes from runs 
 
 ## What it does
 
+- **Remote desktop over UDP.** Windows sends the graphics over UDP and adapts frame rate and quality to the
+  line instead of queueing: smoother on busy servers, lossy Wi-Fi and VPNs. The image ships FreeRDP built with
+  the UDP transport that is still under review upstream
+  ([FreeRDP #13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). Per device: `auto` (UDP, TCP when UDP is
+  blocked), `udp` (UDP only) or `tcp`. Using it is the best way to help it into FreeRDP: report what you see.
+  See [docs/udp.md](docs/udp.md).
 - **Sign-in form, then full screen remote desktop.** Boots in a few seconds with your logo, no desktop, no
   shell. Retries, fallback brokers, clear messages for "no network", "broker not reachable", "the virtual
   machine does not start", wrong password (never retried, so accounts are not locked).
@@ -34,7 +41,6 @@ Clients connected to a Windows 11 VDI on Hyper-V; the system it comes from runs 
 - **Power schedule and Wake-on-LAN**, Debian security updates (FreeRDP excluded), screen always on, monitors
   that are switched on late handled.
 - **Web button**: a web app, free browsing, or a full screen kiosk page, with Chromium.
-- **Experimental UDP transport** with a FreeRDP build that supports it (see `docs/udp.md`).
 - English and Italian interface; more languages are one file each.
 
 ## Quick start
@@ -56,7 +62,7 @@ Clients connected to a Windows 11 VDI on Hyper-V; the system it comes from runs 
 - [docs/building.md](docs/building.md): building and customizing the image.
 - [docs/security.md](docs/security.md): security model and known limits.
 - [docs/hardware.md](docs/hardware.md): tested hardware and firmware settings.
-- [docs/udp.md](docs/udp.md): the experimental UDP transport.
+- [docs/udp.md](docs/udp.md): the UDP transport and the FreeRDP the image ships.
 
 ## Layout
 

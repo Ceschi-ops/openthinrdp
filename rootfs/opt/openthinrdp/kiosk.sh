@@ -141,11 +141,13 @@ connect(){
   [ "$(cfg RDP_AUTH)" = ntlm ] && o+=(/auth-pkg-list:"$NTLMPKG")
   case "$(cfg RDP_CERT)" in ignore) o+=(/cert:ignore) ;; verify) o+=(/cert:deny) ;; *) o+=(/cert:tofu) ;; esac
   v=$(cfg RDP_GFX); [ -n "$v" ] && o+=(/gfx:"$v")
-  # udp: the server measures the line (/network:auto) and lowers frame rate and quality when the network or
-  # the server itself struggle. No /auto-reconnect: when FreeRDP's own reconnection fails it exits with code 1,
-  # the same code as an administrator disconnect, and the kiosk would stop. The kiosk reopens the session
-  # instead, and every new connection tries UDP again. tcp with a UDP-capable FreeRDP needs -multitransport.
-  if [ "$(cfg TRANSPORT)" = udp ] && [ $HASUDP = 1 ]; then o+=(/network:auto)
+  # auto and udp: the server measures the line (/network:auto) and lowers frame rate and quality when the
+  # network or the server itself struggle. When UDP is blocked or fails FreeRDP goes on over TCP; with udp the
+  # kiosk does not accept that (see session). No /auto-reconnect: when FreeRDP's own reconnection fails it
+  # exits with code 1, the same code as an administrator disconnect, and the kiosk would stop. The kiosk
+  # reopens the session instead, and every new connection tries UDP again.
+  # tcp with a UDP-capable FreeRDP needs -multitransport.
+  if [ $HASUDP = 1 ] && [ "$(cfg TRANSPORT)" != tcp ]; then o+=(/network:auto)
   elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
   else o+=(/network:lan); fi
   v=$(cfg RDP_KEYBOARD); [ -n "$v" ] && o+=(/kbd:layout:"$v")
@@ -193,7 +195,7 @@ settings_dialog(){
   st=$(printf "$L_STATUS_LINE" "${IPC:-$L_NO_NETWORK}" "$mac" "$(date +%H:%M)" "$sync" "$wst" "${rep:-$L_NEVER}")
 
   local -a NETV=(dhcp static) NETL=("DHCP" "$L_STATIC") USBV=(all disks) USBL=("$L_USB_ALL" "$L_USB_DISKS")
-  local -a ONV=(on off) ONL=("$L_ON" "$L_OFF") TRV=(tcp udp) TRL=(TCP UDP)
+  local -a ONV=(on off) ONL=("$L_ON" "$L_OFF") TRV=(auto udp tcp) TRL=("$L_TR_AUTO" "$L_TR_UDP" "$L_TR_TCP")
   local -a WEBV=(none app browser kiosk) WEBL=("$L_WEB_NONE" "$L_WEB_APP" "$L_WEB_BROWSER" "$L_WEB_KIOSK")
   local -a LNV=(en it) LNL=(English Italiano)
   local h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share um ur su tr wb wu ku kr pon poff pdays wf ws wp ln
@@ -280,7 +282,7 @@ err_class(){
   case "$1" in 139|140) echo dns; return ;; esac
   if grep -qiE 'credssp|nla|license|ntlm|messageChannel|activation|redirect' /tmp/kiosk.log 2>/dev/null; then echo vm; return; fi
   case "$1" in 131|133|141|142|143|147|150) echo broker ;; *) echo other ;; esac; }
-err_title(){ case "$1" in net) echo "$L_E_NET" ;; dns) echo "$L_E_DNS" ;; broker) echo "$L_E_BROKER" ;; vm) echo "$L_E_VM" ;; *) echo "$L_E_OTHER" ;; esac; }
+err_title(){ case "$1" in net) echo "$L_E_NET" ;; dns) echo "$L_E_DNS" ;; broker) echo "$L_E_BROKER" ;; vm) echo "$L_E_VM" ;; udp) echo "$L_E_UDP" ;; *) echo "$L_E_OTHER" ;; esac; }
 # final message after the last attempt: what happened and what to do. Stays 60 s (or until OK).
 show_err(){ local cl=$1 u=$2 before=$3 t sup
   sup=$(cfg SUPPORT_TEXT); [ -z "$sup" ] && sup=$L_CALL_SUPPORT
@@ -289,6 +291,7 @@ show_err(){ local cl=$1 u=$2 before=$3 t sup
     dns)    t=$(printf "$L_T_DNS" "$(cfg BROKER)")"\n$sup" ;;
     broker) t=$(printf "$L_T_BROKER" "$(cfg BROKER) $(cfg BROKER_FALLBACK)")"\n$sup" ;;
     vm)     t=$(printf "$L_T_VM" "$u")"\n$sup" ;;
+    udp)    t="$L_T_UDP\n$sup" ;;
     *)      t=$(printf "$L_T_OTHER" "$LAST_EC")"\n$sup" ;;
   esac
   yad --error $IMG --title="$TITLE" --width=520 --center --timeout=60 --timeout-indicator=bottom \
@@ -304,13 +307,17 @@ pick_broker(){ local n=$1 ha=$2; set -- $(cfg BROKER_FALLBACK)
 # 2 = desktop not available after the attempts, 3 = session DROPPED (the caller reconnects without asking),
 # 4 = session taken over from another device (warn, never reconnect: the two devices would fight)
 session(){
-  local U="$1" P="$2" att=0 max=8 txt="$L_P_CONNECTING" B BRHA st d ec thr xp wp
+  local U="$1" P="$2" att=0 max=8 txt="$L_P_CONNECTING" B BRHA st d ec thr xp wp udponly=0 noudp=0
   BRHA=$(cfg BROKER)
   [ "$3" = reconnect ] && { max=40; txt="$L_P_RECONNECTING"; }
   LAST_ERR=""; LAST_EC=""
   thr=$(cfg_num SESSION_THRESHOLD 10)
+  if [ "$(cfg TRANSPORT)" = udp ]; then
+    if [ $HASUDP = 1 ]; then udponly=1; else ev "TRANSPORT=udp but this FreeRDP has no UDP transport: TCP used"; fi
+  fi
   while [ $att -lt $max ]; do
     att=$((att+1))
+    rm -f /tmp/kiosk.noudp
     # without a network calling the broker is pointless: say so now and retry in 5 s
     if ! net_ok; then
       LAST_ERR=net; LAST_EC=""
@@ -330,7 +337,7 @@ session(){
     wp=$!
     {
       echo "8"; echo "# $txt  ($(printf "$L_P_ATTEMPT" "$att")$([ "$B" != "$BRHA" ] && echo ", $B"))"
-      local s1=0 s2=0 n=0 seen=0 lost=0 fp
+      local s1=0 s2=0 n=0 seen=0 lost=0 tcponly=0 fp
       while kill -0 $xp 2>/dev/null; do
         if [ $s1 -eq 0 ] && grep -qiE 'credssp|nla|license|ntlm' /tmp/kiosk.log; then echo "35"; echo "# $L_P_AUTH"; s1=1; fi
         if [ $s2 -eq 0 ] && grep -qiE 'messageChannel|activation|graphics|redirect|DisplayControl' /tmp/kiosk.log; then echo "70"; echo "# $L_P_STARTING"; s2=1; fi
@@ -342,6 +349,12 @@ session(){
         [ $((n % 12)) -eq 0 ] || continue
         fp=$(pgrep -P $xp -x xfreerdp3 | head -1); [ -n "$fp" ] || continue
         if ss -tnpH state established 2>/dev/null | grep -q "pid=$fp,"; then seen=1; lost=0
+          # TRANSPORT=udp: connected for 30 s without a UDP socket = UDP blocked, or FreeRDP fell back to TCP
+          # after a UDP failure. The connection ends and counts as a failed attempt: the next one tries UDP.
+          if [ $udponly = 1 ]; then
+            if ss -uanpH 2>/dev/null | grep -q "pid=$fp,"; then tcponly=0; else tcponly=$((tcponly + 5)); fi
+            [ $tcponly -ge 30 ] && { ev "UDP only: the session of $U runs without UDP, closed"; touch /tmp/kiosk.noudp; kill -9 "$fp"; }
+          fi
         elif [ $seen = 1 ]; then
           lost=$((lost + 5))
           [ $lost -ge 60 ] && { ev "watchdog: FreeRDP alive without any connection for 60 s, killed"; kill -9 "$fp"; }
@@ -366,6 +379,13 @@ session(){
       155|156|158|159) CRED_MSG=$L_C_DENIED ;;
     esac
     if [ -n "$CRED_MSG" ]; then ev "sign-in refused for $U (code $ec)"; return 1; fi
+    # UDP only and closed for running without UDP: a failed attempt, also after a long session. Three in a
+    # row = UDP does not get through: say so instead of cutting the user off every 30 s
+    if [ -f /tmp/kiosk.noudp ]; then
+      rm -f /tmp/kiosk.noudp; noudp=$((noudp + 1)); LAST_EC=$ec; LAST_ERR=udp
+      [ $noudp -ge 3 ] && break
+      txt="$L_E_UDP, $L_P_RETRY"; sleep 5; continue
+    fi
     # 5 = ERRINFO_DISCONNECTED_BY_OTHER_CONNECTION: same user signed in from another device. Never retry,
     # also during a reconnection: taking the session back would drop the other device, which would do the same
     if [ "$ec" = 5 ]; then ev "session of $U taken over by another device after $(duration $d) (code 5): no reconnection"; return 4; fi

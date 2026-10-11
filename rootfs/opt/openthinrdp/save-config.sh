@@ -42,7 +42,7 @@ V[BROKER_FALLBACK]=$(get BROKER_FALLBACK | tr -s ' ,;' ' ' | sed 's/^ //; s/ $//
 for t in ${V[BROKER_FALLBACK]}; do ipok "$t" || nameok "$t" || err "$V_FALLBACK $t"; done
 V[DOMAIN]=$(get DOMAIN); [ -z "${V[DOMAIN]}" ] || nameok "${V[DOMAIN]}" || err "$V_DOMAIN"
 V[LOAD_BALANCE_INFO]=$(get LOAD_BALANCE_INFO); [[ ${V[LOAD_BALANCE_INFO]} =~ ^[A-Za-z0-9._:/#=-]*$ ]] || err "$V_COLLECTION"
-case "$(low "$(get TRANSPORT)")" in udp) V[TRANSPORT]=udp ;; *) V[TRANSPORT]=tcp ;; esac
+case "$(low "$(get TRANSPORT)")" in udp) V[TRANSPORT]=udp ;; tcp) V[TRANSPORT]=tcp ;; *) V[TRANSPORT]=auto ;; esac
 case "$(low "$(get RDP_AUTH)")" in ntlm) V[RDP_AUTH]=ntlm ;; *) V[RDP_AUTH]=negotiate ;; esac
 case "$(low "$(get RDP_CERT)")" in ignore) V[RDP_CERT]=ignore ;; verify) V[RDP_CERT]=verify ;; *) V[RDP_CERT]=tofu ;; esac
 V[RDP_GFX]=$(get RDP_GFX); [[ ${V[RDP_GFX]} =~ ^[A-Za-z0-9:,]*$ ]] || err "$V_GFX"

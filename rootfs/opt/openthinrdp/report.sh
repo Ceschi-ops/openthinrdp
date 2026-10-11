@@ -27,6 +27,7 @@ TEMP=$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1
 FAILED=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
 NERR=$(journalctl -b -p err --no-pager -q 2>/dev/null | wc -l)
 INUSE="no session"; [ -n "$SU" ] && { ss -uanp 2>/dev/null | grep -q xfreerdp3 && INUSE=udp || INUSE=tcp; }
+xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' || INUSE="$INUSE, FreeRDP without UDP"
 
 {
   echo "UPDATED=$(date '+%Y-%m-%d %H:%M:%S')"

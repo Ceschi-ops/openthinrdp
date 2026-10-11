@@ -139,7 +139,7 @@ $script:Settings = @(
   (New-Setting 'BROKER_FALLBACK'   'Fallback brokers'            'names'     ''  'Space separated: tried in turn when the broker does not answer after 2 attempts.')
   (New-Setting 'DOMAIN'            'Domain'                      'name'      ''  'Windows domain of the users. Used from the next connection.')
   (New-Setting 'LOAD_BALANCE_INFO' 'RDS collection'              'collection' '' 'As in the .rdp file (loadbalanceinfo), e.g. tsv://VMResource.1.MY_COLLECTION')
-  (New-Setting 'TRANSPORT'         'Transport'                   'choice'    'tcp' 'tcp or udp. udp needs a FreeRDP built with WITH_RDPEUDP=ON (still experimental upstream).' @('tcp', 'udp'))
+  (New-Setting 'TRANSPORT'         'Transport'                   'choice'    'auto' 'auto = UDP, and TCP when UDP is blocked or fails; udp = UDP only (a connection without UDP is closed and retried, after 3 tries an error); tcp = TCP only. Used from the next connection.' @('auto', 'udp', 'tcp'))
   (New-Setting 'RDP_AUTH'          'Authentication'              'choice'    'negotiate' 'negotiate = Kerberos then NTLM; ntlm = NTLM only (when Kerberos breaks on the broker redirect, "Ticket/authenticator don''t match").' @('negotiate', 'ntlm'))
   (New-Setting 'RDP_CERT'          'Server certificate'          'choice'    'tofu' 'tofu = trust on first use; ignore = accept any; verify = must be trusted.' @('tofu', 'ignore', 'verify'))
   (New-Setting 'RDP_GFX'           'Graphics pipeline (/gfx)'    'gfx'       'progressive,AVC420:off,AVC444:off' 'Options for /gfx. Without a server GPU, progressive without H.264 keeps text pixel exact.')

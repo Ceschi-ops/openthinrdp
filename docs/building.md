@@ -12,14 +12,18 @@ image/build.sh
 Result: `out/openthinrdp-<version>.iso` and its `.sha256`. `image/site/` is ignored by git: it holds your
 credentials and keys.
 
+With `FREERDP_FROM=openthinrdp` the build first needs the FreeRDP packages of `image/freerdp/freerdp.conf`:
+it downloads the prebuilt ones (checked against `image/freerdp/SHA256SUMS`) or, when they are not published,
+builds them with `image/freerdp/build-debs.sh` (15-40 minutes, once: they stay in `out/freerdp/`).
+
 ## The site folder
 
 See [image/site.example/README.md](../image/site.example/README.md). In short:
 
 - `build.conf`: `FIRMWARE` (`all`, the default: runs on any PC; `thinclient`: only the usual thin client firmware,
   about 600 MB less), `INCLUDE_BROWSER`, installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
-  of `otradmin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`backports`, `debian` or
-  `site`), `AUTO_INSTALL`.
+  of `otradmin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`openthinrdp`, the
+  default: FreeRDP with UDP, see [udp.md](udp.md); `backports`, `debian` or `site`), `AUTO_INSTALL`.
 - `site.conf`: default settings of every device.
 - `logo.png` (~200 px, dialogs), `splash.png` (~640 px, transparent, boot screen).
 - `ca/*.crt`: certificate authorities for the web button.

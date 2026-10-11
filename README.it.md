@@ -1,6 +1,7 @@
 # OpenThinRDP
 
-Un sistema operativo per thin client Desktop remoto Windows, basato su Debian 13 e FreeRDP 3.
+Un sistema operativo per thin client Desktop remoto Windows, basato su Debian 13 e FreeRDP 3, con il
+**trasporto UDP** che FreeRDP non distribuisce ancora.
 
 Trasforma piccoli PC o vecchi thin client in postazioni che si accendono direttamente sul form di accesso, si
 collegano tramite il broker RDS al desktop dell'utente e si gestiscono da una cartella condivisa: stato di ogni
@@ -14,6 +15,12 @@ Client collegati a una VDI Windows 11 su Hyper-V; il sistema da cui deriva è in
 
 ## Cosa fa
 
+- **Desktop remoto in UDP.** Windows manda la grafica in UDP e adatta fotogrammi e qualità alla linea invece di
+  accumulare ritardo: più fluido con server carichi, Wi-Fi con perdite e VPN. L'immagine contiene FreeRDP
+  compilato con il trasporto UDP ancora in revisione
+  ([FreeRDP #13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). Per postazione: `auto` (UDP, TCP se l'UDP
+  è bloccato), `udp` (solo UDP) o `tcp`. Usarlo è il modo migliore per farlo entrare in FreeRDP: segnalate
+  quello che vedete. Vedi [docs/udp.md](docs/udp.md).
 - **Form di accesso, poi desktop remoto a schermo intero**, avvio in pochi secondi con il vostro logo.
   Tentativi, broker di riserva, messaggi chiari per rete assente, broker irraggiungibile, macchina virtuale che
   non parte, password sbagliata (mai ritentata, così l'account non si blocca).
@@ -29,7 +36,6 @@ Client collegati a una VDI Windows 11 su Hyper-V; il sistema da cui deriva è in
 - **Configurazione sulla postazione** (anche protetta da PIN), orari di accensione e spegnimento,
   Wake-on-LAN, aggiornamenti di sicurezza Debian (FreeRDP escluso), pulsante web con Chromium (app, browser o
   pagina kiosk).
-- **Trasporto UDP sperimentale** con una build di FreeRDP che lo supporta.
 - Interfaccia in italiano e inglese.
 
 ## Avvio rapido
