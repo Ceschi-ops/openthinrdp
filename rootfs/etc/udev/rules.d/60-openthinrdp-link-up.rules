@@ -1,4 +1,4 @@
 # Wired adapters up as soon as they appear (cable negotiation starts earlier), and a new adapter (e.g. USB)
 # gets its configuration at once
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="en*", RUN+="/usr/sbin/ip link set %k up"
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="en*", RUN+="/usr/bin/systemd-run --no-block --collect --unit=openthinrdp-apply-%k /opt/openthinrdp/apply.sh now"
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="en*", RUN+="/usr/bin/systemd-run --no-block --collect --unit=openthinrdp-apply-%k /opt/openthinrdp/apply.sh hotplug"

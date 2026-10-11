@@ -3,8 +3,15 @@
 # USB ownership (pcscd), SSH and keyboard. Runs as root.
 #   boot = at startup (ifupdown already brought up the known adapters: only new ones are started here)
 #   now  = after a change (the adapters whose configuration changed are restarted)
+#   hotplug = a network adapter appeared (udev). During boot it does nothing: boot.sh configures the adapters
+#             found at startup, and two runs restarting the same adapter left it without an address on the
+#             first boot of a new device. Later (e.g. a USB adapter plugged in) it works like "now".
 . /opt/openthinrdp/lib/common.sh
 . "$OTR/lib/netif.sh"
+if [ "$1" = hotplug ]; then
+  systemctl is-active -q openthinrdp-boot.service || exit 0
+  set -- now
+fi
 # one apply at a time (boot, settings dialog, central configuration and udev all start it)
 exec 9>/run/openthinrdp-apply.lock; flock 9
 

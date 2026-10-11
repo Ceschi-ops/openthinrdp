@@ -273,7 +273,9 @@ session_elsewhere(){ local f=$OTR_LIB/sessions-elsewhere u
 # Why an attempt failed, to tell the user. Broker down or port closed = 141, broker name not resolved = 140,
 # and in both cases the log has NO authentication line; if it has one, the broker answered and the VM is missing.
 #   net = no address or gateway   dns = broker name not found   broker = no broker answers   vm = broker ok, no desktop
-net_ok(){ ip -4 route show default 2>/dev/null | grep -q . && [ -n "$(hostname -I 2>/dev/null | tr -d ' ')" ]; }
+# IPv4 address only: "hostname -I" may list an IPv6 one first, which is not what users or support look for
+ipv4(){ ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1; }
+net_ok(){ ip -4 route show default 2>/dev/null | grep -q . && [ -n "$(ipv4)" ]; }
 err_class(){
   case "$1" in 139|140) echo dns; return ;; esac
   if grep -qiE 'credssp|nla|license|ntlm|messageChannel|activation|redirect' /tmp/kiosk.log 2>/dev/null; then echo vm; return; fi
@@ -290,7 +292,7 @@ show_err(){ local cl=$1 u=$2 before=$3 t sup
     *)      t=$(printf "$L_T_OTHER" "$LAST_EC")"\n$sup" ;;
   esac
   yad --error $IMG --title="$TITLE" --width=520 --center --timeout=60 --timeout-indicator=bottom \
-      --text="<b>${before:+$before - }$(err_title "$cl")</b>\n\n$t\n\n<small>$(hostname)  IP $(hostname -I 2>/dev/null | awk '{print $1}')   $(date '+%d/%m %H:%M')</small>" \
+      --text="<b>${before:+$before - }$(err_title "$cl")</b>\n\n$t\n\n<small>$(hostname)  IP $(ipv4)   $(date '+%d/%m %H:%M')</small>" \
       --button="$L_OK:0" 2>/dev/null; }
 duration(){ [ "$1" -lt 120 ] && echo "$1 s" || echo "$(( $1 / 60 )) min"; }
 # Broker for attempt n: the first 2 on BROKER, then in turn on BROKER_FALLBACK, so one broken broker
@@ -444,7 +446,7 @@ while true; do
     fi
   fi
   # IP only if already there: the form does not wait for it (it is always shown in the settings dialog)
-  IPNOW=$(hostname -I 2>/dev/null | awk '{print $1}')
+  IPNOW=$(ipv4)
   # Enter in the password field presses the LAST button: Sign in goes last with the highest code
   OUT=$(yad --form $IMG --class=OtrLogin --title="$TITLE" \
         --text="<b>$L_LOGIN_HEADING</b>   [ $HOSTN${IPNOW:+  -  IP $IPNOW} ]$KTXT" \
