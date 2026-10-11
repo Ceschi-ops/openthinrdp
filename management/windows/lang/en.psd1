@@ -28,7 +28,7 @@
   ColSession             = 'Session'
   ColLastReport          = 'Last report'
   ColTransport           = 'Transport'
-  ColShareUpdate         = 'Share update'
+  ColShareUpdate         = 'Software update'
   ColWifi                = 'Wi-Fi'
   ColMac                 = 'MAC'
   ColUptime              = 'Uptime'

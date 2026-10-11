@@ -1,0 +1,49 @@
+desktop-image: "../splash.png"
+title-text: ""
+message-font: "Unifont Regular 16"
+terminal-font: "Unifont Regular 16"
+
+#help bar at the bottom
++ label {
+        top = 100%-50
+        left = 0
+        width = 100%
+        height = 20
+        text = "@KEYMAP_SHORT@"
+        align = "center"
+        color = "#a8b4c0"
+	font = "Unifont Regular 16"
+}
+
+#boot menu, under the logo
++ boot_menu {
+        left = 15%
+        width = 70%
+        top = 58%
+        height = 42%-90
+        item_color = "#a8b4c0"
+	item_font = "Unifont Regular 16"
+        selected_item_color= "#ffffff"
+	selected_item_font = "Unifont Regular 16"
+        item_height = 16
+        item_padding = 0
+        item_spacing = 8
+	icon_width = 0
+	icon_heigh = 0
+	item_icon_space = 0
+}
+
+#countdown to the live system
++ progress_bar {
+        id = "__timeout__"
+        left = 15%
+        top = 100%-80
+        height = 16
+        width = 70%
+        font = "Unifont Regular 16"
+        text_color = "#ffffff"
+        fg_color = "#1f8ce8"
+        bg_color = "#1b2733"
+        border_color = "#a8b4c0"
+        text = "@TIMEOUT_NOTIFICATION_LONG@"
+}

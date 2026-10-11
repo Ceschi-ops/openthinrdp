@@ -25,7 +25,7 @@
   ColSession             = 'Sessione'
   ColLastReport          = 'Ultimo invio'
   ColTransport           = 'Trasporto'
-  ColShareUpdate         = 'Aggiornamento dalla cartella'
+  ColShareUpdate         = 'Aggiornamento software'
   ColWifi                = 'Wi-Fi'
   ColMac                 = 'MAC'
   ColUptime              = 'Accesa da'

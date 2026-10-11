@@ -32,10 +32,12 @@ See [image/site.example/README.md](../image/site.example/README.md). In short:
 
 ## Installing
 
-Write the ISO to a USB stick with any raw image writer and boot from it (UEFI). The default menu entry starts
-the live system; **Install** runs the automatic installation, which **wipes the first internal disk without asking** (never a USB or removable disk: without an internal
-disk the installer asks)
-and reboots. With `AUTO_INSTALL=no` the usual Debian installer questions are asked.
+Write the ISO to a USB stick with any raw image writer and boot from it (UEFI). The boot menu shows your splash
+on the site colors; its first entry, **Try OpenThinRDP**, starts the live system by itself after 10 seconds and
+never writes to the disk. **Install OpenThinRDP** runs the automatic installation, which **wipes the first
+internal disk without asking** (never a USB or removable disk: without an internal disk the installer asks)
+and reboots. With `AUTO_INSTALL=no` the usual Debian installer questions are asked. The menu files are in
+`image/lb/bootloaders/grub-pc` (over live-build's templates).
 
 At the first boot of the installed system the device shrinks its initramfs to its own hardware and makes the
 boot silent; the settings dialog opens if no broker is set.

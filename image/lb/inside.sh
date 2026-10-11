@@ -56,6 +56,20 @@ for f in logo splash; do if [ -f $S/$f.png ]; then cp $S/$f.png $C/opt/openthinr
 cp $C/opt/openthinrdp/branding/splash.png $C/usr/share/plymouth/themes/openthinrdp/logo.png
 cp $B/image/lb/plymouth/openthinrdp.plymouth $C/usr/share/plymouth/themes/openthinrdp/
 sed -e "s/@TOP@/$(rgb "$(get BG_TOP)")/" -e "s/@BOTTOM@/$(rgb "$(get BG_BOTTOM)")/" $B/image/lb/plymouth/openthinrdp.script > $C/usr/share/plymouth/themes/openthinrdp/openthinrdp.script
+# boot menu of the ISO: our menu files over live-build's templates (live system first, starting by itself), and a
+# background with the splash on the site colors instead of the Debian one (live-build renders config/bootloaders/
+# splash.svg for GRUB and isolinux)
+mkdir -p config/bootloaders
+cp -a $B/image/lb/bootloaders/grub-pc config/bootloaders/
+SPL=$C/opt/openthinrdp/branding/splash.png
+SW=$(od -An -tu1 -j16 -N4 "$SPL" | awk '{print $1*16777216 + $2*65536 + $3*256 + $4}')
+SH=$(od -An -tu1 -j20 -N4 "$SPL" | awk '{print $1*16777216 + $2*65536 + $3*256 + $4}')
+IW=440; IH=$(( SH * IW / SW ))
+{ printf '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="800" height="600" viewBox="0 0 800 600">\n'
+  printf '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></linearGradient></defs>\n' "$(get BG_TOP)" "$(get BG_BOTTOM)"
+  printf '<rect width="800" height="600" fill="url(#g)"/>\n'
+  printf '<image x="%d" y="%d" width="%d" height="%d" xlink:href="data:image/png;base64,%s"/>\n</svg>\n' $(( (800 - IW) / 2 )) $(( (330 - IH) / 2 )) $IW $IH "$(base64 -w0 "$SPL")"
+} > config/bootloaders/splash.svg
 cp $S/ca/*.crt $C/etc/openthinrdp/ca/ 2>/dev/null || true
 for f in smb.cred update-key.asc authorized_keys; do [ -f $S/$f ] && cp $S/$f $C/etc/openthinrdp/; done
 cp $S/debs/*.deb config/packages.chroot/ 2>/dev/null || true
