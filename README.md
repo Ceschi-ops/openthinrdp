@@ -52,7 +52,8 @@ Clients connected to a Windows 11 VDI on Hyper-V; the system it comes from runs 
    ```
    The result is `out/openthinrdp-<version>.iso`. See [docs/building.md](docs/building.md).
 2. Write it to a USB stick (any raw image writer) and boot the thin client from it. The automatic install
-   **wipes the first disk without asking**.
+   **wipes the first internal disk without asking** (USB disks, including the installation stick, are never
+   chosen).
 3. At the first start the settings dialog opens: set the broker and the rest, or let the central settings do it.
 
 ## Documentation

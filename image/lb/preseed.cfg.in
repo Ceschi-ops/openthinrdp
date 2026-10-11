@@ -1,4 +1,4 @@
-# OpenThinRDP: automatic installation (AUTO_INSTALL=yes in build.conf). It WIPES THE FIRST DISK without asking.
+# OpenThinRDP: automatic installation (AUTO_INSTALL=yes in build.conf). It WIPES THE FIRST INTERNAL DISK without asking.
 d-i debian-installer/locale string @LOCALE@
 d-i keyboard-configuration/xkb-keymap select @KEYBOARD@
 d-i console-setup/ask_detect boolean false
@@ -28,11 +28,22 @@ d-i passwd/username string otradmin
 d-i passwd/user-password-crypted password @ADMIN_HASH@
 d-i user-setup/encrypt-home boolean false
 
-# Partitioning: the first disk (sda / nvme0n1 / mmcblk0 / vda), wiped completely
+# Partitioning: the first INTERNAL disk (nvme0n1 / mmcblk0 / sda on SATA / vda), wiped completely. USB and
+# removable disks are never chosen: the installation stick, or a USB key left plugged in, is often sda. eMMC
+# boot and RPMB areas are not disks. No internal disk = no automatic choice: the installer asks.
 d-i partman/early_command string \
-  DISK=$(list-devices disk | head -n1); \
-  debconf-set partman-auto/disk "$DISK"; \
-  debconf-set grub-installer/bootdev "$DISK"
+  DISK=""; \
+  for d in $(list-devices disk); do \
+    n=${d##*/}; \
+    case "$n" in *boot[0-9]|*rpmb) continue ;; esac; \
+    readlink -f /sys/class/block/$n | grep -q /usb && continue; \
+    [ "$(cat /sys/class/block/$n/removable 2>/dev/null)" = 1 ] && continue; \
+    DISK=$d; break; \
+  done; \
+  if [ -n "$DISK" ]; then \
+    debconf-set partman-auto/disk "$DISK"; \
+    debconf-set grub-installer/bootdev "$DISK"; \
+  fi
 d-i partman-auto/method string regular
 d-i partman-auto/choose_recipe select atomic
 d-i partman-auto/purge_lvm_from_device boolean true

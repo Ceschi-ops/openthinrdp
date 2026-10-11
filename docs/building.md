@@ -33,7 +33,8 @@ See [image/site.example/README.md](../image/site.example/README.md). In short:
 ## Installing
 
 Write the ISO to a USB stick with any raw image writer and boot from it (UEFI). The default menu entry starts
-the live system; **Install** runs the automatic installation, which **wipes the first disk without asking**
+the live system; **Install** runs the automatic installation, which **wipes the first internal disk without asking** (never a USB or removable disk: without an internal
+disk the installer asks)
 and reboots. With `AUTO_INSTALL=no` the usual Debian installer questions are asked.
 
 At the first boot of the installed system the device shrinks its initramfs to its own hardware and makes the

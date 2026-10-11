@@ -46,7 +46,7 @@ image/build.sh                           # Linux con Docker o Podman -> out/open
 ```
 
 Scrivere la ISO su una chiavetta e avviare il thin client: l'installazione automatica **cancella il primo
-disco senza chiedere**. Al primo avvio si apre la configurazione.
+disco interno senza chiedere** (mai un disco USB, nemmeno la chiavetta di installazione). Al primo avvio si apre la configurazione.
 
 La documentazione è in inglese nella cartella [docs](docs/).
 
