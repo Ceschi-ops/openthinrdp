@@ -57,6 +57,8 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   echo "SOFTWARE=$(cat "$OTR/VERSION" 2>/dev/null)"
   echo "UPDATE_VERSION=$(cat "$OTR_LIB/update-version" 2>/dev/null || echo none)"
   echo "CENTRAL_CONFIG=$(cat "$OTR_LIB/central-status" 2>/dev/null || echo 'never read')"
+  echo "UPDATE_FROM=$(cfg UPDATE_FROM)"
+  # status of the software updates, whatever the source (the name is kept for the manager)
   echo "SHARE_UPDATE=$(cat "$OTR_LIB/update/status" 2>/dev/null || echo 'never checked')"
   # last real unattended-upgrade run (dry runs discarded) and last run that installed something
   UL=/var/log/unattended-upgrades/unattended-upgrades.log; UU=""
@@ -170,12 +172,17 @@ else
     done > "$OTR_LIB/sessions-elsewhere.new" && chmod 644 "$OTR_LIB/sessions-elsewhere.new" &&
       mv -f "$OTR_LIB/sessions-elsewhere.new" "$OTR_LIB/sessions-elsewhere"
     # signed updates in updates\ (copied now, while the folder is mounted; the install runs in the background)
-    "$OTR/auto-update.sh" check "$MNT"
+    [ "$(cfg UPDATE_FROM)" = share ] && "$OTR/auto-update.sh" check "$MNT"
     umount "$MNT"
   else
     echo "$(date '+%F %T') ERROR: management folder $SHARE not reachable" >> "$LOG"
   fi
 fi
+# software updates from GitHub (asked at most every 6 hours), or none
+case "$(cfg UPDATE_FROM)" in
+  github) "$OTR/auto-update.sh" check-github ;;
+  off)    mkdir -p "$OTR_LIB/update"; echo "software updates off (UPDATE_FROM=off)" > "$OTR_LIB/update/status" ;;
+esac
 # apply the central settings (also when the folder does not answer: the last good copy is used)
 "$OTR/central-apply.sh"
 exit 0

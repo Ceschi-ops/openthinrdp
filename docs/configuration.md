@@ -66,6 +66,8 @@ microphone is then not redirected, so meeting apps do not fall back to an empty 
 |---|---|---|
 | `MGMT_SHARE` | | management folder, e.g. `\\fileserver\thinclients`, see [management.md](management.md) |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
+| `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
+| `UPDATE_GITHUB` | `Ceschi-ops/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 
 ## Web button and kiosk page

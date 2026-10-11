@@ -4,7 +4,9 @@
 #   docker run --rm -v "$PWD":/src:ro debian:trixie bash /src/tests/run-tests.sh
 set -u
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null && apt-get install -y -qq wpasupplicant iproute2 procps systemd >/dev/null 2>&1
+apt-get update -qq >/dev/null && apt-get install -y -qq wpasupplicant iproute2 procps systemd python3 gnupg sqv >/dev/null 2>&1
+# software updates are fetched from local files: no test ever talks to GitHub
+export OTR_UPDATE_BASE_URL=file:///tmp/otr-release
 cp -a /src/rootfs/. /
 OTR=/opt/openthinrdp
 chmod 755 $OTR/*.sh
@@ -123,6 +125,41 @@ $OTR/report.sh >/dev/null 2>&1
 ok "status written" '[ -s /run/openthinrdp-status.txt ]'
 ok "PIN hash not in the status" '! grep -q "$(printf 1234 | sha256sum | cut -c1-64)" /run/openthinrdp-status.txt && grep -qx "CFG_SETTINGS_PIN_SHA256=(set)" /run/openthinrdp-status.txt'
 ok "no WIFI_PSK in the status" '! grep -q WIFI_PSK /run/openthinrdp-status.txt'
+
+# --- signed software updates: throw-away keys, a "release" in local files
+export GNUPGHOME=$(mktemp -d)
+gpg -q --batch --passphrase '' --quick-gen-key "project <p@example.invalid>" ed25519 sign never 2>/dev/null
+gpg -q --batch --passphrase '' --quick-gen-key "site <s@example.invalid>" ed25519 sign never 2>/dev/null
+gpg -q --batch --passphrase '' --quick-gen-key "stranger <x@example.invalid>" ed25519 sign never 2>/dev/null
+mkdir -p $OTR/keys; gpg -q --armor --export p@example.invalid > $OTR/keys/openthinrdp-release.asc
+gpg -q --armor --export s@example.invalid > /etc/openthinrdp/update-key.asc
+echo 0.1.0 > $OTR/VERSION
+# release VERSION signed by KEY into DIR
+release(){ local v=$1 k=$2 d=$3 s; s=$(mktemp -d); rm -rf "$d"; mkdir -p "$d"
+  printf '#!/bin/bash\nexit 0\n' > $s/install.sh; tar -czf "$d/openthinrdp-update-$v.tar.gz" -C $s .
+  printf 'version=%s\nfile=openthinrdp-update-%s.tar.gz\nsha256=%s\n' "$v" "$v" "$(sha256sum < "$d/openthinrdp-update-$v.tar.gz" | cut -c1-64)" > "$d/LATEST.txt"
+  gpg -q --batch --yes --local-user "$k" --armor --detach-sign -o "$d/LATEST.txt.sig" "$d/LATEST.txt"; }
+U=$OTR_LIB/update; gh(){ rm -f $U/github-checked; $OTR/auto-update.sh check-github; }
+release 0.2.0 x@example.invalid /tmp/otr-release; gh
+ok "github: a release signed by another key is ignored" 'grep -q "^IGNORED: invalid signature" $U/status && [ ! -d $U/pkg-0.2.0 ]'
+release 0.2.0 s@example.invalid /tmp/otr-release; gh
+ok "github: the site key is not enough" 'grep -q "^IGNORED: invalid signature" $U/status'
+release 0.0.9 p@example.invalid /tmp/otr-release; gh
+ok "github: older than the image (no update installed yet) is ignored" 'grep -q "older: ignored" $U/status'
+release 0.2.0 p@example.invalid /tmp/otr-release; gh
+ok "github: a release signed by the project key is taken" 'grep -q "^found 0.2.0 (github)" $U/status && [ -f $U/pkg-0.2.0/install.sh ]'
+echo x > $U/status; $OTR/auto-update.sh check-github
+ok "github: asked again only after 6 hours" '[ "$(cat $U/status)" = x ]'
+rm -rf /tmp/otr-release; gh
+ok "github: not reachable is retried at the next run" 'grep -q "not reachable" $U/status && [ ! -f $U/github-checked ]'
+rm -rf $U/pkg-* $U/attempts-*
+mkdir -p /tmp/share; release 0.3.0 s@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
+ok "share: the site key is accepted" 'grep -q "^found 0.3.0 (share)" $U/status'
+rm -rf $U/pkg-* $U/attempts-*
+release 0.3.1 p@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
+ok "share: a release copied by the manager (project key) is accepted" 'grep -q "^found 0.3.1 (share)" $U/status'
+ok "UPDATE_FROM share needs a management folder" '! check x "$(printf "UPDATE_FROM=share\nMGMT_SHARE=\n")"'
+ok "UPDATE_GITHUB must be owner/repository" '! check x "UPDATE_GITHUB=not a repo"'
 
 echo "passed $PASS, failed $FAIL"
 [ $FAIL = 0 ]

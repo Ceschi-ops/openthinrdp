@@ -61,12 +61,27 @@ was used revokes those keys and brings back the image ones.
 
 ## Signed updates
 
-Devices install a package from `updates\` only if `LATEST.txt` carries a valid signature of the key in
-`/etc/openthinrdp/update-key.asc` (from `image/site/update-key.asc`), the hash matches, and the version is
-newer than the installed one. Installation runs in the background and never interrupts a session: the new
-kiosk starts at the next sign-in. Three failed attempts per version at most.
+Software updates (kiosk, FreeRDP with UDP, fixes) come from where `UPDATE_FROM` says:
 
-Create the key once, on a machine you trust, and keep the private part offline:
+| `UPDATE_FROM` | Source | Signature accepted |
+|---|---|---|
+| `github` (default) | the latest release of `UPDATE_GITHUB` (not pre-releases), asked every 6 hours | the project key only |
+| `share` | `updates\` in the management folder: you decide when the devices get a version | the project key, or your own key |
+| `off` | none | |
+
+The project key is `/opt/openthinrdp/keys/openthinrdp-release.asc`, in the image and in every update. A
+device installs a package only if `LATEST.txt` carries a valid signature, the hash of the package matches, and
+the version is newer than the installed one (or than the image, when no update was installed yet).
+Installation runs in the background and never interrupts a session: the new kiosk starts at the next sign-in.
+Three failed attempts per version at most. The status file shows the source (`UPDATE_FROM`) and the result.
+
+**A fleet you manage**: set `UPDATE_FROM=share` in `config\common.conf` and `UPDATE_FROM=github` in the
+`config\<hostname>.conf` of one or two pilot devices. When the pilots are fine with a release, copy its three
+files (`LATEST.txt`, `LATEST.txt.sig`, `openthinrdp-update-<version>.tar.gz`) into `updates\`: every device
+checks the project signature itself, nothing has to be re-signed.
+
+**Your own packages** (changes of yours, or your site files) need your own key, built into your image as
+`/etc/openthinrdp/update-key.asc`. Create it once, on a machine you trust, and keep the private part offline:
 
 ```
 gpg --quick-gen-key "Thin client updates <it@example.com>" ed25519 sign never
