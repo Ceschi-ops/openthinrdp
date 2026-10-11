@@ -373,15 +373,14 @@ session(){
     # Exception: code 1 below 20 s stays an attempt (seen once while re-entering a session: with the shutdown
     # page the countdown would have switched the device off)
     if [ "$d" -ge "$thr" ] && ! { [ "$ec" = 1 ] && [ "$d" -lt 20 ]; }; then
-      # Code 1 ("disconnection initiated by an administrative tool on the server") is also what the server
-      # sends when a reconnection fails or when re-entering a disconnected session goes wrong; a user
-      # disconnect from Windows ends with 12. A single code 1 counts as a drop (reconnect); a second one
-      # within 5 minutes means the server insists (VM shutting down, administrator): deliberate.
-      if [ "$ec" = 1 ]; then
-        if [ $(( $(date +%s) - ${LAST_EC1:-0} )) -gt 300 ]; then
-          LAST_EC1=$(date +%s); ev "session of $U closed by the server after $(duration $d) (code 1): reconnecting once"; return 3
-        fi
-        ev "session of $U closed by the server again within 5 minutes (code 1): treated as deliberate"
+      # Code 1 ("disconnection initiated by an administrative tool on the server") means: an administrator
+      # disconnected the session, or the VM is shutting down or restarting. Both must end on the shutdown page,
+      # never reconnect (the administrator would see the user come straight back, the VM would be started again).
+      # The server also sends it when it closes a session the kiosk has just reopened after a drop: only then,
+      # within 2 minutes of the automatic reconnection and once every 5 minutes, it counts as one more drop.
+      # (A user disconnect or sign out from Windows ends with 12.)
+      if [ "$ec" = 1 ] && [ "$3" = reconnect ] && [ "$d" -lt 120 ] && [ $(( $(date +%s) - ${LAST_EC1:-0} )) -gt 300 ]; then
+        LAST_EC1=$(date +%s); ev "session of $U closed by the server $(duration $d) after the automatic reconnection (code 1): reconnecting once more"; return 3
       fi
       if deliberate "$ec"; then ev "session of $U ended after $(duration $d) ($(reason "$ec"), code $ec)"; return 0; fi
       ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting"; return 3
