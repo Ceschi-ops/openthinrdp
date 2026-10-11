@@ -71,7 +71,8 @@ Software updates (kiosk, FreeRDP with UDP, fixes) come from where `UPDATE_FROM` 
 | `share` | `updates\` in the management folder: you decide when the devices get a version | the project key, or your own key |
 | `off` | none | |
 
-The project key is `/opt/openthinrdp/keys/openthinrdp-release.asc`, in the image and in every update. A
+The project key is `/opt/openthinrdp/keys/openthinrdp-release.asc`, in the image and in every update
+(fingerprint `8552 734B 5C1B 67D7 C576 F1AB 79B2 3AE6 1CD4 F6AF`, see [SECURITY.md](../SECURITY.md)). A
 device installs a package only if `LATEST.txt` carries a valid signature, the hash of the package matches, and
 the version is newer than the installed one (or than the image, when no update was installed yet).
 Installation runs in the background and never interrupts a session: the new kiosk starts at the next sign-in.
