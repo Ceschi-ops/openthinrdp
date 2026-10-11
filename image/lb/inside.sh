@@ -15,7 +15,7 @@ mkdir -p /lb && cd /lb
 # otherwise the installer starts without the preseed and stops at the first question
 CFG=(--distribution trixie --architectures amd64
   --archive-areas "main contrib non-free non-free-firmware" --backports true
-  --debian-installer live --debian-installer-gui false --memtest none
+  --debian-installer live --debian-installer-gui false --memtest none --loadlin false --win32-loader false
   # FIRMWARE=all: every firmware package, so the image runs on any PC (the downloadable ISO);
   # FIRMWARE=thinclient: only the set in packages.list, ~600 MB less. The installer copy of the firmware is
   # never needed: the installation is offline. No recommended packages, fast compression.
