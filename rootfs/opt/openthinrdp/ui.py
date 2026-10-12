@@ -232,7 +232,15 @@ if MODE == 'message':
             bar.set_fraction(left / T); return True
         tick(); GLib.timeout_add(100, tick)
     if A.progress:
-        # the yad progress protocol on stdin: a number = percent, "# text" = text; end of input = done
+        # the yad progress protocol on stdin: a number = percent, "# text" = text; 100 or end of input = done.
+        # Between two steps the bar keeps moving slowly towards the next one, so it never looks stuck.
+        st = {'target': 0.0, 'shown': 0.0}
+        def creep():
+            cap = min(st['target'] + 25.0, 95.0)
+            if st['shown'] < cap:
+                st['shown'] += max(0.05, (cap - st['shown']) * 0.012)
+            bar.set_fraction(min(st['shown'], 100.0) / 100.0); return True
+        GLib.timeout_add(100, creep)
         def on_input(src, cond):
             line = sys.stdin.readline()
             if not line:
@@ -241,8 +249,11 @@ if MODE == 'message':
             if line.startswith('#'):
                 tx.set_text(line[1:].strip())
             else:
-                try: bar.set_fraction(max(0, min(100, float(line))) / 100.0)
-                except ValueError: pass
+                try: v = max(0.0, min(100.0, float(line)))
+                except ValueError: return True
+                st['target'] = v; st['shown'] = max(st['shown'], v)
+                if v >= 100:
+                    bar.set_fraction(1.0); GLib.timeout_add(250, lambda: leave(0) or False); return False
             return True
         GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP, on_input)
     if A.update:

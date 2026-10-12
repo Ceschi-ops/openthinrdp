@@ -417,10 +417,20 @@ session(){
     wp=$!
     {
       echo "8"; echo "# $txt  ($(printf "$L_P_ATTEMPT" "$att")$([ "$B" != "$BRHA" ] && echo ", $B"))"
-      local s1=0 s2=0 n=0 seen=0 lost=0 tcponly=0 fp
+      # Progress from what really happens (FreeRDP logs almost nothing at its usual level): connected to the broker,
+      # redirected to the virtual machine (a connection to another address), the desktop window on screen. With the
+      # window the screen closes (100); a closed screen must not end this loop (watchdog): writes ignore SIGPIPE.
+      trap '' PIPE
+      local s1=0 s2=0 s3=0 n=0 seen=0 lost=0 tcponly=0 fp ips first=""
       while kill -0 $xp 2>/dev/null; do
-        if [ $s1 -eq 0 ] && grep -qiE 'credssp|nla|license|ntlm' /tmp/kiosk.log; then echo "35"; echo "# $L_P_AUTH"; s1=1; fi
-        if [ $s2 -eq 0 ] && grep -qiE 'messageChannel|activation|graphics|redirect|DisplayControl' /tmp/kiosk.log; then echo "70"; echo "# $L_P_STARTING"; s2=1; fi
+        fp=$(pgrep -P $xp -x xfreerdp3 | head -1)
+        if [ -n "$fp" ] && [ $s3 -eq 0 ]; then
+          ips=$(ss -tnpH state established 2>/dev/null | grep "pid=$fp," | awk '{print $4}' | sed 's/:[0-9]*$//' | sort -u)
+          [ -z "$first" ] && first=$(echo "$ips" | head -1)
+          if [ $s1 -eq 0 ] && [ -n "$ips" ]; then echo "30"; echo "# $L_P_AUTH"; s1=1; fi
+          if [ $s2 -eq 0 ] && [ -n "$first" ] && echo "$ips" | grep -qvx "$first"; then echo "65"; echo "# $L_P_STARTING"; s2=1; fi
+          if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then echo "# $L_P_READY"; echo "100"; s3=1; fi
+        fi 2>/dev/null
         sleep 0.4; n=$((n + 1))
         # Watchdog, every ~5 s: FreeRDP alive but without any TCP connection for 60 s = stuck. Seen with USB
         # redirection: a USB hotplug event during the disconnect deadlocks urbdrc against drdynvc and the
