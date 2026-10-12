@@ -3,6 +3,12 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- FreeRDP gets 20 s instead of 30 to bring a connection up: a broker that accepts the connection and then hangs
+  costs this much on every attempt before the next broker is tried. Still above the 15 s a broker took to prepare
+  a virtual machine.
+
 ## 0.1.4 (2026-10-12)
 
 - **The project moved to the OpenThinRDP organization**: https://github.com/OpenThinRdp/openthinrdp, website

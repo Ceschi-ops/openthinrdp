@@ -245,9 +245,9 @@ connect(){
   # /timeout: FreeRDP's TcpAckTimeout, 9 s by default, bounds two things: how long the connection may take to
   # become active (a broker preparing a virtual machine took 15 s, and the client gave up at 9 s) and how long the
   # TCP connection beside the UDP tunnel may go unacknowledged (on a line losing 60-70% of the packets the TCP
-  # connection was given up at 9 s while the UDP tunnel still carried the session). A dead network still ends a
-  # UDP session within 16 s (peer timeout of the tunnel).
-  o+=(/timeout:30000)
+  # connection was given up at 9 s while the UDP tunnel still carried the session). 20 s and no more: a broker
+  # that accepts the connection and then hangs costs this much on every attempt before the next one.
+  o+=(/timeout:20000)
   if [ $HASUDP = 1 ] && [ "$(cfg TRANSPORT)" != tcp ]; then o+=(/network:auto)
   elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
   else o+=(/network:lan); fi
