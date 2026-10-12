@@ -105,7 +105,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `LOGO` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs. A logo in the management folder wins, see [management.md](management.md#logo-and-background-picture) |
 | `BG_TOP`, `BG_BOTTOM` | `#1b2733`, `#000000` | background gradient (boot splash and behind the form) |
 | `SUPPORT_TEXT` | | extra line in error messages, e.g. "Call the IT desk, ext. 123" |
-| `SETTINGS_PIN_SHA256` | | protects the settings dialog: `printf 1234 \| sha256sum`. Never shown in the status files |
+| `SETTINGS_PIN_SHA256` | | protects the settings dialog. Set it from the manager, which stores `pbkdf2-sha256:<iterations>:<salt>:<key>` (salted PBKDF2-SHA256); by hand: `python3 -c 'import hashlib,os,sys; s=os.urandom(16); print("pbkdf2-sha256:600000:"+s.hex()+":"+hashlib.pbkdf2_hmac("sha256",sys.argv[1].encode(),s,600000).hex())' 123456`. The plain SHA-256 of 0.1.4 and earlier still works. Never shown in the status files |
 
 `HOSTNAME`, `DEFAULT_USER`, `NETMODE` and `IPADDR` identify a device: in central settings they are accepted
 only in `config\<hostname>.conf`, never in `config\common.conf`.

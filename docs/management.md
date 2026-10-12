@@ -34,9 +34,28 @@ The devices log in with `/etc/openthinrdp/smb.cred` (root only). Two ways to get
   domain=EXAMPLE
   ```
 
-Every device can read this password, so use an account that can **only** read and write this folder: not a
-member of Domain Users, Modify on the folder, nothing else. Check from a device that the account cannot list
-or write anything outside it.
+Every device can read this password, so use an account that can do as little as possible: not a member of
+Domain Users, no rights outside this folder, and inside it **write access to `status\` only**. A device only
+writes its status and events there; settings, branding and updates it only reads. So a stolen device gives
+its holder an account that can fill `status\` with nonsense, but cannot change the settings of the other
+devices or put anything in `updates\`.
+
+| folder | devices' account | administrators |
+|---|---|---|
+| the management folder itself | Read (to list and open the subfolders) | Full control |
+| `status\` | Modify | Full control |
+| `config\` (with `branding\`) | Read | Full control |
+| `updates\` | Read | Full control |
+
+With PowerShell on the file server (example account `EXAMPLE\svc-thinclients`, folder `D:\thinclients`):
+
+```powershell
+icacls D:\thinclients /grant "EXAMPLE\svc-thinclients:(OI)(CI)RX"
+icacls D:\thinclients\status /grant "EXAMPLE\svc-thinclients:(OI)(CI)M"
+```
+
+Check from a device that the account cannot write in `config\` or `updates\`, nor list anything outside the
+folder.
 
 ## Central settings
 

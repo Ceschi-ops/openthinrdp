@@ -110,7 +110,15 @@ public static class OtrCrypto {
         }
         return Hex(key, 32);
     }
-    // the settings PIN as kiosk.sh checks it: printf '%s' "$pin" | sha256sum
+    // the settings PIN as kiosk.sh checks it (pin_match): pbkdf2-sha256:<iterations>:<salt>:<key>, salted and slow
+    public static string Pin(string pin) {
+        byte[] salt = new byte[16];
+        using (RandomNumberGenerator r = RandomNumberGenerator.Create()) { r.GetBytes(salt); }
+        using (Rfc2898DeriveBytes k = new Rfc2898DeriveBytes(Encoding.UTF8.GetBytes(pin), salt, 600000, HashAlgorithmName.SHA256)) {
+            return "pbkdf2-sha256:600000:" + Hex(salt, salt.Length) + ":" + Hex(k.GetBytes(32), 32);
+        }
+    }
+    // the settings PIN of 0.1.4 and earlier: printf '%s' "$pin" | sha256sum
     public static string Sha256(string text) {
         using (SHA256 s = SHA256.Create()) { byte[] d = s.ComputeHash(Encoding.UTF8.GetBytes(text)); return Hex(d, d.Length); }
     }
@@ -387,10 +395,10 @@ function Test-EffectiveConfig($r, $status) {
 }
 
 function Get-WpaKey([string]$passphrase, [string]$ssid) { [OtrCrypto]::WpaPsk($passphrase, $ssid) }
-function Get-PinHash([string]$pin) { [OtrCrypto]::Sha256($pin) }
+function Get-PinHash([string]$pin) { [OtrCrypto]::Pin($pin) }
 # what the user typed in a secret cell -> what goes to the file (MarkSaved/MarkSet = keep the previous one)
 function ConvertTo-WpaKey($v, $ssid) { if ($v -cmatch $script:Rx.Hex64) { $v.ToLower() } else { Get-WpaKey $v $ssid } }
-function ConvertTo-PinHash($v) { if ($v -eq '') { '' } elseif ($v -cmatch $script:Rx.Hex64) { $v.ToLower() } else { Get-PinHash $v } }
+function ConvertTo-PinHash($v) { if ($v -eq '') { '' } elseif ($v -cmatch $script:Rx.Hex64 -or $v -cmatch '^pbkdf2-sha256:[0-9]{4,7}:[0-9a-f]{32}:[0-9a-f]{64}$') { $v.ToLower() } else { Get-PinHash $v } }
 function Format-Value($k, $v) {
   if ($null -eq $v) { Get-Text 'ValNotManaged' }
   elseif ($k -eq 'WIFI_PSK') { Get-Text 'ValWpaKey' }
@@ -589,7 +597,7 @@ function Write-ConfFile($f, $managed, [string[]]$header, $renameMac = $null) {
     $a = if ($before.Contains($k)) { $before[$k] } else { '(not managed)' }
     $b = if ($after.Contains($k)) { $after[$k] } else { '(not managed)' }
     if ($a -cne $b) {
-      if ($k -in 'WIFI_PSK', 'SETTINGS_PIN_SHA256') { $a = $a -replace '^[0-9a-f]{64}$', '(hash)'; $b = $b -replace '^[0-9a-f]{64}$', '(new hash)' }
+      if ($k -in 'WIFI_PSK', 'SETTINGS_PIN_SHA256') { $a = $a -replace '^([0-9a-f]{64}|pbkdf2-sha256:.*)$', '(hash)'; $b = $b -replace '^([0-9a-f]{64}|pbkdf2-sha256:.*)$', '(new hash)' }
       $diff += "$k`: $a -> $b"
     }
   }

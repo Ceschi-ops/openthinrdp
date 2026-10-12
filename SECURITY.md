@@ -21,5 +21,22 @@ ed25519, fingerprint 8552 734B 5C1B 67D7 C576  F1AB 79B2 3AE6 1CD4 F6AF
 ```
 
 A device installs nothing whose `LATEST.txt` is not signed by it (or by your own key, for your own packages
-in your management folder). If the key ever has to be replaced, the new one comes with an update signed by
-the old one, and the old one is revoked here.
+in your management folder).
+
+### Replacing or revoking the key
+
+Devices check signatures with `sqv` against `/opt/openthinrdp/keys/openthinrdp-release.asc`, which may hold
+more than one key, and `sqv` honours a revocation stored in the same file. So a key is replaced through the
+update channel itself, with no hands on the devices:
+
+1. **Planned replacement.** Release *N*, signed with the old key, ships a key file with the old **and** the new
+   public key. From release *N+1* packages are signed with the new key only. Once the devices you care about
+   report release *N* or later in their management folder, a later release drops the old key.
+2. **Compromised key.** Release *N*, signed with the old key, ships the new public key and the **revocation
+   certificate** of the old one (kept offline since the key was created). Devices accept it because it is
+   signed by a key they still trust; from then on they reject anything signed by the old key. It is announced
+   in a security advisory and here, with both fingerprints.
+3. A device that missed release *N* (off for a long time) still trusts only the old key: update it from a
+   management folder with release *N*, or reinstall it from a current ISO.
+
+The same steps apply to your own key (`update-key.asc` in your image) for packages you sign yourself.

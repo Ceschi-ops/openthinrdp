@@ -278,12 +278,23 @@ combo(){ local cur=$1 i out=""; local -n vs=$2 ls=$3
 # unlabel LABEL VALUES_ARRAY LABELS_ARRAY: the value behind a label chosen in a combo
 unlabel(){ local lab=$1 i; local -n vs=$2 ls=$3
   for i in "${!ls[@]}"; do [ "${ls[$i]}" = "$lab" ] && { echo "${vs[$i]}"; return; }; done; echo "${vs[0]}"; }
-# the settings can be protected by a PIN (SETTINGS_PIN_SHA256): anyone at the device could change the broker
+# the settings can be protected by a PIN (SETTINGS_PIN_SHA256): anyone at the device could change the broker.
+# The value is pbkdf2-sha256:<iterations>:<salt>:<key> (salted and slow: a short PIN is not reversed in seconds
+# by whoever gets the settings file) or, as set by 0.1.4 and earlier, the plain SHA-256 of the PIN.
+pin_match(){ # PIN on stdin, stored value in $1
+  case "$1" in
+    pbkdf2-sha256:*) python3 -c 'import hashlib, hmac, sys
+_, it, salt, key = sys.argv[1].split(":")
+d = hashlib.pbkdf2_hmac("sha256", sys.stdin.read().encode(), bytes.fromhex(salt), int(it)).hex()
+sys.exit(0 if hmac.compare_digest(d, key) else 1)' "$1" 2>/dev/null ;;
+    *) [ "$(sha256sum | cut -c1-64)" = "$1" ] ;;
+  esac
+}
 pin_ok(){
   local h p; h=$(cfg SETTINGS_PIN_SHA256); [ -z "$h" ] && return 0
   # Enter in the entry field presses the LAST button: OK goes last
   p=$(yad --entry --hide-text $IMG --title="$TITLE" --center --text="$L_PIN_ASK" --button="$L_CANCEL:1" --button="$L_OK:0" 2>/dev/null) || return 1
-  [ "$(printf '%s' "$p" | sha256sum | cut -c1-64)" = "$h" ] && return 0
+  printf '%s' "$p" | pin_match "$h" && return 0
   ev "settings: wrong PIN"; yad --error --center --timeout=3 --text="$L_PIN_WRONG" 2>/dev/null; return 1
 }
 settings_dialog(){

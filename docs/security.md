@@ -29,15 +29,19 @@ keyboard is untrusted and that the management folder is readable by the devices 
 
 ## Known limits
 
-- `smb.cred` is on every device: a stolen device gives its holder that account. Give it access to the
-  management folder only, and change the password if a device is lost (`MGMT_PASSWORD` in the central
-  settings rotates it on every device that can still reach the folder).
-- The management folder is trusted: whoever can write it can change the settings of every device (within
-  the validation rules) and can make devices mount another folder. Updates still need your signature.
+- `smb.cred` is on every device: a stolen device gives its holder that account. Give it write access to
+  `status\` only and read access to the rest of the management folder ([management.md](management.md#account)):
+  then that account cannot change the settings of the other devices nor offer them anything to install. Change
+  the password if a device is lost (`MGMT_PASSWORD` in the central settings rotates it on every device that can
+  still reach the folder).
+- The management folder is trusted: whoever can write `config\` can change the settings of every device
+  (within the validation rules) and can make devices mount another folder. Updates still need your signature.
 - `RDP_CERT=ignore` accepts any server certificate. The default `tofu` trusts the first certificate seen per
   server; `verify` requires certificates trusted by the system.
-- The PIN is a speed bump, not a vault: a short PIN hashed with SHA-256 can be brute-forced by anyone who
-  gets the device settings file.
+- The PIN is a speed bump, not a vault. The manager stores it salted and stretched (PBKDF2-SHA256, 600,000
+  iterations, about 0.2 s per try on a thin client): a 6-digit PIN takes days to brute-force from a stolen
+  settings file, a 4-digit one less than an hour, so use 6 digits or more. A PIN set by 0.1.4 or earlier is a
+  plain SHA-256 and still works; set it again from the manager to store it the new way.
 - Physical access to the disk (no encryption) gives access to everything stored on the device.
 
 Report security problems privately to the maintainers (GitHub security advisories) rather than in a public issue.

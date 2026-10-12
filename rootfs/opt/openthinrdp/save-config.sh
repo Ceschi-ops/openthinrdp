@@ -148,7 +148,7 @@ V[TITLE]=$(get TITLE); textok "${V[TITLE]}" || err "$V_TITLE"
 V[SUPPORT_TEXT]=$(get SUPPORT_TEXT); textok "${V[SUPPORT_TEXT]}" || err "$V_SUPPORT"
 V[LOGO]=$(get LOGO); [[ ${V[LOGO]} =~ ^(/[A-Za-z0-9._/-]+\.png)?$ ]] || err "$V_LOGO"
 for k in BG_TOP BG_BOTTOM; do V[$k]=$(get $k); [[ ${V[$k]} =~ ^#[0-9a-fA-F]{6}$ ]] || err "$V_COLOR $k"; done
-V[SETTINGS_PIN_SHA256]=$(low "$(get SETTINGS_PIN_SHA256)"); [[ ${V[SETTINGS_PIN_SHA256]} =~ ^([0-9a-f]{64})?$ ]] || err "$V_PIN"
+V[SETTINGS_PIN_SHA256]=$(low "$(get SETTINGS_PIN_SHA256)"); [[ ${V[SETTINGS_PIN_SHA256]} =~ ^([0-9a-f]{64}|pbkdf2-sha256:[0-9]{4,7}:[0-9a-f]{32}:[0-9a-f]{64})?$ ]] || err "$V_PIN"
 
 if [ -n "$E" ]; then printf '%b' "$E"; exit 1; fi
 for k in SESSION_THRESHOLD SHUTDOWN_SECS KIOSK_RELOAD_MIN; do V[$k]=$((10#${V[$k]})); done
