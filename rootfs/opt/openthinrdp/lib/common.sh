@@ -23,6 +23,11 @@ cfg_num(){ local v; v=$(cfg "$1"); [[ $v =~ ^[0-9]{1,6}$ ]] && echo $((10#$v)) |
 # every key that a configuration file may contain (the ones documented in defaults.conf + HOSTNAME)
 cfg_keys(){ echo HOSTNAME; grep -oE '^[A-Z][A-Z0-9_]*=' "$OTR_DEFAULTS" | tr -d '='; }
 
+# logo and boot image in use: the ones of the management folder (branding.sh) when there, otherwise LOGO and
+# the image's own
+otr_logo(){ if [ -f "$OTR_LIB/branding/logo.png" ]; then echo "$OTR_LIB/branding/logo.png"; else cfg LOGO; fi; }
+otr_splash(){ if [ -f "$OTR_LIB/branding/splash.png" ]; then echo "$OTR_LIB/branding/splash.png"; else echo "$OTR/branding/splash.png"; fi; }
+
 # event log: one line per event, English, sent to the management folder by report.sh
 ev(){ echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$OTR_EVENTS" 2>/dev/null; }
 

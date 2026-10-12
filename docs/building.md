@@ -21,8 +21,8 @@ builds them with `image/freerdp/build-debs.sh` (15-40 minutes, once: they stay i
 See [image/site.example/README.md](../image/site.example/README.md). In short:
 
 - `build.conf`: `FIRMWARE` (`all`, the default: runs on any PC; `thinclient`: only the usual thin client firmware,
-  about 600 MB less), `INCLUDE_BROWSER`, installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (console password
-  of `otradmin`, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`openthinrdp`, the
+  about 600 MB less), `INCLUDE_BROWSER`, installer language (`LOCALE`), `TIMEZONE`, `KEYBOARD`, `ADMIN_PASSWORD_HASH` (password
+  of `otradmin` for `su` in the Terminal of the settings dialog, from `mkpasswd -m yescrypt`; empty = SSH key only), `FREERDP_FROM` (`openthinrdp`, the
   default: FreeRDP with UDP, see [udp.md](udp.md); `backports`, `debian` or `site`), `AUTO_INSTALL`.
 - `site.conf`: default settings of every device.
 - `logo.png` (~200 px, dialogs), `splash.png` (~640 px, transparent, boot screen).
@@ -46,6 +46,6 @@ boot silent; the settings dialog opens if no broker is set.
 
 | Account | Purpose |
 |---|---|
-| `kiosk` | runs the X session and the kiosk, logs in automatically, no password, may only run `save-config.sh` as root |
-| `otradmin` | administration: SSH with a key (`SSH=on`), console with `ADMIN_PASSWORD_HASH`, sudo |
+| `kiosk` | runs the X session and the kiosk, logs in automatically on tty1, locked password, may only run `save-config.sh` as root |
+| `otradmin` | administration: SSH with a key (`SSH=on`), or `su otradmin` in the Terminal of the settings dialog with `ADMIN_PASSWORD_HASH`, sudo |
 | `root` | locked |

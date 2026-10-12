@@ -17,7 +17,9 @@ HOSTF=$OTR_LIB/central-host.conf
 MANAGED=$OTR_LIB/central-managed
 # keys that only the file of a single device may set (they identify the device)
 HOST_ONLY="HOSTNAME DEFAULT_USER NETMODE IPADDR"
-KEYS="$(cfg_keys | tr '\n' ' ')WIFI_PSK"
+KEYS="$(cfg_keys | tr '\n' ' ')WIFI_PSK MGMT_PASSWORD"
+# secrets: compared through their hash (save-config.sh --print), applied with the value of the central file
+SECRETS="WIFI_PSK MGMT_PASSWORD"
 
 [ -f "$COMMON" ] || [ -f "$HOSTF" ] || [ -s "$MANAGED" ] || { echo "no central configuration" > "$ST"; exit 0; }
 
@@ -40,7 +42,7 @@ T=$(mktemp); E=$(mktemp); chmod 600 "$T" "$E"; trap 'rm -f "$T" "$E"' EXIT
 # HOSTNAME and WIFI_PSK are not stored in the settings file and stay as they are.
 RELEASED=""
 for k in $(cat "$MANAGED" 2>/dev/null); do
-  [ -z "${GIVEN[$k]+x}" ] && [ "$k" != HOSTNAME ] && [ "$k" != WIFI_PSK ] && grep -q "^$k=" "$OTR_CONF" && RELEASED="$RELEASED $k"
+  [ -z "${GIVEN[$k]+x}" ] && [ "$k" != HOSTNAME ] && [[ " $SECRETS " != *" $k "* ]] && grep -q "^$k=" "$OTR_CONF" && RELEASED="$RELEASED $k"
 done
 if [ -n "$RELEASED" ]; then
   cp -p "$OTR_CONF" "$OTR_CONF.central-backup"
@@ -75,9 +77,11 @@ else
   for k in $KEYS; do [ "${NEW[$k]}" != "${CUR[$k]}" ] && DIFF="$DIFF $k"; done
   if [ -z "$DIFF" ]; then echo "in line $(date '+%Y-%m-%d %H:%M')" > "$ST"; rm -f "$OTR_LIB/central-rejected"; exit 0; fi
   # only the keys that differ go to save-config: the others keep following site.conf and the defaults
-  for k in $DIFF; do echo "$k=${NEW[$k]}"; done > "$T"
+  # (a secret goes as written in the central file: its stored form here is only a hash)
+  for k in $DIFF; do if [[ " $SECRETS " == *" $k "* ]]; then echo "$k=${GIVEN[$k]}"; else echo "$k=${NEW[$k]}"; fi; done > "$T"
   MSG=$("$OTR/save-config.sh" "$T" 2>&1) && {
-    ev "central configuration applied:${DIFF/ WIFI_PSK/ WIFI_PSK(hidden)}"
+    SHOWN=$DIFF; for s in $SECRETS; do SHOWN=${SHOWN/ $s/ $s(hidden)}; done
+    ev "central configuration applied:$SHOWN"
     echo "applied $(date '+%Y-%m-%d %H:%M'):$DIFF" > "$ST"
     rm -f "$OTR_LIB/central-rejected"
     exit 0; }

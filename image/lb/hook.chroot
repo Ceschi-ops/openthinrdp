@@ -18,7 +18,9 @@ esac
 # accounts: "kiosk" runs the X session without a password; "otradmin" administers (the Debian installer reserves "admin") (SSH with a key, sudo)
 id kiosk >/dev/null 2>&1 || useradd -m -s /bin/bash kiosk
 usermod -aG plugdev,video,audio,dialout,input kiosk
-passwd -d kiosk >/dev/null; usermod -s /bin/bash kiosk
+# locked, NOT empty: the automatic login on tty1 does not need a password, while an empty one would let anybody
+# log in as kiosk on a console
+passwd -l kiosk >/dev/null; usermod -s /bin/bash kiosk
 id otradmin >/dev/null 2>&1 || useradd -m -s /bin/bash otradmin
 usermod -aG sudo otradmin
 if [ -n "$ADMIN_PASSWORD_HASH" ]; then usermod -p "$ADMIN_PASSWORD_HASH" otradmin; else usermod -p '!' otradmin; fi

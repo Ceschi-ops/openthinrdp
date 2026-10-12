@@ -7,9 +7,18 @@ export DISPLAY=${DISPLAY:-:0}
 for i in $(seq 1 200); do xset q >/dev/null 2>&1 && break; sleep 0.1; done
 
 # Same picture as the boot splash, then Plymouth quits leaving it on screen: no black gap before the form
-SPLASH=$OTR/branding/splash.png
 background(){ command -v hsetroot >/dev/null && hsetroot -add "$(cfg BG_TOP)" -add "$(cfg BG_BOTTOM)" -gradient 0 -center "$SPLASH" 2>/dev/null; }
-background
+# title, logo and background, read again before every form: a logo or boot image of the management folder
+# (branding.sh) and new colors show up without restarting the kiosk
+LOOK=""
+look(){
+  local now
+  TITLE=$(cfg TITLE); LOGO=$(otr_logo); IMG=""; [ -f "$LOGO" ] && IMG="--image=$LOGO"
+  SPLASH=$(otr_splash)
+  now="$SPLASH $(stat -c %Y "$SPLASH" 2>/dev/null) $(cfg BG_TOP) $(cfg BG_BOTTOM)"
+  [ "$now" = "$LOOK" ] || { LOOK=$now; background; }
+}
+look
 sudo -n /usr/bin/plymouth quit --retain-splash 2>/dev/null
 xset s off -dpms s noblank 2>/dev/null
 numlockx on 2>/dev/null            # FreeRDP sends the NumLock state to Windows when connecting
@@ -28,7 +37,7 @@ monitor_watch(){
       ev "monitor connected without picture: enabled"
       xrandr --auto 2>/dev/null; sleep 1
       xset s off -dpms s noblank 2>/dev/null
-      background
+      SPLASH=$(otr_splash); background
       # the form was drawn for the wrong resolution: close it, the main loop draws it again
       pgrep -x xfreerdp3 >/dev/null || pkill -f -- '--class=OtrLogin' 2>/dev/null
     fi
@@ -36,7 +45,6 @@ monitor_watch(){
 }
 monitor_watch &
 
-TITLE=$(cfg TITLE); LOGO=$(cfg LOGO); IMG=""; [ -f "$LOGO" ] && IMG="--image=$LOGO"
 DEF=$(cfg DEFAULT_USER)
 
 # Webcam: always passed whole to Windows (FreeRDP has no camera redirection channel for Linux clients)
@@ -151,6 +159,8 @@ connect(){
   elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
   else o+=(/network:lan); fi
   v=$(cfg RDP_KEYBOARD); [ -n "$v" ] && o+=(/kbd:layout:"$v")
+  # every monitor when more than one is connected (with /f the session is full screen on all of them)
+  [ "$(cfg MULTIMON)" != off ] && [ "$(xrandr --current 2>/dev/null | grep -c ' connected')" -gt 1 ] && o+=(/multimon)
   for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyS0; do [ -e "$dev" ] && { o+=(/serial:"COM$i,$dev"); i=$((i+1)); }; done
   usb=$(usb_opt); o+=("$usb")
   [ -n "$(touch_ids)" ] && o+=(+multitouch)
@@ -198,8 +208,8 @@ settings_dialog(){
   local -a ONV=(on off) ONL=("$L_ON" "$L_OFF") TRV=(auto udp tcp) TRL=("$L_TR_AUTO" "$L_TR_UDP" "$L_TR_TCP")
   local -a WEBV=(none app browser kiosk) WEBL=("$L_WEB_NONE" "$L_WEB_APP" "$L_WEB_BROWSER" "$L_WEB_KIOSK")
   local -a LNV=(en it) LNL=(English Italiano)
-  local h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share um ur su tr wb wu ku kr pon poff pdays wf ws wp ln
-  h=$(hostname); u=$(cfg DEFAULT_USER); br=$(cfg BROKER); brf=$(cfg BROKER_FALLBACK); dom=$(cfg DOMAIN)
+  local h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share mu mp um ur su tr wb wu ku kr pon poff pdays wf ws wp ln
+  h=$(hostname); u=$(cfg DEFAULT_USER); br=$(cfg BROKER); brf=$(cfg BROKER_FALLBACK); dom=$(cfg DOMAIN); mu=$(cfg MGMT_USER)
   lbi=$(cfg LOAD_BALANCE_INFO); nm=$(cfg NETMODE)
   if [ "$nm" = static ]; then ip=$(cfg IPADDR); mask=$(cfg NETMASK); gw=$(cfg GATEWAY)
   else ip=$IPC; mask=$([ -n "$IPC" ] && pfx2mask "$PFX" || cfg NETMASK); gw=${GWC:-$(cfg GATEWAY)}; fi
@@ -215,38 +225,46 @@ settings_dialog(){
   if [ -n "$sh" ] && { [ "$sh" -lt 900 ] || [ "$sw" -lt 1170 ]; }; then
     geo=(--scroll --width=$(( sw < 1170 ? sw - 20 : 1150 )) --height=$(( sh - 40 )))
   fi
+  # fields separated by a character nobody can type (unit separator): passwords may contain anything else
+  local FS=$'\x1f'
   while true; do
-    out=$(yad --form --title="$L_SETTINGS" --columns=2 "${geo[@]}" --center --separator="|" \
+    # 34 fields, 17 per column: left the connection, the network and the session; right the management folder,
+    # USB, web button, power schedule and Wi-Fi
+    out=$(yad --form --title="$L_SETTINGS" --columns=2 "${geo[@]}" --center --separator="$FS" \
           --text="<b>$L_SETTINGS</b>\n<small>$L_SETTINGS_HELP</small>" \
           --field="$L_F_HOSTNAME" --field="$L_F_USER" --field="$L_F_BROKER" --field="$L_F_FALLBACK" \
           --field="$L_F_DOMAIN" --field="$L_F_COLLECTION" --field="$L_F_NETWORK:CB" --field="$L_F_IP" \
           --field="$L_F_NETMASK" --field="$L_F_GATEWAY" --field="$L_F_DNS1" --field="$L_F_DNS2" \
-          --field="$L_F_NTP" --field="$L_F_SHUTDOWN" --field="$L_F_THRESHOLD" --field="$L_F_SHARE" \
-          --field="$L_F_USBMODE:CB" --field="$L_F_USBLIST" --field="$L_F_UPDATES:CB" --field="$L_F_TRANSPORT:CB" \
+          --field="$L_F_NTP" --field="$L_F_SHUTDOWN" --field="$L_F_THRESHOLD" --field="$L_F_TRANSPORT:CB" \
+          --field="$L_F_LANGUAGE:CB" \
+          --field="$L_F_SHARE" --field="$L_F_MGMTUSER" --field="$L_F_MGMTPW:H" \
+          --field="$L_F_USBMODE:CB" --field="$L_F_USBLIST" --field="$L_F_UPDATES:CB" \
           --field="$L_F_WEB:CB" --field="$L_F_WEBURL" --field="$L_F_KIOSKURL" --field="$L_F_RELOAD" \
-          --field="$L_F_POWERON" --field="$L_F_POWEROFF" --field="$L_F_DAYS" --field="$L_F_LANGUAGE:CB" \
+          --field="$L_F_POWERON" --field="$L_F_POWEROFF" --field="$L_F_DAYS" \
           --field="$L_F_STATUS:RO" --field="$L_F_WIFI:CB" --field="$L_F_SSID" --field="$L_F_WIFIPSK:H" \
           --button="$L_TERMINAL:2" --button="$L_CLOSE:1" --button="$L_SAVE:0" \
           "$h" "$u" "$br" "$brf" "$dom" "$lbi" "$(combo "$nm" NETV NETL)" "$ip" "$mask" "$gw" "$d1" "$d2" \
-          "$ntp" "$off" "$thr" "$share" "$(combo "$um" USBV USBL)" "$ur" "$(combo "$su" ONV ONL)" "$(combo "$tr" TRV TRL)" \
-          "$(combo "$wb" WEBV WEBL)" "$wu" "$ku" "$kr" "$pon" "$poff" "$pdays" "$(combo "$ln" LNV LNL)" \
+          "$ntp" "$off" "$thr" "$(combo "$tr" TRV TRL)" "$(combo "$ln" LNV LNL)" \
+          "$share" "$mu" "" "$(combo "$um" USBV USBL)" "$ur" "$(combo "$su" ONV ONL)" \
+          "$(combo "$wb" WEBV WEBL)" "$wu" "$ku" "$kr" "$pon" "$poff" "$pdays" \
           "$st" "$(combo "$wf" ONV ONL)" "$ws" "" 2>/dev/null)
     r=$?
     [ $r -eq 2 ] && { xterm -fa Monospace -fs 11 2>/dev/null; return; }
     [ $r -ne 0 ] && return
-    IFS='|' read -r h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr share um ur su tr wb wu ku kr pon poff pdays ln _ wf ws wp <<< "$out"
-    # the Wi-Fi password is the last field: a "|" inside it stays, only the trailing separator goes
-    wp=${wp%|}
+    IFS=$FS read -r h u br brf dom lbi nm ip mask gw d1 d2 ntp off thr tr ln share mu mp um ur su wb wu ku kr pon poff pdays _ wf ws wp <<< "$out"
+    # the last field keeps the separator yad writes after it
+    wp=${wp%"$FS"}
     nm=$(unlabel "$nm" NETV NETL); um=$(unlabel "$um" USBV USBL); su=$(unlabel "$su" ONV ONL); tr=$(unlabel "$tr" TRV TRL)
     wb=$(unlabel "$wb" WEBV WEBL); ln=$(unlabel "$ln" LNV LNL); wf=$(unlabel "$wf" ONV ONL)
     tmp=$(mktemp)
     printf '%s\n' "HOSTNAME=$h" "DEFAULT_USER=$u" "BROKER=$br" "BROKER_FALLBACK=$brf" "DOMAIN=$dom" \
       "LOAD_BALANCE_INFO=$lbi" "NETMODE=$nm" "IPADDR=$ip" "NETMASK=$mask" "GATEWAY=$gw" "DNS1=$d1" "DNS2=$d2" \
-      "NTP=$ntp" "SHUTDOWN_SECS=$off" "SESSION_THRESHOLD=$thr" "MGMT_SHARE=$share" "USB_MODE=$um" \
+      "NTP=$ntp" "SHUTDOWN_SECS=$off" "SESSION_THRESHOLD=$thr" "MGMT_SHARE=$share" "MGMT_USER=$mu" "USB_MODE=$um" \
       "USB_REDIRECT=$ur" "SECURITY_UPDATES=$su" "TRANSPORT=$tr" "WEB_BUTTON=$wb" "WEB_URL=$wu" "KIOSK_URL=$ku" \
       "KIOSK_RELOAD_MIN=$kr" "POWER_ON_TIME=$pon" "POWER_OFF_TIME=$poff" "POWER_ON_DAYS=$pdays" "LANGUAGE=$ln" \
       "WIFI=$wf" "WIFI_SSID=$ws" > "$tmp"
     [ -n "$wp" ] && printf 'WIFI_PSK=%s\n' "$wp" >> "$tmp"
+    [ -n "$mp" ] && printf 'MGMT_PASSWORD=%s\n' "$mp" >> "$tmp"
     msg=$(sudo -n "$OTR/save-config.sh" "$tmp" 2>&1); r=$?
     rm -f "$tmp"
     if [ $r -eq 0 ]; then
@@ -258,7 +276,42 @@ settings_dialog(){
     ev "settings rejected: $(echo "$msg" | tr '\n' ' ')"
     yad --error --center --width=420 --title="$L_INVALID" --text="$msg" --button="$L_FIX:0" 2>/dev/null
   done
-  TITLE=$(cfg TITLE); DEF=$(cfg DEFAULT_USER)
+  look; DEF=$(cfg DEFAULT_USER)
+}
+
+# --- diagnostics (no PIN: nothing can be changed here) ------------------------------------------
+# What the IT desk asks first on the phone: address, gateway, DNS, can the broker or PC be reached, time, the
+# management folder, the last events. Read only, a few seconds at most (3 s per remote desktop host).
+diag_port(){ timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null && echo "$L_DIAG_OK" || echo "$L_DIAG_FAIL"; }
+diag_dialog(){
+  . "$OTR/lib/netif.sh"
+  local IF GW h a s
+  IF=$(main_nic); GW=$(ip -4 route show default 2>/dev/null | awk '{print $3}' | head -1)
+  {
+    echo "OpenThinRDP $(cat "$OTR/VERSION" 2>/dev/null)   $(hostname)   $(date '+%Y-%m-%d %H:%M')"
+    echo
+    echo "Network card    ${IF:-none}  $(cat "/sys/class/net/$IF/operstate" 2>/dev/null)  MAC $(cat "/sys/class/net/$IF/address" 2>/dev/null)"
+    echo "IP address      $(ip -4 -o addr show dev "$IF" 2>/dev/null | awk '{print $4}' | head -1)"
+    if [ -n "$GW" ] && command -v ping >/dev/null; then
+      echo "Gateway         $GW  ($(ping -c1 -W1 "$GW" >/dev/null 2>&1 && echo "$L_DIAG_OK" || echo "$L_DIAG_FAIL"))"
+    else echo "Gateway         ${GW:-none}"; fi
+    echo "DNS servers     $(awk '/^nameserver/{printf "%s ", $2}' /etc/resolv.conf)"
+    echo "Time            $(date '+%H:%M:%S'), synchronized: $(timedatectl show -p NTPSynchronized --value 2>/dev/null)"
+    echo
+    [ -z "$(cfg BROKER)" ] && echo "Remote desktop  no broker or PC set"
+    for h in $(cfg BROKER) $(cfg BROKER_FALLBACK); do
+      a=$(getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')
+      if [ -z "$a" ]; then echo "Remote desktop  $h: name $L_DIAG_NOTFOUND (DNS)"
+      else echo "Remote desktop  $h ($a): port 3389 $(diag_port "$a" 3389)"; fi
+    done
+    echo "Transport       $(cfg TRANSPORT), $(xfreerdp3 --version 2>/dev/null | head -1)$(xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && echo ', with UDP')"
+    s=$(cfg MGMT_SHARE)
+    echo "Management      ${s:-none}${s:+   last report: $(tail -1 "$OTR_LOG/report.log" 2>/dev/null | cut -c1-90)}"
+    echo
+    echo "Last events:"
+    tail -n 10 "$OTR_EVENTS" 2>/dev/null
+  } | yad --text-info $IMG --title="$L_DIAG" --width=780 --height=540 --center --fontname="Monospace 10" \
+          --text="$L_DIAG_TEXT" --button="$L_CLOSE:0" 2>/dev/null
 }
 
 # --- session ------------------------------------------------------------------------------------
@@ -460,6 +513,7 @@ power_off(){ ev "power off ($1)"; sleep 1; systemctl poweroff; exit 0; }
 [ -z "$(cfg BROKER)" ] && { ev "no broker configured: settings dialog opened"; settings_dialog; }
 KSTOPPED=0   # 1 = somebody used the form: no countdown until we go back to the page
 while true; do
+  look
   HOSTN=$(hostname 2>/dev/null)
   WEB=$(cfg WEB_BUTTON); WEBBTN=()
   case "$WEB" in app|browser) WEBBTN=(--button="$(cfg WEB_LABEL):7") ;; kiosk) WEBBTN=(--button="$L_KIOSK:7") ;; esac
@@ -477,14 +531,14 @@ while true; do
   OUT=$(yad --form $IMG --class=OtrLogin --title="$TITLE" \
         --text="<b>$L_LOGIN_HEADING</b>   [ $HOSTN${IPNOW:+  -  IP $IPNOW} ]$KTXT" \
         --separator="|" --field="$L_USER" --field="$L_PASSWORD:H" --focus-field=2 --width=430 --center \
-        --button="$L_SHUTDOWN:5" --button="⚙:3" "${WEBBTN[@]}" --button="$L_SIGNIN:10" "$DEF" "" 2>/dev/null)
+        --button="$L_SHUTDOWN:5" --button="⚙:3" --button="ℹ:4" "${WEBBTN[@]}" --button="$L_SIGNIN:10" "$DEF" "" 2>/dev/null)
   rc=$?
   # kiosk: nobody touched anything -> page; otherwise the form stays without countdown
   if [ -n "$KPID" ]; then
     kill $KPID 2>/dev/null; wait $KPID 2>/dev/null
     if [ -f $KEXP ]; then rm -f $KEXP; KSTOPPED=0; kiosk_page; continue; fi
     # stopped only when a button closed the form: closed by monitor_watch (late monitor) = draw it again
-    case $rc in 0|3|5|7|10) [ $KSTOPPED -eq 0 ] && ev "kiosk page: start stopped by the user"; KSTOPPED=1 ;; *) continue ;; esac
+    case $rc in 0|3|4|5|7|10) [ $KSTOPPED -eq 0 ] && ev "kiosk page: start stopped by the user"; KSTOPPED=1 ;; *) continue ;; esac
   fi
   if [ $rc -eq 5 ]; then
     # dialog WITHOUT fields: Enter presses the FIRST button -> No goes first
@@ -494,6 +548,7 @@ while true; do
     continue
   fi
   [ $rc -eq 3 ] && { settings_dialog; continue; }
+  [ $rc -eq 4 ] && { diag_dialog; continue; }
   if [ $rc -eq 7 ]; then
     [ "$WEB" = kiosk ] && { KSTOPPED=0; kiosk_page; continue; }
     "$OTR/browser.sh"; continue

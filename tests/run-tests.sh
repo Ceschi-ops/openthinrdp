@@ -71,6 +71,11 @@ printf 'IPADDR=garbage\n' > "$T"
 ok "invalid address cleared in DHCP mode" '$OTR/save-config.sh "$T" --print 2>&1 | grep -qx "IPADDR="'
 tr_of(){ printf 'TRANSPORT=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^TRANSPORT=//p'; }
 ok "transport modes kept, anything else is auto" '[ "$(tr_of UDP)" = udp ] && [ "$(tr_of tcp)" = tcp ] && [ "$(tr_of auto)" = auto ] && [ "$(tr_of garbage)" = auto ]'
+mm_of(){ printf 'MULTIMON=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^MULTIMON=//p'; }
+ok "MULTIMON auto or off" '[ "$(mm_of off)" = off ] && [ "$(mm_of AUTO)" = auto ] && [ "$(mm_of garbage)" = auto ]'
+ok "secrets printed only as a hash" 'printf "WIFI=on\nWIFI_SSID=Office\nWIFI_PSK=password123\nMGMT_USER=svc\nMGMT_PASSWORD=Secret|1\n" > "$T"; P=$($OTR/save-config.sh "$T" --print 2>&1); ! echo "$P" | grep -q "Secret|1" && ! echo "$P" | grep -q "$(wpa_passphrase Office password123 | sed -n "s/^[[:space:]]*psk=//p")" && echo "$P" | grep -Eq "^MGMT_PASSWORD=[0-9a-f]{64}$"'
+ok "management user without any password refused" '! check x "MGMT_USER=svc"'
+ok "management password without user refused" '! check x "MGMT_PASSWORD=x"'
 
 # --- real save: only given keys end in the device file
 : > /etc/openthinrdp/openthinrdp.conf
@@ -78,6 +83,16 @@ printf 'BROKER=rdbroker.example.com\nDEFAULT_USER=alice\n' > "$T"
 ok "save works" '$OTR/save-config.sh "$T" >/dev/null 2>&1'
 ok "device file has the given keys" 'grep -qx "BROKER=rdbroker.example.com" $OTR_CONF && grep -qx "DEFAULT_USER=alice" $OTR_CONF'
 ok "device file has no other keys" '[ "$(grep -c "^[A-Z]" $OTR_CONF)" = 2 ]'
+
+# --- account of the management folder: the password only in smb.cred (600), never in the settings
+CRED=/etc/openthinrdp/smb.cred
+printf 'MGMT_USER=EXAMPLE\\svc-tc\nMGMT_PASSWORD=p|w=x y\n' > "$T"; $OTR/save-config.sh "$T" >/dev/null 2>&1
+ok "smb.cred written with user, domain and password" 'grep -qx "username=svc-tc" $CRED && grep -qx "password=p|w=x y" $CRED && grep -qx "domain=EXAMPLE" $CRED'
+ok "smb.cred root only" '[ "$(stat -c %a $CRED)" = 600 ]'
+ok "user in the settings, password not" 'grep -qx "MGMT_USER=EXAMPLE\\\\svc-tc" $OTR_CONF && ! grep -q "p|w" $OTR_CONF'
+printf 'MGMT_USER=other@corp.example\n' > "$T"; $OTR/save-config.sh "$T" >/dev/null 2>&1
+ok "user@domain, an empty password keeps the saved one" 'grep -qx "username=other" $CRED && grep -qx "domain=corp.example" $CRED && grep -qx "password=p|w=x y" $CRED'
+sed -i '/^MGMT_USER=/d' $OTR_CONF
 
 # --- central configuration: a file written on Windows (BOM, CRLF, spaces, case, commas)
 printf '\xEF\xBB\xBF; common settings\r\nUSB_MODE = Dischi\r\nUSB_REDIRECT=1EAF:0009, 346D:5678\r\nHOSTNAME=not-allowed-here\r\nNTP=a.example.com,b.example.com\r\n' > $OTR_LIB/central-common.conf
@@ -118,13 +133,64 @@ ok "an invalid release is refused and the key kept" 'grep -q "^WEB_URL=https://i
 ok "the refused key stays managed for the next run" 'grep -qx WEB_URL $OTR_LIB/central-managed'
 : > $OTR_LIB/central-common.conf; $OTR/central-apply.sh
 ok "everything released when the central files are empty" '! grep -qE "^(WEB_BUTTON|WEB_URL|NTP)=" $OTR_CONF'
+# secrets from the central files: compared by hash, applied with their real value (not the hash)
+printf 'WIFI=on\nWIFI_SSID=Office\nWIFI_PSK=password123\nMGMT_USER=svc\nMGMT_PASSWORD=Central-Pw\n' > $OTR_LIB/central-common.conf
+$OTR/central-apply.sh
+ok "central Wi-Fi key applied with its real value" 'grep -q "psk=$(wpa_passphrase Office password123 | sed -n "s/^[[:space:]]*psk=//p")" /etc/wpa_supplicant/openthinrdp-wifi.conf'
+ok "central management password applied, hidden in the events" 'grep -qx "password=Central-Pw" /etc/openthinrdp/smb.cred && grep -q "MGMT_PASSWORD(hidden)" $OTR_EVENTS && ! grep -q "Central-Pw" $OTR_EVENTS'
+N=$(grep -c "central configuration applied" $OTR_EVENTS); $OTR/central-apply.sh
+ok "secrets in line: no loop" '[ "$(grep -c "central configuration applied" $OTR_EVENTS)" = "$N" ]'
+: > $OTR_LIB/central-common.conf; $OTR/central-apply.sh; sed -i '/^WIFI/d; /^MGMT_USER/d' $OTR_CONF
 
 # --- status file: no Wi-Fi key, PIN only as (set)
 printf 'SETTINGS_PIN_SHA256=%s\n' "$(printf 1234 | sha256sum | cut -c1-64)" >> $OTR_CONF
 $OTR/report.sh >/dev/null 2>&1
 ok "status written" '[ -s /run/openthinrdp-status.txt ]'
 ok "PIN hash not in the status" '! grep -q "$(printf 1234 | sha256sum | cut -c1-64)" /run/openthinrdp-status.txt && grep -qx "CFG_SETTINGS_PIN_SHA256=(set)" /run/openthinrdp-status.txt'
-ok "no WIFI_PSK in the status" '! grep -q WIFI_PSK /run/openthinrdp-status.txt'
+# (the names of the secret keys may appear in the events, "WIFI_PSK(hidden)": never their values)
+ok "no Wi-Fi key in the status" '! grep -qE "password123|$(wpa_passphrase Office password123 | sed -n "s/^[[:space:]]*psk=//p")" /run/openthinrdp-status.txt && ! grep -q "^CFG_WIFI_PSK" /run/openthinrdp-status.txt'
+ok "no management password in the status" '! grep -qE "Central-Pw|p\|w=x" /run/openthinrdp-status.txt && ! grep -q "^CFG_MGMT_PASSWORD" /run/openthinrdp-status.txt'
+
+# --- logo and boot image of the management folder (branding.sh), and the boot splash that follows
+# png FILE WIDTH HEIGHT: a valid RGBA PNG of that size
+png(){ python3 -c 'import sys,zlib,struct
+w,h=int(sys.argv[2]),int(sys.argv[3])
+def c(t,d): return struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)&0xffffffff)
+raw=b"".join(b"\0"+b"\0\0\x80\xff"*w for _ in range(h))
+open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+c(b"IHDR",struct.pack(">IIBBBBB",w,h,8,6,0,0,0))+c(b"IDAT",zlib.compress(raw))+c(b"IEND",b""))' "$@"; }
+M=/tmp/mgmt; H=$(hostname); B=$OTR_LIB/branding; mkdir -p $M/config/branding/$H $OTR/branding
+cp /src/image/branding/logo.png /src/image/branding/splash.png $OTR/branding/
+png $M/config/branding/logo.png 200 80; $OTR/branding.sh sync $M
+ok "common logo copied" 'cmp -s $M/config/branding/logo.png $B/logo.png && grep -qx logo=common $B/source'
+ok "the kiosk uses it" '[ "$(otr_logo)" = $B/logo.png ]'
+ok "no boot image in the folder: the image's own" '[ "$(otr_splash)" = $OTR/branding/splash.png ] && grep -qx splash=image $B/source'
+png $M/config/branding/$H/logo.png 100 40; $OTR/branding.sh sync $M
+ok "the logo of the device wins" 'cmp -s $M/config/branding/$H/logo.png $B/logo.png && grep -qx logo=device $B/source'
+cp $B/logo.png /tmp/prev-logo.png
+png $M/config/branding/splash.png 2000 300; $OTR/branding.sh sync $M; $OTR/branding.sh sync $M
+ok "a boot image over the size limit is refused, reported once" '[ ! -f $B/splash.png ] && [ "$(grep -c "boot image of the management folder REJECTED" $OTR_EVENTS)" = 1 ]'
+echo "not a picture" > $M/config/branding/$H/logo.png; $OTR/branding.sh sync $M
+ok "a broken logo keeps the previous one" 'cmp -s /tmp/prev-logo.png $B/logo.png && grep -qx logo=device $B/source && grep -q "logo of the management folder REJECTED (device)" $OTR_EVENTS'
+# boot splash: an installed system (grub, theme), update-initramfs and systemd-run as stand-ins
+TH=/usr/share/plymouth/themes/openthinrdp; mkdir -p /boot/grub $TH; touch /etc/default/grub
+cp $OTR/branding/splash.png $TH/logo.png
+sed -e 's/@TOP@/0.106, 0.153, 0.200/' -e 's/@BOTTOM@/0.000, 0.000, 0.000/' /src/image/lb/plymouth/openthinrdp.script > $TH/openthinrdp.script
+printf '#!/bin/bash\necho "$@" > /tmp/systemd-run.args\n' > /usr/local/bin/systemd-run
+printf '#!/bin/bash\necho run >> /tmp/initramfs.runs\n' > /usr/local/bin/update-initramfs; chmod 755 /usr/local/bin/systemd-run /usr/local/bin/update-initramfs
+printf 'BG_TOP=#1b2733\nBG_BOTTOM=#000000\n' >> $OTR_CONF
+$OTR/branding.sh splash
+ok "first run: what the theme shows counts as applied, nothing rebuilt" '[ -s $B/splash-applied ] && [ ! -f /tmp/systemd-run.args ]'
+png $M/config/branding/splash.png 640 360; $OTR/branding.sh sync $M; $OTR/branding.sh splash
+ok "a new boot image starts the rebuild in the background" 'grep -q "branding.sh splash-now" /tmp/systemd-run.args && [ "$(otr_splash)" = $B/splash.png ]'
+$OTR/branding.sh splash-now; rm -f /tmp/systemd-run.args; $OTR/branding.sh splash
+ok "theme updated, initramfs rebuilt once, then in line" 'cmp -s $M/config/branding/splash.png $TH/logo.png && [ "$(wc -l < /tmp/initramfs.runs)" = 1 ] && grep -q "boot splash updated" $OTR_EVENTS && [ ! -f /tmp/systemd-run.args ]'
+sed -i 's/^BG_TOP=.*/BG_TOP=#336699/' $OTR_CONF; $OTR/branding.sh splash; $OTR/branding.sh splash-now
+ok "a new color rebuilds it too" '[ -f /tmp/systemd-run.args ] && grep -q "^Window.SetBackgroundTopColor(0.200, 0.400, 0.600);" $TH/openthinrdp.script && [ "$(wc -l < /tmp/initramfs.runs)" = 2 ]'
+sed -i '/^BG_/d' $OTR_CONF; rm -rf /boot/grub /etc/default/grub /usr/local/bin/systemd-run /usr/local/bin/update-initramfs
+rm -rf $M/config/branding/$H $M/config/branding/*.png; $OTR/branding.sh sync $M
+ok "removed from the folder: back to the image's own" '[ ! -f $B/logo.png ] && [ ! -f $B/splash.png ] && [ "$(otr_logo)" = "$(cfg LOGO)" ] && grep -q "logo removed from the management folder" $OTR_EVENTS'
+$OTR/report.sh >/dev/null 2>&1
+ok "the status says where they come from" 'grep -qx "BRANDING=logo=image splash=image" /run/openthinrdp-status.txt'
 
 # --- signed software updates: throw-away keys, a "release" in local files
 export GNUPGHOME=$(mktemp -d)

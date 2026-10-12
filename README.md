@@ -4,7 +4,7 @@
 with the UDP transport that FreeRDP does not ship yet.</b></p>
 
 <p align="center">
-<a href="https://github.com/Ceschi-ops/openthinrdp/releases/tag/v0.1.0"><b>⬇ Download the ISO (0.1.0 pre-release)</b></a>
+<a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest"><b>⬇ Download the ISO (0.1.1)</b></a>
 &nbsp;·&nbsp; <a href="#try-it-in-five-minutes">Try it live, nothing installed</a>
 &nbsp;·&nbsp; <a href="README.it.md">Italiano</a>
 </p>
@@ -15,9 +15,10 @@ with the UDP transport that FreeRDP does not ship yet.</b></p>
 <img src="docs/screenshots/settings.png" alt="Settings of the device" width="32%">
 </p>
 
-OpenThinRDP turns small PCs and old thin clients into kiosks that boot straight into a sign-in form, connect
-through an RD Connection Broker to the user's desktop or VM, and are managed from a shared folder: status of
-every device, central settings, signed updates. No agent, no management server, no cloud, no licence per device.
+OpenThinRDP turns small PCs and old thin clients into kiosks that boot straight into a sign-in form and connect
+to Windows: through an RD Connection Broker to the user's desktop or VM, or straight to a session host or to any
+Windows PC with Remote Desktop turned on. They are managed from a shared folder: status of every device, central
+settings, logo, signed updates. No agent, no management server, no cloud, no licence per device.
 
 It grew out of a real migration away from a commercial thin client OS, on a fleet of Dell OptiPlex 3000 Thin
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
@@ -28,7 +29,8 @@ Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from
 ## Who it is for
 
 - You publish desktops with **Windows Remote Desktop Services**: RD Connection Broker with session hosts or a
-  Hyper-V VDI collection, or users connect to their own Windows PC.
+  Hyper-V VDI collection. Or there is no broker at all: each device connects to one Windows PC or server (set
+  its name instead of the broker), e.g. a reception desk that works on the PC in the office.
 - You have **x86-64 PCs or thin clients with UEFI** (Secure Boot works) and want to keep them useful without a
   licence per device.
 - You want to **try RDP over UDP** on real clients, or help bring it into FreeRDP.
@@ -38,7 +40,7 @@ PCs without UEFI.
 
 ## Try it in five minutes
 
-1. [Download `openthinrdp-0.1.0.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/tag/v0.1.0) and write it
+1. [Download `openthinrdp-0.1.1.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/latest) and write it
    to a USB stick with any raw image writer (Rufus in DD mode, balenaEtcher, `dd`).
 2. Boot the PC from the stick. The menu starts the **live system** by itself after 10 seconds: it runs from the
    stick and **never writes to the disk**.
@@ -68,11 +70,18 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
   Touch screens work as touch in Windows.
 - **Managed from a shared folder (SMB).** Each device writes its status and event log there; a Windows manager
   (English and Italian, no installation) shows them, edits the settings for all devices or one, the SSH keys,
-  and brings GitHub releases into the folder. Settings that come from the folder win over local changes.
+  logo and boot image (for all devices or one), and brings GitHub releases into the folder. Settings that come
+  from the folder win over local changes.
 - **Signed updates**, never during a session: from GitHub releases, or from your folder when you decide.
   Debian security updates install by themselves.
-- **Settings dialog on the device** (optionally behind a PIN): broker, network (DHCP, static, Wi-Fi), management
-  folder, USB mode, web button, power schedule, language.
+- **Settings dialog on the device** (optionally behind a PIN): broker or PC, network (DHCP, static, Wi-Fi),
+  management folder and its account, USB mode, web button, power schedule, language. A new device names itself
+  from its network card (`thinclient-1a2b3c`).
+- **Diagnostics for the help desk**, no PIN needed (the ℹ button): network, can each broker or PC be reached,
+  time, management folder, last events. Read only.
+- **Locked down**: no desktop, no menus, no text consoles (Ctrl+Alt+F1..F12 do nothing), no password-less
+  account.
+- **Several monitors** become one remote desktop spanning all of them (`MULTIMON`).
 - **Power schedule and Wake-on-LAN**, screen always on, monitors switched on late handled.
 - **Web button**: a web app, free browsing, or a full screen kiosk page, with Chromium.
 - English and Italian interface; more languages are one file each.
@@ -120,6 +129,17 @@ If you need Citrix or Horizon, vendor support or certified hardware, the commerc
 choice. OpenThinRDP is for networks built on Windows Remote Desktop that want a free, open client that is simple
 to manage, and for anyone who wants to put FreeRDP's UDP transport to work. Product names are trademarks of
 their owners; the comparison reflects public information and our understanding, corrections are welcome.
+
+## What comes next
+
+Ideas we would like to build, roughly in this order. Tell us in an issue which ones you need, or send a pull
+request:
+
+- **VPN**: WireGuard and OpenVPN, so a device at home or in a branch office reaches the broker on its own.
+- **RD Gateway**: Remote Desktop over HTTPS from outside the network, without a VPN.
+- **Wi-Fi with 802.1X** (WPA-Enterprise) and wired 802.1X.
+- **Network installation (PXE)** for many devices at once.
+- **More tested hardware** and more languages (one file each).
 
 ## Build your own image
 

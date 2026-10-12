@@ -4,7 +4,7 @@
 con il trasporto UDP che FreeRDP non distribuisce ancora.</b></p>
 
 <p align="center">
-<a href="https://github.com/Ceschi-ops/openthinrdp/releases/tag/v0.1.0"><b>⬇ Scarica la ISO (anteprima 0.1.0)</b></a>
+<a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest"><b>⬇ Scarica la ISO (0.1.1)</b></a>
 &nbsp;·&nbsp; <a href="#provarlo-in-cinque-minuti">Provalo in live, senza installare niente</a>
 &nbsp;·&nbsp; <a href="README.md">English</a>
 </p>
@@ -16,9 +16,10 @@ con il trasporto UDP che FreeRDP non distribuisce ancora.</b></p>
 </p>
 
 OpenThinRDP trasforma piccoli PC e vecchi thin client in postazioni che si accendono direttamente sul form di
-accesso, si collegano tramite il broker RDS al desktop o alla VM dell'utente e si gestiscono da una cartella
-condivisa: stato di ogni postazione, configurazione centrale, aggiornamenti firmati. Niente agenti, niente server
-di gestione, niente cloud, nessuna licenza per postazione.
+accesso e si collegano a Windows: tramite il broker RDS al desktop o alla VM dell'utente, oppure direttamente a
+un host di sessione o a qualsiasi PC Windows con Desktop remoto attivo. Si gestiscono da una cartella condivisa:
+stato di ogni postazione, configurazione centrale, logo, aggiornamenti firmati. Niente agenti, niente server di
+gestione, niente cloud, nessuna licenza per postazione.
 
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
@@ -29,7 +30,8 @@ Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva 
 ## Per chi è
 
 - Pubblicate desktop con **Servizi Desktop remoto di Windows**: broker RDS con host di sessione o raccolta VDI su
-  Hyper-V, oppure gli utenti si collegano al proprio PC Windows.
+  Hyper-V. Oppure non c'è nessun broker: ogni postazione si collega a un PC o server Windows (al posto del broker
+  si mette il suo nome), per esempio una reception che lavora sul PC dell'ufficio.
 - Avete **PC o thin client x86-64 con UEFI** (Secure Boot funziona) e volete tenerli in servizio senza una licenza
   per postazione.
 - Volete **provare RDP in UDP** su client veri, o aiutarlo a entrare in FreeRDP.
@@ -39,7 +41,7 @@ ARM, PC senza UEFI.
 
 ## Provarlo in cinque minuti
 
-1. [Scaricate `openthinrdp-0.1.0.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/tag/v0.1.0) e scrivetela
+1. [Scaricate `openthinrdp-0.1.1.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/latest) e scrivetela
    su una chiavetta con qualsiasi programma che scriva immagini (Rufus in modalità DD, balenaEtcher, `dd`).
 2. Avviate il PC dalla chiavetta. Il menu fa partire da solo il **sistema live** dopo 10 secondi: gira dalla
    chiavetta e **non scrive mai sul disco**.
@@ -68,12 +70,19 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
   di rete restano locali; i lettori di smart card passano dal canale smart card.
 - **Gestione da una cartella condivisa (SMB).** Ogni postazione ci scrive stato e registro eventi; un gestore
   Windows (italiano e inglese, nessuna installazione) li mostra, modifica la configurazione di tutte o di una
-  postazione e le chiavi SSH, e porta nella cartella le release di GitHub. Le impostazioni della cartella vincono
-  sulle modifiche locali.
+  postazione, le chiavi SSH, logo e immagine di avvio (per tutte o per una), e porta nella cartella le release di
+  GitHub. Le impostazioni della cartella vincono sulle modifiche locali.
 - **Aggiornamenti firmati**, mai durante una sessione: dalle release di GitHub, o dalla vostra cartella quando
   decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.
-- **Configurazione sulla postazione** (anche protetta da PIN), orari di accensione e spegnimento, Wake-on-LAN,
-  pulsante web con Chromium (app, browser o pagina kiosk).
+- **Configurazione sulla postazione** (anche protetta da PIN): broker o PC, rete (DHCP, statica, Wi-Fi), cartella
+  di gestione e il suo account, modalità USB, pulsante web, orari, lingua. Una postazione nuova prende il nome
+  dalla propria scheda di rete (`thinclient-1a2b3c`).
+- **Diagnostica per l'assistenza**, senza PIN (il pulsante ℹ): rete, raggiungibilità di ogni broker o PC, ora,
+  cartella di gestione, ultimi eventi. Solo lettura.
+- **Blindata**: niente desktop, niente menu, niente console di testo (Ctrl+Alt+F1..F12 non fanno nulla), nessun
+  account senza password.
+- **Più monitor** diventano un unico desktop remoto su tutti (`MULTIMON`).
+- Orari di accensione e spegnimento, Wake-on-LAN, pulsante web con Chromium (app, browser o pagina kiosk).
 - Interfaccia in italiano e inglese.
 
 <p align="center">
@@ -121,6 +130,17 @@ scelta giusta. OpenThinRDP è per le reti basate su Desktop remoto Windows che v
 e semplice da gestire, e per chi vuole mettere al lavoro il trasporto UDP di FreeRDP. I nomi dei prodotti sono
 marchi dei rispettivi proprietari; il confronto riflette informazioni pubbliche e la nostra comprensione,
 correzioni benvenute.
+
+## I prossimi passi
+
+Le idee che vorremmo realizzare, più o meno in quest'ordine. Diteci in una issue quali vi servono, o mandate una
+pull request:
+
+- **VPN**: WireGuard e OpenVPN, così una postazione a casa o in una sede distaccata raggiunge il broker da sola.
+- **RD Gateway**: Desktop remoto in HTTPS da fuori rete, senza VPN.
+- **Wi-Fi con 802.1X** (WPA-Enterprise) e 802.1X sulla rete cablata.
+- **Installazione da rete (PXE)** per molte postazioni insieme.
+- **Altro hardware provato** e altre lingue (un file ciascuna).
 
 ## Costruire la propria immagine
 

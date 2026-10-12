@@ -125,6 +125,19 @@ if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
   systemctl enable --now --no-block ssh >/dev/null 2>&1; [ $SC = 1 ] && systemctl try-reload-or-restart ssh >/dev/null 2>&1
 else systemctl disable --now --no-block ssh >/dev/null 2>&1; fi
 
+# --- the kiosk account: locked, never an empty password (0.1.0 images had one: anybody could log in on a console)
+[ "$(passwd -S "$OTR_KIOSK_USER" 2>/dev/null | awk '{print $2}')" = NP ] && passwd -l "$OTR_KIOSK_USER" >/dev/null 2>&1
+
+# --- certificate authorities of the site (/etc/openthinrdp/ca/*.crt, image or update): in the system trust
+# store too, not only in Chromium, so FreeRDP (RDP_CERT=verify), curl and Python trust them
+CAD=/usr/local/share/ca-certificates/openthinrdp
+mkdir -p $CAD
+CANEW=$(cat "$OTR_ETC"/ca/*.crt 2>/dev/null | sha256sum | cut -c1-64); CAOLD=$(cat $CAD/*.crt 2>/dev/null | sha256sum | cut -c1-64)
+if [ "$CANEW" != "$CAOLD" ]; then
+  rm -f $CAD/*.crt; cp "$OTR_ETC"/ca/*.crt $CAD/ 2>/dev/null
+  update-ca-certificates --fresh >/dev/null 2>&1 && ev "certificate authorities of the site: $(ls $CAD/*.crt 2>/dev/null | wc -l) in the system trust store"
+fi
+
 # --- keyboard (console + X; X takes it at the next start of the session)
 K=$(cfg KEYBOARD)
 if [ -n "$K" ] && ! grep -qx "XKBLAYOUT=\"$K\"" /etc/default/keyboard 2>/dev/null; then

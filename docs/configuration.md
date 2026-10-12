@@ -21,7 +21,7 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 
 | Key | Default | Meaning |
 |---|---|---|
-| `BROKER` | | RD Connection Broker (or session host), name or IP. Empty = the settings dialog opens at start |
+| `BROKER` | | RD Connection Broker, or directly a session host or any Windows PC with Remote Desktop on: name or IP. Empty = the settings dialog opens at start |
 | `BROKER_FALLBACK` | | other brokers, space separated, tried in turn from the 3rd attempt |
 | `DOMAIN` | | Windows domain of the users |
 | `LOAD_BALANCE_INFO` | | RDS collection, as `loadbalanceinfo` in the .rdp file, e.g. `tsv://VMResource.1.VDI` |
@@ -31,6 +31,7 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 | `RDP_CERT` | `tofu` | `ignore`, `tofu` (trust on first use) or `verify` |
 | `RDP_GFX` | `progressive,AVC420:off,AVC444:off` | `/gfx` options. Without a GPU on the server this keeps text pixel exact |
 | `RDP_KEYBOARD` | | keyboard layout id for Windows, e.g. `0x00000409`. Empty = taken from the X keyboard |
+| `MULTIMON` | `auto` | `auto` = every monitor when more than one is connected (`/multimon`), `off` = only the main one |
 | `RDP_EXTRA` | | extra xfreerdp3 options (letters, digits, `/:+,._=#-` and spaces only) |
 | `SESSION_THRESHOLD` | `10` | a session that ends within these seconds counts as a failed attempt |
 | `SHUTDOWN_SECS` | `10` | after the user disconnects, switch off after these seconds (0 = never) |
@@ -65,6 +66,8 @@ microphone is then not redirected, so meeting apps do not fall back to an empty 
 | Key | Default | Meaning |
 |---|---|---|
 | `MGMT_SHARE` | | management folder, e.g. `\\fileserver\thinclients`, see [management.md](management.md) |
+| `MGMT_USER` | | account of the management folder: `user`, `DOMAIN\user` or `user@domain`. Empty = `smb.cred` of the image |
+| `MGMT_PASSWORD` | | its password. Only in central settings or the dialog; stored only in `/etc/openthinrdp/smb.cred` |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `Ceschi-ops/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
@@ -96,7 +99,7 @@ microphone is then not redirected, so meeting apps do not fall back to an empty 
 | `LANGUAGE` | `en` | `en`, `it` (a file in `/opt/openthinrdp/lang/`) |
 | `KEYBOARD` | `us` | X11 layout |
 | `TITLE` | `Remote desktop` | window titles |
-| `LOGO` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs |
+| `LOGO` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs. A logo in the management folder wins, see [management.md](management.md#logo-and-boot-image) |
 | `BG_TOP`, `BG_BOTTOM` | `#1b2733`, `#000000` | background gradient (boot splash and behind the form) |
 | `SUPPORT_TEXT` | | extra line in error messages, e.g. "Call the IT desk, ext. 123" |
 | `SETTINGS_PIN_SHA256` | | protects the settings dialog: `printf 1234 \| sha256sum`. Never shown in the status files |

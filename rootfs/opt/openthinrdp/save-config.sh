@@ -48,6 +48,7 @@ case "$(low "$(get RDP_CERT)")" in ignore) V[RDP_CERT]=ignore ;; verify) V[RDP_C
 V[RDP_GFX]=$(get RDP_GFX); [[ ${V[RDP_GFX]} =~ ^[A-Za-z0-9:,]*$ ]] || err "$V_GFX"
 V[RDP_KEYBOARD]=$(get RDP_KEYBOARD); [[ ${V[RDP_KEYBOARD]} =~ ^(0x[0-9a-fA-F]{8})?$ ]] || err "$V_RDPKBD"
 V[RDP_EXTRA]=$(get RDP_EXTRA); [[ ${V[RDP_EXTRA]} =~ $EXTRARE ]] || err "$V_EXTRA"
+case "$(low "$(get MULTIMON)")" in off|no|0) V[MULTIMON]=off ;; *) V[MULTIMON]=auto ;; esac
 V[SESSION_THRESHOLD]=$(get SESSION_THRESHOLD)
 { [[ ${V[SESSION_THRESHOLD]} =~ ^[0-9]{1,3}$ ]] && [ $((10#${V[SESSION_THRESHOLD]})) -ge 5 ] && [ $((10#${V[SESSION_THRESHOLD]})) -le 120 ]; } || err "$V_THRESHOLD"
 V[SHUTDOWN_SECS]=$(get SHUTDOWN_SECS)
@@ -106,6 +107,16 @@ fi
 # --- management
 V[MGMT_SHARE]=$(get MGMT_SHARE)
 [ -z "${V[MGMT_SHARE]}" ] || [[ ${V[MGMT_SHARE]} =~ $SHARERE ]] || err "$V_SHARE"
+# account of the management folder: the user in the settings, the password ONLY in $CRED (root 600), like the
+# Wi-Fi key; an empty password keeps the saved one. DOMAIN\user, user@domain, or user (then the domain is DOMAIN).
+# Without MGMT_USER the file is left as it is (e.g. the smb.cred built into the image).
+CRED=$OTR_ETC/smb.cred
+V[MGMT_USER]=$(get MGMT_USER); [ -z "${V[MGMT_USER]}" ] || userok "${V[MGMT_USER]}" || err "$V_MGMT_USER"
+MPW=$(sed -n 's/^MGMT_PASSWORD=//p' "$F" | head -1 | tr -d '\r')
+OLDPW=$(sed -n 's/^password=//p' "$CRED" 2>/dev/null | head -1)
+[ ${#MPW} -le 256 ] || err "$V_MGMT_PASSWORD"
+[ -n "$MPW" ] && [ -z "${V[MGMT_USER]}" ] && err "$V_MGMT_NOUSER"
+[ -n "${V[MGMT_USER]}" ] && [ -z "$MPW" ] && [ -z "$OLDPW" ] && err "$V_MGMT_NOPASSWORD"
 V[SECURITY_UPDATES]=$(onoff "$(get SECURITY_UPDATES)")
 case "$(low "$(get UPDATE_FROM)")" in share|cartella|folder) V[UPDATE_FROM]=share ;; off|no|none|nessuno) V[UPDATE_FROM]=off ;; *) V[UPDATE_FROM]=github ;; esac
 [ "${V[UPDATE_FROM]}" = share ] && [ -z "${V[MGMT_SHARE]}" ] && err "$V_UPDATE_SHARE"
@@ -143,7 +154,10 @@ if [ -n "$E" ]; then printf '%b' "$E"; exit 1; fi
 for k in SESSION_THRESHOLD SHUTDOWN_SECS KIOSK_RELOAD_MIN; do V[$k]=$((10#${V[$k]})); done
 if [ "${2:-}" = --print ]; then
   for k in $(cfg_keys); do echo "$k=${V[$k]}"; done
-  echo "WIFI_PSK=${WHEX:-$OLDHEX}"
+  # secrets as a hash: central-apply.sh compares them, nobody can read them back (the kiosk user may run this)
+  hs(){ [ -n "$1" ] && printf '%s' "$1" | sha256sum | cut -c1-64; }
+  echo "WIFI_PSK=$(hs "${WHEX:-$OLDHEX}")"
+  echo "MGMT_PASSWORD=$(hs "${MPW:-$OLDPW}")"
   exit 0
 fi
 
@@ -170,6 +184,14 @@ if [ -n "$WHEX" ] && [ -n "${V[WIFI_SSID]}" ]; then
     WL=$(ls /sys/class/net | grep -E '^wl' | head -1)
     [ -n "$WL" ] && wpa_cli -p /run/wpa_supplicant -i "$WL" reconfigure >/dev/null 2>&1
   else rm -f "$NW"; fi
+fi
+# account of the management folder (only with MGMT_USER: otherwise the file of the image stays)
+if [ -n "${V[MGMT_USER]}" ]; then
+  MU=${V[MGMT_USER]}; MD=${V[DOMAIN]}
+  case "$MU" in *\\*) MD=${MU%%\\*}; MU=${MU#*\\} ;; *@*) MD=${MU#*@}; MU=${MU%%@*} ;; esac
+  NC=$(mktemp "$OTR_ETC/.cred.XXXXXX"); chmod 600 "$NC"
+  { echo "username=$MU"; echo "password=${MPW:-$OLDPW}"; [ -n "$MD" ] && echo "domain=$MD"; } > "$NC"
+  if cmp -s "$NC" "$CRED"; then rm -f "$NC"; else mv -f "$NC" "$CRED"; chmod 600 "$CRED"; fi
 fi
 # hostname, and /etc/hosts always matching it (otherwise sudo and X look the name up on the network)
 H=${V[HOSTNAME]}

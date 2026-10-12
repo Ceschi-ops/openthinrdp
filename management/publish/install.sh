@@ -53,7 +53,7 @@ install -D -m644 -o kiosk -g kiosk rootfs/etc/skel/.config/openbox/rc.xml /home/
 if [ -d site ]; then
   [ -f site/site.conf ] && install -m644 site/site.conf /etc/openthinrdp/site.conf
   for f in logo splash; do [ -f site/$f.png ] && install -m644 site/$f.png $OTR/branding/$f.png; done
-  [ -f site/splash.png ] && install -m644 site/splash.png /usr/share/plymouth/themes/openthinrdp/logo.png
+  # the boot splash follows by itself (branding.sh splash, at the next report): it rebuilds the initramfs
   ls site/ca/*.crt >/dev/null 2>&1 && { mkdir -p /etc/openthinrdp/ca; install -m644 site/ca/*.crt /etc/openthinrdp/ca/; }
   [ -f site/update-key.asc ] && install -m644 site/update-key.asc /etc/openthinrdp/update-key.asc
   [ -f site/authorized_keys ] && install -m644 site/authorized_keys /etc/openthinrdp/authorized_keys

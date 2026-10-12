@@ -7,6 +7,19 @@ mkdir -p "$OTR_LIB" "$OTR_LOG"; touch "$OTR_EVENTS"; chown "$OTR_KIOSK_USER:" "$
 # network, DNS, time servers, updates, USB, SSH, keyboard
 "$OTR/apply.sh" boot
 
+# A new device (installer, live system) is called "thinclient": it gets a name of its own from the MAC address of
+# its network card, so devices installed from the same image do not report over each other in the management
+# folder. Only while the name is still the default one: a name set later (dialog, central settings) stays.
+if [ "$(hostname)" = thinclient ]; then
+  . "$OTR/lib/netif.sh"
+  MAC=$(tr -d ':' < "/sys/class/net/$(main_nic)/address" 2>/dev/null)
+  if [[ $MAC =~ ^[0-9a-f]{12}$ ]]; then
+    T=$(mktemp); echo "HOSTNAME=thinclient-${MAC:6}" > "$T"
+    "$OTR/save-config.sh" "$T" >/dev/null 2>&1 && ev "name of this device: thinclient-${MAC:6} (from its MAC address)"
+    rm -f "$T"
+  fi
+fi
+
 # NTLM only (RDP_AUTH=ntlm): without a Kerberos configuration FreeRDP cannot try Kerberos at all
 if [ "$(cfg RDP_AUTH)" = ntlm ]; then grep -q '^KRB5_CONFIG=' /etc/environment || echo 'KRB5_CONFIG=/dev/null' >> /etc/environment
 else sed -i '/^KRB5_CONFIG=\/dev\/null$/d' /etc/environment; fi
@@ -49,7 +62,7 @@ if [ -f /etc/default/grub ] && [ -d /boot/grub ]; then
       m=$(basename "$(readlink -f "$d")" 2>/dev/null); [ -n "$m" ] && modinfo "$m" >/dev/null 2>&1 || continue
       grep -qx "$m" /etc/initramfs-tools/modules || echo "$m" >> /etc/initramfs-tools/modules
     done
-    update-initramfs -u >/dev/null 2>&1 && touch "$OTR_LIB/.initramfs-dep"
+    flock -w 900 /run/openthinrdp-initramfs.lock update-initramfs -u >/dev/null 2>&1 && touch "$OTR_LIB/.initramfs-dep"
   fi
 fi
 exit 0

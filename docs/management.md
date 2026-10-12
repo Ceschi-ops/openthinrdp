@@ -11,21 +11,30 @@ mounts it every 5 minutes, at boot and at every new event, writes its status and
   config\common.conf           settings for every device
   config\<hostname>.conf       settings for one device (wins over common.conf)
   config\authorized_keys       SSH public keys of the administrators (optional)
+  config\branding\logo.png, splash.png              logo and boot image for every device (optional)
+  config\branding\<hostname>\logo.png, splash.png   for one device (wins over the common ones)
   config\backup\, changes.log  written by the Windows manager
   updates\LATEST.txt(.sig)     signed update index, and the packages
 ```
 
 ## Account
 
-The devices log in with `/etc/openthinrdp/smb.cred` (put it in `image/site/smb.cred`):
+The devices log in with `/etc/openthinrdp/smb.cred` (root only). Two ways to get it there:
 
-```
-username=svc-thinclients
-password=...
-domain=EXAMPLE
-```
+- **On the device**, also with the downloadable ISO: in the settings dialog, *Management folder user*
+  (`user`, `DOMAIN\user` or `user@domain`; without a domain, `DOMAIN` is used) and *Management folder
+  password*. The user is a normal setting (`MGMT_USER`); the password goes only into `smb.cred`, is never shown
+  again, never in the status files, and an empty field keeps the saved one. Central settings can change both
+  (`MGMT_USER=`, `MGMT_PASSWORD=` in `config\common.conf` or `config\<hostname>.conf`), e.g. to rotate it.
+- **In your own image**: `image/site/smb.cred`:
 
-Because this file is in every image, use an account that can **only** read and write this folder: not a
+  ```
+  username=svc-thinclients
+  password=...
+  domain=EXAMPLE
+  ```
+
+Every device can read this password, so use an account that can **only** read and write this folder: not a
 member of Domain Users, Modify on the folder, nothing else. Check from a device that the account cannot list
 or write anything outside it.
 
@@ -54,6 +63,20 @@ and edits these files with the same validation, a backup of every file it overwr
 Before saving `common.conf` it lists the devices that would reject it.
 It is available in English and Italian: it follows the Windows display language (English for any language
 without a file in `management/windows/lang/`), or `-Language en` / `-Language it` chooses one.
+
+## Logo and boot image
+
+`logo.png` is the logo of the dialogs and of the sign-in form; `splash.png` is the boot image, shown on the boot
+screen and behind the sign-in form on the `BG_TOP`/`BG_BOTTOM` gradient. In `config\branding\` they are for every
+device, in `config\branding\<hostname>\` for that device only; a device without them uses the ones of its image.
+The manager's **Logo and boot image...** button (common settings, or a device) takes any picture, scales it down
+and saves it as PNG there; files copied by hand are fine too.
+
+A device accepts PNG files only, up to 2 MB, a logo up to 400 x 240 pixels and a boot image up to 1024 x 640
+(anything else is refused once with an event, and the previous picture stays). Logo and sign-in background change
+within 5 minutes; the boot screen from the next restart, as the device rebuilds its initramfs in the background
+(also when only the colors change). The status file says where each picture comes from: `BRANDING=logo=common
+splash=image` (`image`, `common` or `device`).
 
 ## SSH keys
 

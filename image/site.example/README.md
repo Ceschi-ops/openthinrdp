@@ -4,7 +4,7 @@ Everything that makes the image yours. Copy this folder to `image/site` (ignored
 
 | File | Goes to | Purpose |
 |---|---|---|
-| `build.conf` | (build only) | language, time zone, keyboard, admin console password, FreeRDP source |
+| `build.conf` | (build only) | language, time zone, keyboard, `otradmin` password, FreeRDP source |
 | `site.conf` | `/etc/openthinrdp/site.conf` | default settings for every device (broker, domain, management folder...) |
 | `logo.png` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs, about 200 px wide |
 | `splash.png` | boot splash and background | logo on the boot screen, about 640 px wide, transparent background |

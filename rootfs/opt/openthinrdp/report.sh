@@ -5,6 +5,7 @@
 #   status\<hostname>-events.log   event log
 #   SUMMARY.csv                    one line per device, rewritten by whoever reports
 #   config\common.conf, config\<hostname>.conf, config\authorized_keys   central settings (central-apply.sh)
+#   config\branding\, config\branding\<hostname>\   logo and boot image (branding.sh)
 #   updates\                       signed updates (auto-update.sh)
 . /opt/openthinrdp/lib/common.sh
 . "$OTR/lib/netif.sh"
@@ -58,6 +59,9 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   echo "UPDATE_VERSION=$(cat "$OTR_LIB/update-version" 2>/dev/null || echo none)"
   echo "CENTRAL_CONFIG=$(cat "$OTR_LIB/central-status" 2>/dev/null || echo 'never read')"
   echo "UPDATE_FROM=$(cfg UPDATE_FROM)"
+  # logo and boot image: image = the image's own, common = config\branding\, device = config\branding\<hostname>\
+  BRS=$(tr '\n' ' ' < "$OTR_LIB/branding/source" 2>/dev/null); BRS=${BRS% }
+  echo "BRANDING=${BRS:-logo=image splash=image}"
   # status of the software updates, whatever the source (the name is kept for the manager)
   echo "SHARE_UPDATE=$(cat "$OTR_LIB/update/status" 2>/dev/null || echo 'never checked')"
   # last real unattended-upgrade run (dry runs discarded) and last run that installed something
@@ -143,6 +147,7 @@ else
       fi
       rm -f "$OTR_LIB/authorized_keys.new"
     fi
+    "$OTR/branding.sh" sync "$MNT"
     # SUMMARY.csv: one line per device, rewritten by whoever reports (atomic write)
     NOW=$(date +%s)
     {
@@ -185,4 +190,6 @@ case "$(cfg UPDATE_FROM)" in
 esac
 # apply the central settings (also when the folder does not answer: the last good copy is used)
 "$OTR/central-apply.sh"
+# boot splash: the boot image and the colors may have changed above
+"$OTR/branding.sh" splash
 exit 0

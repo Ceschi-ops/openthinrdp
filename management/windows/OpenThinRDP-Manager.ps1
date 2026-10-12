@@ -209,6 +209,7 @@ $script:Settings = @(
   (New-Setting 'RDP_CERT'            'choice'     'tofu' @('tofu', 'ignore', 'verify'))
   (New-Setting 'RDP_GFX'             'gfx'        'progressive,AVC420:off,AVC444:off')
   (New-Setting 'RDP_KEYBOARD'        'rdpkbd'     '')
+  (New-Setting 'MULTIMON'            'choice'     'auto' @('auto', 'off'))
   (New-Setting 'RDP_EXTRA'           'extra'      '')
   (New-Setting 'SESSION_THRESHOLD'   'threshold'  '10')
   (New-Setting 'SHUTDOWN_SECS'       'shutdown'   '10')
@@ -229,6 +230,7 @@ $script:Settings = @(
   (New-Setting 'WIFI_PSK'            'psk'        '')
   (Set-Section 'SectionManagement')
   (New-Setting 'MGMT_SHARE'          'share'      '')
+  (New-Setting 'MGMT_USER'           'user'       '')
   (New-Setting 'SECURITY_UPDATES'    'choice'     'on' @('off', 'on'))
   (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
   (New-Setting 'UPDATE_GITHUB'       'repo'       'Ceschi-ops/openthinrdp')
@@ -730,9 +732,10 @@ function Get-CommonSavePlan($managed, $devices) {
   [pscustomobject]@{ File = $script:CommonFile; Errors = $err; Warnings = $warn; Values = $final; Changes = $changes; Notes = $notes }
 }
 
-# keys in a .conf that the devices ignore: unknown, or device-only keys in common.conf
+# keys in a .conf that the devices ignore: unknown, or device-only keys in common.conf. MGMT_PASSWORD is used by
+# the devices although this tool does not edit it (a password is written in the file by hand, or set on the device)
 function Get-IgnoredKeys($conf, [switch]$Common) {
-  @($conf.Keys | Where-Object { -not (Get-Setting $_) -or ($Common -and $script:HostOnly -contains $_) })
+  @($conf.Keys | Where-Object { (-not (Get-Setting $_) -and $_ -ne 'MGMT_PASSWORD') -or ($Common -and $script:HostOnly -contains $_) })
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -805,10 +808,73 @@ function Complete-Renames {
       $p = Join-Path $script:StatusDir $s
       if (Test-Path -LiteralPath $p) { if (-not (Test-Path -LiteralPath $prev)) { New-Item -ItemType Directory -Path $prev | Out-Null }; Move-Item -LiteralPath $p -Destination (Join-Path $prev $s) -Force }
     }
+    # logo and boot image of the device follow it
+    $bo = Get-BrandingDir $old; $bn = Get-BrandingDir $new
+    if ((Test-Path -LiteralPath $bo) -and -not (Test-Path -LiteralPath $bn)) { Move-Item -LiteralPath $bo -Destination $bn }
     Add-ChangeLog ("rename completed: {0} -> {1} ({0}.conf becomes {1}.conf)" -f $old, $new)
     $done += "$old -> $new"
   }
   $done
+}
+
+# ---------------------------------------------------------------------------------------------
+# Logo and boot image: config\branding\<kind>.png for every device, config\branding\<hostname>\<kind>.png for
+# one (branding.sh on the device; the device file wins). Any picture is scaled down to fit and saved as PNG:
+# the devices accept only PNG files up to 2 MB, logo up to 400 x 240, boot image up to 1024 x 640.
+# ---------------------------------------------------------------------------------------------
+$script:BrandingSize = @{ logo = @(300, 120); splash = @(640, 400) }
+function Get-BrandingDir([string]$hostName = '') {
+  $d = Join-Path $script:ConfigDir 'branding'; if ($hostName) { Join-Path $d $hostName } else { $d }
+}
+function Get-BrandingFile([string]$kind, [string]$hostName = '') { Join-Path (Get-BrandingDir $hostName) "$kind.png" }
+# the picture a device shows: its own, else the common one, else the image's own (File = $null)
+function Get-BrandingSource([string]$kind, [string]$hostName = '') {
+  if ($hostName) { $f = Get-BrandingFile $kind $hostName; if (Test-Path -LiteralPath $f) { return [pscustomobject]@{ From = 'device'; File = $f } } }
+  $f = Get-BrandingFile $kind; if (Test-Path -LiteralPath $f) { return [pscustomobject]@{ From = 'common'; File = $f } }
+  [pscustomobject]@{ From = 'image'; File = $null }
+}
+# a copy in memory: Image.FromFile would keep the file locked until the window closes
+function Read-Picture([string]$file) {
+  $ms = New-Object IO.MemoryStream(, [IO.File]::ReadAllBytes($file))
+  try { $i = [System.Drawing.Image]::FromStream($ms); try { New-Object System.Drawing.Bitmap($i) } finally { $i.Dispose() } } finally { $ms.Dispose() }
+}
+function Save-BrandingImage([string]$source, [string]$kind, [string]$hostName = '') {
+  $max = $script:BrandingSize[$kind]
+  try { $img = Read-Picture $source } catch { throw (Get-Text 'BrandLoadFailed' $_.Exception.Message) }
+  try {
+    $k = [Math]::Min(1.0, [Math]::Min($max[0] / $img.Width, $max[1] / $img.Height))
+    $w = [Math]::Max(1, [int][Math]::Round($img.Width * $k)); $h = [Math]::Max(1, [int][Math]::Round($img.Height * $k))
+    $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+      $g.InterpolationMode = 'HighQualityBicubic'; $g.PixelOffsetMode = 'HighQuality'; $g.CompositingQuality = 'HighQuality'
+      $g.Clear([System.Drawing.Color]::Transparent)
+      # TileFlipXY: no half transparent frame along the edges when scaling down
+      $ia = New-Object System.Drawing.Imaging.ImageAttributes; $ia.SetWrapMode('TileFlipXY')
+      $g.DrawImage($img, (New-Object System.Drawing.Rectangle(0, 0, $w, $h)), 0, 0, $img.Width, $img.Height, 'Pixel', $ia)
+    } finally { $g.Dispose() }
+  } finally { $img.Dispose() }
+  $dest = Get-BrandingFile $kind $hostName
+  $dir = Split-Path $dest; if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+  # written aside first: a device never reads half a file (it reads only <kind>.png)
+  $tmp = "$dest.new"
+  try { $bmp.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png) } finally { $bmp.Dispose() }
+  if ((Get-Item -LiteralPath $tmp).Length -gt 2MB) { Remove-Item -LiteralPath $tmp; throw (Get-Text 'BrandTooBig') }
+  $rel = if ($hostName) { "branding\$hostName\$kind.png" } else { "branding\$kind.png" }
+  if (Test-Path -LiteralPath $dest) { Move-Item -LiteralPath $dest -Destination (Get-BackupPath ($rel -replace '\\', '-')) }
+  Move-Item -LiteralPath $tmp -Destination $dest
+  Add-ChangeLog ("{0}: new picture {1} x {2} px (from {3})" -f $rel, $w, $h, [IO.Path]::GetFileName($source))
+  [pscustomobject]@{ File = $dest; Width = $w; Height = $h }
+}
+function Remove-BrandingImage([string]$kind, [string]$hostName = '') {
+  $dest = Get-BrandingFile $kind $hostName
+  if (-not (Test-Path -LiteralPath $dest)) { return $false }
+  $rel = if ($hostName) { "branding\$hostName\$kind.png" } else { "branding\$kind.png" }
+  Move-Item -LiteralPath $dest -Destination (Get-BackupPath ($rel -replace '\\', '-'))
+  # an empty device folder would stay forever after the device is gone
+  if ($hostName -and -not @(Get-ChildItem -LiteralPath (Get-BrandingDir $hostName) -Force).Count) { Remove-Item -LiteralPath (Get-BrandingDir $hostName) }
+  Add-ChangeLog "${rel}: removed"
+  $true
 }
 
 function Get-LastFolder {
@@ -999,9 +1065,10 @@ $devPanel = New-Object System.Windows.Forms.Panel; $devPanel.Dock = 'Bottom'; $d
 $btnSaveDev = New-Button 'BtnSaveExceptions' 130 27
 $btnReloadDev = New-Button 'BtnUndo' 130 27
 $btnClearDev = New-Button 'BtnRemoveExceptions' 160 27
+$btnBrandDev = New-Button 'BtnBranding' 150 27
 $lblDev = New-Object System.Windows.Forms.Label
 $lblDev.Text = Get-Text 'NoteDevice' (Get-Text 'ColUseException')
-Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev) $lblDev 7
+Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev, $btnBrandDev) $lblDev 7
 $tabDevSettings.Controls.Add($gridDev); $tabDevSettings.Controls.Add($devPanel)
 $split.Panel2.Controls.Add($detail)
 $tabDevices.Controls.Add($split); $tabDevices.Controls.Add($topPanel)
@@ -1014,9 +1081,10 @@ Add-TextColumn $gridCom 'ColHelp' $null $true
 $comPanel = New-Object System.Windows.Forms.Panel; $comPanel.Dock = 'Bottom'; $comPanel.Height = 58
 $btnSaveCom = New-Button 'BtnSaveCommon' 140 27
 $btnReloadCom = New-Button 'BtnUndo' 130 27
+$btnBrandCom = New-Button 'BtnBranding' 150 27
 $lblCom = New-Object System.Windows.Forms.Label
 $lblCom.Text = Get-Text 'NoteCommon' (Get-Text 'ColManagedHere') (Get-Text 'TabDevices')
-Set-ButtonRow $comPanel @($btnSaveCom, $btnReloadCom) $lblCom 7
+Set-ButtonRow $comPanel @($btnSaveCom, $btnReloadCom, $btnBrandCom) $lblCom 7
 $tabCommon.Controls.Add($gridCom); $tabCommon.Controls.Add($comPanel)
 
 # ---------------- SSH keys tab ----------------
@@ -1223,6 +1291,84 @@ function Save-Keys {
   Update-KeysView
 }
 
+# Logo and boot image of every device ($d = $null) or of one device: a preview on the background colors, where the
+# picture comes from, Choose... and Remove for this level
+function Show-BrandingDialog($d) {
+  $hostName = if ($d) { $d.Name } else { '' }
+  $common = Read-ConfFile $script:CommonFile
+  $bgKey = { param($k, $def) $v = if ($d -and $d.S["CFG_$k"]) { $d.S["CFG_$k"] } elseif ($common[$k]) { $common[$k] } else { $def }
+             try { [System.Drawing.ColorTranslator]::FromHtml($v) } catch { [System.Drawing.ColorTranslator]::FromHtml($def) } }
+  $top = & $bgKey 'BG_TOP' '#1b2733'; $bottom = & $bgKey 'BG_BOTTOM' '#000000'
+  $dlg = New-Object System.Windows.Forms.Form
+  $dlg.Text = if ($d) { Get-Text 'BrandTitleDevice' $hostName } else { Get-Text 'BrandTitleCommon' }
+  $dlg.Font = $fontBase; $dlg.FormBorderStyle = 'FixedDialog'; $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
+  $dlg.StartPosition = 'CenterParent'; $dlg.ClientSize = New-Object System.Drawing.Size(700, 600)
+  $note = New-Object System.Windows.Forms.Label; $note.SetBounds(12, 10, 676, 60)
+  $note.Text = if ($d) { Get-Text 'BrandNoteDevice' $hostName } else { Get-Text 'BrandNoteCommon' }
+  if ($d -and $d.S['BRANDING']) { $note.Text += "`r`n" + (Get-Text 'BrandReported' $d.S['BRANDING']) }
+  $dlg.Controls.Add($note)
+  $y = 76
+  foreach ($kind in @('logo', 'splash')) {
+    $box = New-Object System.Windows.Forms.GroupBox; $box.Text = Get-Text $(if ($kind -eq 'logo') { 'BrandLogo' } else { 'BrandSplash' })
+    $ph = if ($kind -eq 'logo') { 150 } else { 260 }
+    $box.SetBounds(12, $y, 676, $ph + 34); $y += $ph + 44
+    $pic = New-Object System.Windows.Forms.PictureBox; $pic.SetBounds(12, 22, 470, $ph); $pic.SizeMode = 'CenterImage'
+    $pic.Tag = @{ Top = $top; Bottom = $bottom }
+    $pic.add_Paint({ param($s, $e)
+      $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($s.ClientRectangle, $s.Tag.Top, $s.Tag.Bottom, 90.0)
+      $e.Graphics.FillRectangle($br, $s.ClientRectangle); $br.Dispose()
+      if ($s.Tag.Image) { $i = $s.Tag.Image
+        $k = [Math]::Min(1.0, [Math]::Min(($s.Width - 8) / $i.Width, ($s.Height - 8) / $i.Height)); $w = [int]($i.Width * $k); $h = [int]($i.Height * $k)
+        $e.Graphics.DrawImage($i, [int](($s.Width - $w) / 2), [int](($s.Height - $h) / 2), $w, $h) }
+      elseif ($s.Tag.Text) { [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $s.Tag.Text, $fontBase, $s.ClientRectangle, [System.Drawing.Color]::White) } })
+    $lbl = New-Object System.Windows.Forms.Label; $lbl.SetBounds(494, 22, 172, 60)
+    $choose = New-Button 'BtnChoose' 172 27; $choose.Location = New-Object System.Drawing.Point(494, 88)
+    $remove = New-Button 'BtnRemovePicture' 172 27; $remove.Location = New-Object System.Drawing.Point(494, 121)
+    $state = @{ Kind = $kind; Host = $hostName; Pic = $pic; Label = $lbl; Remove = $remove }
+    $refresh = {
+      param($st)
+      $src = Get-BrandingSource $st.Kind $st.Host
+      if ($st.Pic.Tag.Image) { $st.Pic.Tag.Image.Dispose(); $st.Pic.Tag.Image = $null }
+      $st.Pic.Tag.Text = ''
+      if ($src.File) { try { $st.Pic.Tag.Image = Read-Picture $src.File } catch { $st.Pic.Tag.Text = $_.Exception.Message } }
+      else { $st.Pic.Tag.Text = Get-Text 'BrandImageOwn' }
+      $size = if ($st.Pic.Tag.Image) { "{0} x {1} px" -f $st.Pic.Tag.Image.Width, $st.Pic.Tag.Image.Height } else { '' }
+      $st.Label.Text = switch ($src.From) { 'device' { Get-Text 'BrandFromDevice' $size } 'common' { Get-Text 'BrandFromCommon' $size } default { Get-Text 'BrandFromImage' } }
+      # Remove only what belongs to this level: a device cannot remove the common picture
+      $st.Remove.Enabled = Test-Path -LiteralPath (Get-BrandingFile $st.Kind $st.Host)
+      $st.Pic.Invalidate()
+    }
+    $choose.Tag = @{ State = $state; Refresh = $refresh }; $remove.Tag = $choose.Tag
+    $choose.add_Click({ param($s, $e)
+      $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'BrandChooseTitle'; $ofd.Filter = Get-Text 'BrandFilter'
+      if ($ofd.ShowDialog() -ne 'OK') { return }
+      try { $r = Save-BrandingImage $ofd.FileName $s.Tag.State.Kind $s.Tag.State.Host; $barText.Text = Get-Text 'SavedBranding' $r.File $r.Width $r.Height }
+      catch { Show-Message (Get-Text 'MsgErrorTitle') $_.Exception.Message 'Error' }
+      & $s.Tag.Refresh $s.Tag.State })
+    $remove.add_Click({ param($s, $e)
+      if (-not (Confirm-Action (Get-Text 'BrandRemoveTitle') (Get-Text 'BrandRemoveConfirm') 'Button2')) { return }
+      try { if (Remove-BrandingImage $s.Tag.State.Kind $s.Tag.State.Host) { $barText.Text = Get-Text 'RemovedBranding' (Get-BrandingFile $s.Tag.State.Kind $s.Tag.State.Host) } }
+      catch { Show-Message (Get-Text 'MsgErrorTitle') $_.Exception.Message 'Error' }
+      & $s.Tag.Refresh $s.Tag.State })
+    $box.Controls.AddRange(@($pic, $lbl, $choose, $remove)); $dlg.Controls.Add($box)
+    & $refresh $state
+  }
+  $close = New-Button 'BtnClose' 100 27; $close.Location = New-Object System.Drawing.Point((688 - $close.Width), ($y + 2)); $close.DialogResult = 'Cancel'
+  $dlg.Controls.Add($close); $dlg.CancelButton = $close
+  $dlg.ClientSize = New-Object System.Drawing.Size(700, ($y + 40)); $dlg.Tag = $dlg.ClientSize
+  if ($env:OTR_MANAGER_BRANDING_SHOT) {   # test: draws the dialog into a PNG and closes it
+    # control by control at their own size: Windows clamps the dialog to a small test screen, not its controls
+    $dlg.add_Shown({ try { $dlg.Refresh(); $cs = $dlg.Tag; $b = New-Object System.Drawing.Bitmap($cs.Width, $cs.Height)
+      $gb = [System.Drawing.Graphics]::FromImage($b); $gb.Clear($dlg.BackColor); $gb.Dispose()
+      foreach ($c in $dlg.Controls) { $c.DrawToBitmap($b, $c.Bounds) }
+      $b.Save($env:OTR_MANAGER_BRANDING_SHOT, [System.Drawing.Imaging.ImageFormat]::Png)
+    } catch { [Console]::Error.WriteLine("branding screenshot failed: $($_.Exception.Message)") } finally { $dlg.Close() } })
+  }
+  [void]$dlg.ShowDialog($form)
+  foreach ($c in $dlg.Controls) { if ($c -is [System.Windows.Forms.GroupBox]) { foreach ($p in $c.Controls) { if ($p -is [System.Windows.Forms.PictureBox] -and $p.Tag.Image) { $p.Tag.Image.Dispose() } } } }
+  $dlg.Dispose()
+}
+
 # changing a value ticks "Use exception" / "Managed here" by itself
 $gridDev.add_CellValueChanged({ param($s, $e) if (-not $script:Loading -and $e.RowIndex -ge 0 -and $e.ColumnIndex -eq 3 -and $null -ne $gridDev.Rows[$e.RowIndex].Tag) { $gridDev.Rows[$e.RowIndex].Cells[4].Value = $true } })
 $gridCom.add_CellValueChanged({ param($s, $e) if (-not $script:Loading -and $e.RowIndex -ge 0 -and $e.ColumnIndex -eq 1 -and $null -ne $gridCom.Rows[$e.RowIndex].Tag) { $gridCom.Rows[$e.RowIndex].Cells[2].Value = $true } })
@@ -1247,6 +1393,8 @@ $btnReloadDev.add_Click({ Update-DeviceGrid })
 $btnClearDev.add_Click({ Clear-Device })
 $btnSaveCom.add_Click({ Save-Common })
 $btnReloadCom.add_Click({ Update-CommonGrid })
+$btnBrandDev.add_Click({ if ($script:Selected) { Show-BrandingDialog $script:Selected } })
+$btnBrandCom.add_Click({ Show-BrandingDialog $null })
 $btnSaveKeys.add_Click({ Save-Keys })
 $btnReloadKeys.add_Click({ Update-KeysView })
 
@@ -1260,6 +1408,9 @@ $form.add_Shown({
   if ($list.Items.Count) { $list.Items[0].Selected = $true }
   $timer.Start()
 })
+if ($env:OTR_MANAGER_BRANDING_SHOT) {   # test: the logo dialog (of OTR_MANAGER_BRANDING_HOST, or common) into a PNG
+  $form.add_Shown({ Show-BrandingDialog ($script:Devices | Where-Object Name -eq $env:OTR_MANAGER_BRANDING_HOST | Select-Object -First 1); $form.Close() })
+}
 if ($env:OTR_MANAGER_SCREENSHOT) {   # test: draws the window into a PNG instead of leaving it open
   # an error must close the window and be reported: nobody is there to close it
   $form.add_Shown({ try {
