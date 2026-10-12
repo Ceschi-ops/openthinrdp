@@ -34,12 +34,33 @@ Nothing to install. UDP must be allowed:
 - UDP port 3389 open on the session hosts (Windows opens it by default) and on any firewall in between. The
   broker does not need it: it only redirects.
 
+## On a lossy line
+
+Measured on a line that loses **43% of the large packets** (5% of the small ones): a switch port with a faulty
+transceiver, then reproduced exactly with netem on the thin client, on the traffic from the virtual machine only.
+Windows 11 VDI behind the broker, full-screen load that changes every pixel at 30 frames per second.
+
+| | OpenThinRDP over UDP | TCP, same line and load |
+|---|---|---|
+| frames per second | **19-21**, as on the clean line | **0-0.1**, the screen stands still |
+| frames dropped by the server for network reasons | 0 | |
+| bandwidth the server reports | 70 Mbit/s, of which 43% resent | 2.6 Mbit/s, round trip 138 ms |
+| session opened when the line is already bad | set up over UDP, 14-19 fps | |
+
+Over TCP every lost packet holds up everything behind it until it is resent; over UDP the lost packets are resent
+while the rest of the stream goes on. Getting there took a fix of ours to the UDP transport: after the channel
+sequence wrapped, an unsigned difference went below zero, the client believed the stream had been stuck for ages
+and ended the connection within 1-25 seconds of the loss starting. With the fix the session held until we stopped
+the test. Both changes are proposed upstream in the pull request.
+
 ## The FreeRDP in the image
 
 `image/freerdp/freerdp.conf` names the exact source: branch
 [`openthinrdp-udp-3.32.2`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2) of a FreeRDP fork, which is
 the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the commits of pull request #13608, the UDP
-transport, applied unchanged.
+transport, applied unchanged, and two commits of ours: no false "stream is stuck" after a delivery in `run_timers`
+(see above), and ten SYN attempts instead of four (SYN and SYN+ACK are padded to the MTU, the first packets a bad
+line loses).
 
 FreeRDP 3.32.2 already contains the USB fixes found while building OpenThinRDP: #13674 (deadlock between USB hotplug
 and the closing of the USB channel) and #13679 (from our #13677: no hang on disconnect with a USB transfer pending),

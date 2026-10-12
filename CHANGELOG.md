@@ -10,6 +10,12 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 - **Security: FreeRDP 3.32.2**, the security release of 2026-10-12, with the UDP transport (pull request #13608)
   on top. The USB fixes #13674, #13679 and #13618 are part of 3.32.2.
+- **UDP holds on lossy lines.** We found and fixed a bug in the UDP transport: after the channel sequence wrapped,
+  a wrong elapsed time (an unsigned difference going below zero) made the client believe the stream had been stuck
+  for ages, and it ended the connection within seconds whenever packets were being lost. On a line losing 43% of
+  the large packets (a faulty switch port, reproduced with netem) the session now keeps 19-21 frames per second,
+  as on a clean line, while TCP on the same line shows 0-0.1. The tunnel is also set up with ten attempts instead
+  of four. Both fixes are proposed to FreeRDP in pull request #13608. See [docs/udp.md](docs/udp.md).
 - **Fix: no microphone in meetings with a webcam.** A webcam was passed to Windows as a whole USB device, and
   Windows keeps the microphone of such a device in the console session: Teams and Zoom in the remote session found
   no microphone at all. Webcams and USB headsets now stay on the thin client: the camera goes through the RDP
