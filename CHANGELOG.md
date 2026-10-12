@@ -5,6 +5,14 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **FreeRDP: pull request #13608 unchanged, no patches of ours.** The author took our two fixes into the pull
+  request (ten SYN attempts, and the root cause of the false "stream is stuck" on lossy lines), which also
+  removes a 1 s freeze at every wrap of the channel sequence under loss: with 70% of the packets lost the
+  session now keeps 18-19 frames per second instead of 9-13.
+- **Settings PIN salted and stretched** (PBKDF2-SHA256, 600,000 iterations) when set from the manager; a PIN
+  of 0.1.4 and earlier keeps working.
+- Docs: the devices' account needs write access to `status\` only ([management.md](docs/management.md#account));
+  replacing or revoking the release key through the update channel ([SECURITY.md](SECURITY.md)).
 - FreeRDP gets 20 s instead of 30 to bring a connection up: a broker that accepts the connection and then hangs
   costs this much on every attempt before the next broker is tried. Still above the 15 s a broker took to prepare
   a virtual machine.
