@@ -1,9 +1,12 @@
 # Changelog
 
 Every release, newest first. **Security** marks what every device should get at once.
-Downloads and signed update packages: [releases](https://github.com/Ceschi-ops/openthinrdp/releases).
+Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
 ## 0.1.4 (2026-10-12)
+
+- **The project moved to the OpenThinRDP organization**: https://github.com/OpenThinRdp/openthinrdp, website
+  https://openthinrdp.github.io/. The old addresses redirect, and devices already installed keep updating.
 
 - **Security: FreeRDP 3.32.2**, the security release of 2026-10-12, with the UDP transport (pull request #13608)
   on top. The USB fixes #13674, #13679 and #13618 are part of 3.32.2.

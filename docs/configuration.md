@@ -73,7 +73,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `MGMT_PASSWORD` | | its password. Only in central settings or the dialog; stored only in `/etc/openthinrdp/smb.cred` |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
-| `UPDATE_GITHUB` | `Ceschi-ops/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
+| `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 
 ## Web button and kiosk page

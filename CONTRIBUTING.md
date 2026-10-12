@@ -5,12 +5,12 @@ and tell us what happened**, good or bad.
 
 ## Reports
 
-- **Something does not work**: open a [bug report](https://github.com/Ceschi-ops/openthinrdp/issues/new/choose).
+- **Something does not work**: open a [bug report](https://github.com/OpenThinRdp/openthinrdp/issues/new/choose).
   Say which device (model, CPU, network card), which version (`SOFTWARE=` in the status file or the ℹ button of
   the sign-in form), and the Windows side (broker or PC, Windows version, VDI or session host).
   The ℹ diagnostics and `/var/log/openthinrdp/events.log` usually say a lot.
 - **It works on your device**: a line in
-  [Discussions](https://github.com/Ceschi-ops/openthinrdp/discussions) with the model helps others, and goes
+  [Discussions](https://github.com/OpenThinRdp/openthinrdp/discussions) with the model helps others, and goes
   into [docs/hardware.md](docs/hardware.md).
 - **UDP itself** (the FreeRDP transport): the [FreeRDP#13608](https://github.com/FreeRDP/FreeRDP/pull/13608)
   thread is the right place, with a FreeRDP log if you can.

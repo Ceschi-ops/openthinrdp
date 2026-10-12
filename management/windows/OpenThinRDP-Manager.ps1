@@ -233,7 +233,7 @@ $script:Settings = @(
   (New-Setting 'MGMT_USER'           'user'       '')
   (New-Setting 'SECURITY_UPDATES'    'choice'     'on' @('off', 'on'))
   (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
-  (New-Setting 'UPDATE_GITHUB'       'repo'       'Ceschi-ops/openthinrdp')
+  (New-Setting 'UPDATE_GITHUB'       'repo'       'OpenThinRdp/openthinrdp')
   (New-Setting 'SSH'                 'choice'     'off' @('off', 'on'))
   (Set-Section 'SectionWeb')
   (New-Setting 'WEB_BUTTON'          'choice'     'none' @('none', 'app', 'browser', 'kiosk'))

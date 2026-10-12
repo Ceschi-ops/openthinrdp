@@ -4,9 +4,9 @@
 for Windows Remote Desktop, RDS and VDI: FreeRDP with the UDP transport that upstream does not ship yet.</b></p>
 
 <p align="center">
-<a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest"><b>⬇ Download the ISO (latest release)</b></a>
+<a href="https://github.com/OpenThinRdp/openthinrdp/releases/latest"><b>⬇ Download the ISO (latest release)</b></a>
 &nbsp;·&nbsp; <a href="#try-it-in-five-minutes">Try it live, nothing installed</a>
-&nbsp;·&nbsp; <a href="https://ceschi-ops.github.io/openthinrdp/">Website</a>
+&nbsp;·&nbsp; <a href="https://openthinrdp.github.io/">Website</a>
 &nbsp;·&nbsp; <a href="README.it.md">Italiano</a>
 </p>
 
@@ -44,7 +44,7 @@ PCs without UEFI.
 
 ## Try it in five minutes
 
-1. [Download `openthinrdp-<version>.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/latest) and write it
+1. [Download `openthinrdp-<version>.iso`](https://github.com/OpenThinRdp/openthinrdp/releases/latest) and write it
    to a USB stick with any raw image writer (Rufus in DD mode, balenaEtcher, `dd`).
 2. Boot the PC from the stick. The menu starts the **live system** by itself after 10 seconds: it runs from the
    stick and **never writes to the disk**.

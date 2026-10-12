@@ -4,9 +4,9 @@
 per Desktop remoto Windows, RDS e VDI: FreeRDP con il trasporto UDP che la versione ufficiale non ha ancora.</b></p>
 
 <p align="center">
-<a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest"><b>⬇ Scarica la ISO (ultima versione)</b></a>
+<a href="https://github.com/OpenThinRdp/openthinrdp/releases/latest"><b>⬇ Scarica la ISO (ultima versione)</b></a>
 &nbsp;·&nbsp; <a href="#provarlo-in-cinque-minuti">Provalo in live, senza installare niente</a>
-&nbsp;·&nbsp; <a href="https://ceschi-ops.github.io/openthinrdp/it/">Sito</a>
+&nbsp;·&nbsp; <a href="https://openthinrdp.github.io/it/">Sito</a>
 &nbsp;·&nbsp; <a href="README.md">English</a>
 </p>
 
@@ -46,7 +46,7 @@ ARM, PC senza UEFI.
 
 ## Provarlo in cinque minuti
 
-1. [Scaricate `openthinrdp-<versione>.iso`](https://github.com/Ceschi-ops/openthinrdp/releases/latest) e scrivetela
+1. [Scaricate `openthinrdp-<versione>.iso`](https://github.com/OpenThinRdp/openthinrdp/releases/latest) e scrivetela
    su una chiavetta con qualsiasi programma che scriva immagini (Rufus in modalità DD, balenaEtcher, `dd`).
 2. Avviate il PC dalla chiavetta. Il menu fa partire da solo il **sistema live** dopo 10 secondi: gira dalla
    chiavetta e **non scrive mai sul disco**.

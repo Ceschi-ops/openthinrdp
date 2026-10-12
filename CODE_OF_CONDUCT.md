@@ -11,5 +11,5 @@ Maintainers may edit or remove comments, commits and contributions that do not f
 block people who repeatedly or seriously break them.
 
 Report a problem privately to the maintainers through a
-[private report](https://github.com/Ceschi-ops/openthinrdp/security/advisories/new) on this repository (write
+[private report](https://github.com/OpenThinRdp/openthinrdp/security/advisories/new) on this repository (write
 "Code of conduct" in the title). Every report is read and handled confidentially.
