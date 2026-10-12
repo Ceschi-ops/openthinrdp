@@ -1,0 +1,20 @@
+name: Feature request
+description: Something OpenThinRDP should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need, and why
+      description: The situation first (devices, users, Windows side), then what would help
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: A setting, a button, something in the manager... or leave it open
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead

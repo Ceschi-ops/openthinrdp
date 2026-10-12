@@ -156,7 +156,8 @@ La documentazione è in inglese nella cartella [docs](docs/); le novità di ogni
 ## Contribuire
 
 Issue e pull request sono benvenute, anche in italiano. I problemi di sicurezza vanno segnalati in privato,
-vedi [SECURITY.md](SECURITY.md).
+vedi [SECURITY.md](SECURITY.md). Come contribuire: [CONTRIBUTING.md](CONTRIBUTING.md); regole di convivenza:
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Licenza
 

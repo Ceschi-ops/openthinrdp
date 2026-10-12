@@ -175,7 +175,8 @@ The result is `out/openthinrdp-<version>.iso`. See [docs/building.md](docs/build
 ## Contributing
 
 Issues and pull requests are welcome. Please describe the hardware and the Windows side (broker, session
-host version) for anything related to connections or devices. Run `tests/run-tests.sh` (see its header).
+host version) for anything related to connections or devices. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md).
 
 Security problems: please report them privately, see [SECURITY.md](SECURITY.md).
 

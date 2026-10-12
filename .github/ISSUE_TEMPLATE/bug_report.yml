@@ -1,0 +1,56 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Remove what you do not want public (domain, server and user names, addresses).
+        Security problems: not here, see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: OpenThinRDP version
+      description: SOFTWARE= in the status file, or the first line of the ℹ diagnostics
+      placeholder: "0.1.2"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Model, and network card if it is about the network
+      placeholder: "Dell OptiPlex 3000 Thin Client, Realtek RTL8111"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Running from
+      options:
+        - installed system
+        - live system (USB stick)
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows side
+      description: Broker + VDI or session hosts, or a single PC; Windows version
+      placeholder: "RD Connection Broker, Windows 11 23H2 VDI on Hyper-V"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics and events
+      description: Text of the ℹ diagnostics, the last lines of /var/log/openthinrdp/events.log, a FreeRDP log for connection problems
+      render: text

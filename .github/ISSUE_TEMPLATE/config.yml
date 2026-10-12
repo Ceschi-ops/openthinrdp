@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question, or "it works on my device"
+    url: https://github.com/Ceschi-ops/openthinrdp/discussions
+    about: Questions, ideas and hardware reports go to Discussions
+  - name: Security problem
+    url: https://github.com/Ceschi-ops/openthinrdp/security/advisories/new
+    about: Report it privately, never in a public issue
+  - name: The UDP transport of FreeRDP
+    url: https://github.com/FreeRDP/FreeRDP/pull/13608
+    about: Problems of UDP itself belong to the FreeRDP pull request
