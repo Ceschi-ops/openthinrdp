@@ -13,7 +13,8 @@ apt-get source -qq -t trixie-backports freerdp3
 DEB=$(ls -d /b/freerdp3-*/ | head -1)
 git init -q /b/src && cd /b/src
 git fetch -q --depth 1 "$FREERDP_REPO" "$FREERDP_COMMIT" && git checkout -q FETCH_HEAD
-DATE=$(git log -1 --format=%cs | tr -d -); SHORT=$(git rev-parse --short=9 HEAD)
+# date AND time of the commit: two builds of the same day still sort in order (a rebase keeps the version growing)
+DATE=$(git log -1 --format=%cd --date=format:%Y%m%d%H%M); SHORT=$(git rev-parse --short=9 HEAD)
 cp -a "$DEB/debian" .
 # Debian's own patches are written for its release: those that no longer apply to the newer source are skipped
 if [ -f debian/patches/series ]; then

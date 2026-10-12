@@ -37,17 +37,14 @@ Nothing to install. UDP must be allowed:
 ## The FreeRDP in the image
 
 `image/freerdp/freerdp.conf` names the exact source: branch
-[`openthinrdp-udp-13679`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-13679) of a FreeRDP fork, which is
-FreeRDP master with:
+[`openthinrdp-udp-3.32.2`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2) of a FreeRDP fork, which is
+the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the commits of pull request #13608, the UDP
+transport, applied unchanged.
 
-- pull request #13608: the UDP transport;
-- pull request #13674: a deadlock between USB hotplug and the closing of the USB channel;
-- pull request #13679 (from our #13677): a fix for a client that hangs on disconnect when a redirected USB device has a transfer pending;
-- pull request #13618 (already in FreeRDP master, newer than the base of #13608): no real USB device reset,
-  cancelled transfers complete normally. Some USB devices (e.g. tachograph download keys) stall without it.
-
-Each change is a separate commit with its description. When they reach a FreeRDP release, the image goes back
-to Debian's packages.
+FreeRDP 3.32.2 already contains the USB fixes found while building OpenThinRDP: #13674 (deadlock between USB hotplug
+and the closing of the USB channel) and #13679 (from our #13677: no hang on disconnect with a USB transfer pending),
+plus #13618 (no real USB device reset). When the UDP transport reaches a FreeRDP release, the image goes back to
+Debian's packages.
 
 The packages are built by `image/freerdp/build-debs.sh` (Debian's trixie-backports packaging, with
 `-DWITH_RDPEUDP=ON`). The image build downloads the prebuilt ones from the release named in `freerdp.conf`

@@ -39,10 +39,12 @@ merge "$HOSTF" host
 T=$(mktemp); E=$(mktemp); chmod 600 "$T" "$E"; trap 'rm -f "$T" "$E"' EXIT
 : > "$E"
 # keys that were managed centrally and are no longer in the central files: back to site.conf / the defaults.
-# HOSTNAME and WIFI_PSK are not stored in the settings file and stay as they are.
+# HOSTNAME and WIFI_PSK are not stored in the settings file and stay as they are. MGMT_SHARE stays too: a folder
+# that moved the device to another folder is not read any more, and the new one need not name itself; released,
+# the device would go back to the folder of its image and bounce between the two at every report.
 RELEASED=""
 for k in $(cat "$MANAGED" 2>/dev/null); do
-  [ -z "${GIVEN[$k]+x}" ] && [ "$k" != HOSTNAME ] && [[ " $SECRETS " != *" $k "* ]] && grep -q "^$k=" "$OTR_CONF" && RELEASED="$RELEASED $k"
+  [ -z "${GIVEN[$k]+x}" ] && [ "$k" != HOSTNAME ] && [ "$k" != MGMT_SHARE ] && [[ " $SECRETS " != *" $k "* ]] && grep -q "^$k=" "$OTR_CONF" && RELEASED="$RELEASED $k"
 done
 if [ -n "$RELEASED" ]; then
   cp -p "$OTR_CONF" "$OTR_CONF.central-backup"

@@ -142,6 +142,11 @@ N=$(grep -c "central configuration applied" $OTR_EVENTS); $OTR/central-apply.sh
 ok "secrets in line: no loop" '[ "$(grep -c "central configuration applied" $OTR_EVENTS)" = "$N" ]'
 : > $OTR_LIB/central-common.conf; $OTR/central-apply.sh; sed -i '/^WIFI/d; /^MGMT_USER/d' $OTR_CONF
 
+# a folder that moves the device to another one: the new folder need not name itself, the device stays there
+printf 'MGMT_SHARE=//fs/new-folder\n' > $OTR_LIB/central-common.conf; $OTR/central-apply.sh
+: > $OTR_LIB/central-common.conf; $OTR/central-apply.sh
+ok "a management folder set centrally is never released" 'grep -qx "MGMT_SHARE=//fs/new-folder" $OTR_CONF'
+sed -i '/^MGMT_SHARE=/d' $OTR_CONF; : > $OTR_LIB/central-managed
 # --- status file: no Wi-Fi key, PIN only as (set)
 printf 'SETTINGS_PIN_SHA256=%s\n' "$(printf 1234 | sha256sum | cut -c1-64)" >> $OTR_CONF
 $OTR/report.sh >/dev/null 2>&1
