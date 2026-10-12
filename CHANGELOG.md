@@ -3,12 +3,26 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/Ceschi-ops/openthinrdp/releases).
 
-## Next
+## 0.1.3 (2026-10-12)
 
+In production: this version runs a fleet of thin clients converted in place, updated from their management folder.
+
+- **New screens for the user** (GTK, full screen, on the background of the site): sign-in with the clock and date,
+  information and settings small in the top right corner, power with **Restart** and **Shut down** bottom right,
+  the web button bottom left; desktop start with a progress bar that follows the real steps (broker, redirection,
+  desktop on screen); errors, no network, session open elsewhere, session taken over, end of session with a
+  countdown. Settings, diagnostics and PIN stay simple dialogs (administrators only).
+- **Software updates**: a notice with the progress in the top right corner while one installs; **Shut down
+  during an update** shows it full screen and switches off when it is done (before, it interrupted the install).
 - The boot screen always shows the picture and colors of the image (OpenThinRDP's, or yours when you build your
-  own image); the picture of the management folder is the background of the sign-in form only. A device that
-  had put it on the boot screen with 0.1.1 or 0.1.2 gets the image's own back. In the manager the button is now
-  **Logo and background...**.
+  own image); the picture of the management folder is the background of the sign-in screen, which is drawn
+  again as soon as a new one arrives. In the manager the button is now **Logo and background...**.
+- Devices still showing the provisional logo of 0.1.0 get the current one (only exact project pictures are
+  replaced, never those of your own image).
+- **FreeRDP**: the USB fix for a client hanging on disconnect is now [FreeRDP#13679](https://github.com/FreeRDP/FreeRDP/pull/13679)
+  (by the FreeRDP maintainer, from our #13677); [#13674](https://github.com/FreeRDP/FreeRDP/pull/13674) was approved.
+- Manager: a picture whose width already fit was not scaled to the height.
+- Day and month of the sign-in screen follow `LANGUAGE`, not the system locale.
 
 ## 0.1.2 (2026-10-12)
 

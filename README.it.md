@@ -24,8 +24,12 @@ gestione, niente cloud, nessuna licenza per postazione.
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
 
-> **Stato: alfa (0.1).** Il codice viene da un sistema in produzione, ma questa versione generica è nuova:
-> provatela in live, poi su una postazione, prima di estenderla. Le segnalazioni sono molto benvenute.
+> **Stato: in produzione.** Proprio questa versione fa girare i thin client dell'azienda da cui nasce (Dell
+> OptiPlex 3000 Thin Client, VDI Windows 11 su Hyper-V dietro un broker RDS): le postazioni sono state convertite
+> sul posto dal sistema che avevano prima e ricevono ogni versione come pacchetto firmato dalla loro cartella di
+> gestione. L'installazione dalla ISO è provata in QEMU/KVM con Secure Boot a ogni versione. Ancora giovane (0.1):
+> provatela in live, poi su una postazione, prima di estenderla; le segnalazioni da altro hardware sono molto
+> benvenute.
 
 ## Per chi è
 

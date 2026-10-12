@@ -23,8 +23,11 @@ settings, logo, signed updates. No agent, no management server, no cloud, no lic
 It grew out of a real migration away from a commercial thin client OS, on a fleet of Dell OptiPlex 3000 Thin
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
 
-> **Status: alpha (0.1).** The code comes from a system in production, but this generic version is new. Try it
-> live, then on one device, before you roll it out. Reports are very welcome.
+> **Status: in production.** This very version runs the thin client fleet of the company it comes from (Dell
+> OptiPlex 3000 Thin Clients, Windows 11 VDI on Hyper-V behind an RD Connection Broker): the devices were
+> converted in place from the system they ran before and get every release as a signed package from their
+> management folder. The ISO installation is tested in QEMU/KVM with Secure Boot at every release. Still young
+> (0.1): try it live, then on one device, before rolling it out; reports from other hardware are very welcome.
 
 ## Who it is for
 
