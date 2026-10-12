@@ -36,16 +36,26 @@ Nothing to install. UDP must be allowed:
 
 ## On a lossy line
 
-Measured on a line that loses **43% of the large packets** (5% of the small ones): a switch port with a faulty
-transceiver, then reproduced exactly with netem on the thin client, on the traffic from the virtual machine only.
-Windows 11 VDI behind the broker, full-screen load that changes every pixel at 30 frames per second.
+It started with a switch port with a faulty transceiver, losing **43% of the large packets** (5% of the small
+ones). We reproduced it with netem on the thin client, on the traffic from the virtual machine only, then raised
+the loss on every packet step by step until the session gave up. Windows 11 VDI behind the broker, full-screen
+load that changes every pixel at 30 frames per second; frame rate and loss as reported by the server.
 
-| | OpenThinRDP over UDP | TCP, same line and load |
+| packets lost | OpenThinRDP over UDP | TCP, same line and load |
 |---|---|---|
-| frames per second | **19-21**, as on the clean line | **0-0.1**, the screen stands still |
-| frames dropped by the server for network reasons | 0 | |
-| bandwidth the server reports | 70 Mbit/s, of which 43% resent | 2.6 Mbit/s, round trip 138 ms |
-| session opened when the line is already bad | set up over UDP, 14-19 fps | |
+| 0% | 15-21 fps | |
+| 5% | | 7-12 fps |
+| 10% | | 6 fps |
+| 20% | | **0.6 fps**, the screen barely moves |
+| 30% | | 0.2 fps, 26 frames a second dropped by the server |
+| 43% of the large ones (the faulty port) | **16-21 fps**, 7 minutes in a row | 0-0.1 fps |
+| 50% | **19-21 fps** | |
+| 60% | 14-21 fps | |
+| **70%** | **9 fps** | |
+| 80% | 4 fps, then the tunnel gives up after 18 s | |
+
+On UDP no frame was dropped by the server for network reasons up to 70%. A session opened when the line is
+already bad is set up over UDP too (14-19 fps at 43%).
 
 Over TCP every lost packet holds up everything behind it until it is resent; over UDP the lost packets are resent
 while the rest of the stream goes on. Getting there took a fix of ours to the UDP transport: after the channel

@@ -242,6 +242,12 @@ connect(){
   # exits with code 1, the same code as an administrator disconnect, and the kiosk would stop. The kiosk
   # reopens the session instead, and every new connection tries UDP again.
   # tcp with a UDP-capable FreeRDP needs -multitransport.
+  # /timeout: FreeRDP's TcpAckTimeout, 9 s by default, bounds two things: how long the connection may take to
+  # become active (a broker preparing a virtual machine took 15 s, and the client gave up at 9 s) and how long the
+  # TCP connection beside the UDP tunnel may go unacknowledged (on a line losing 60-70% of the packets the TCP
+  # connection was given up at 9 s while the UDP tunnel still carried the session). A dead network still ends a
+  # UDP session within 16 s (peer timeout of the tunnel).
+  o+=(/timeout:30000)
   if [ $HASUDP = 1 ] && [ "$(cfg TRANSPORT)" != tcp ]; then o+=(/network:auto)
   elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
   else o+=(/network:lan); fi
