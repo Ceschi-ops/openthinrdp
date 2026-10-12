@@ -49,13 +49,18 @@ monitor_watch &
 # Software update installing: a small notice in the top right corner while it lasts, so nobody switches the device
 # off in the middle (the Shut down button waits for it anyway). Not during a remote session: it would cover it.
 update_watch(){
-  local y="" w
+  local y="" w UIOK=0
+  python3 -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && UIOK=1
   while sleep 5; do
-    if systemctl is-active -q openthinrdp-update.service && ! pgrep -x xfreerdp3 >/dev/null; then
+    # not while the full screen power-off notice shows the same progress
+    if systemctl is-active -q openthinrdp-update.service && ! pgrep -x xfreerdp3 >/dev/null && [ ! -f /tmp/openthinrdp-poweroff-pending ]; then
       if [ -z "$y" ] || ! kill -0 "$y" 2>/dev/null; then
-        w=$(xrandr --current 2>/dev/null | sed -n 's/.*current \([0-9]*\) x.*/\1/p' | head -1)
-        yad --undecorated --skip-taskbar --on-top --no-focus --no-buttons --borders=10 --width=360 \
-            --posx=$(( ${w:-1024} - 380 )) --posy=20 --text="⟳  $L_UPDATE_RUNNING" 2>/dev/null & y=$!
+        if [ $UIOK = 1 ]; then python3 "$OTR/ui.py" toast --text="$L_UPDATE_RUNNING (%p%)" 2>/dev/null & y=$!
+        else
+          w=$(xrandr --current 2>/dev/null | sed -n 's/.*current \([0-9]*\) x.*/\1/p' | head -1)
+          yad --undecorated --skip-taskbar --on-top --no-focus --no-buttons --borders=10 --width=360 \
+              --posx=$(( ${w:-1024} - 380 )) --posy=20 --text="⟳  $L_UPDATE_RUNNING" 2>/dev/null & y=$!
+        fi
       fi
     elif [ -n "$y" ]; then kill "$y" 2>/dev/null; y=""; fi
   done
@@ -371,9 +376,8 @@ show_err(){ local cl=$1 u=$2 before=$3 t sup
     udp)    t="$L_T_UDP\n$sup" ;;
     *)      t=$(printf "$L_T_OTHER" "$LAST_EC")"\n$sup" ;;
   esac
-  yad --error $IMG --title="$TITLE" --width=520 --center --timeout=60 --timeout-indicator=bottom \
-      --text="<b>${before:+$before - }$(err_title "$cl")</b>\n\n$t\n\n<small>$(hostname)  IP $(ipv4)   $(date '+%d/%m %H:%M')</small>" \
-      --button="$L_OK:0" 2>/dev/null; }
+  ui message --icon=error --heading="$(plain "${before:+$before - }$(err_title "$cl")")" --text="$(plain "$t")" \
+     --small="$(hostname)  ·  IP $(ipv4)  ·  $(date '+%d/%m %H:%M')" --timeout=60 --button="$L_OK:0" --primary=0 --default=0; }
 duration(){ [ "$1" -lt 120 ] && echo "$1 s" || echo "$(( $1 / 60 )) min"; }
 # Broker for attempt n: the first 2 on BROKER, then in turn on BROKER_FALLBACK, so one broken broker
 # does not lock anybody out while DNS round robin keeps sending half of the devices to it
@@ -399,8 +403,7 @@ session(){
     if ! net_ok; then
       LAST_ERR=net; LAST_EC=""
       ev "attempt $att for $U: no network (no address or gateway)"
-      yad $IMG --title="$TITLE" --center --width=470 --no-buttons --timeout=5 --timeout-indicator=bottom \
-          --text="<b>$L_E_NET</b>\n$(printf "$L_P_NONET" "$att" "$max")" 2>/dev/null
+      ui message --icon=warn --heading="$(plain "$L_E_NET")" --text="$(plain "$(printf "$L_P_NONET" "$att" "$max")")" --timeout=5
       continue
     fi
     : > /tmp/kiosk.log
@@ -438,8 +441,9 @@ session(){
         fi
       done
       echo "100"; echo "# $L_P_READY"
-    } | yad --progress --auto-close --no-buttons --undecorated --skip-taskbar --center --width=470 \
-          --title="$TITLE" --text="$L_P_TITLE" 2>/dev/null
+    } | if [ $GREETER = 1 ]; then ui message --progress --icon=busy --heading="$(plain "$L_P_TITLE")" --text="$(plain "$txt")"
+        else yad --progress --auto-close --no-buttons --undecorated --skip-taskbar --center --width=470 \
+          --title="$TITLE" --text="$L_P_TITLE" 2>/dev/null; fi
     wait $xp 2>/dev/null
     kill $wp 2>/dev/null
     d=$(( $(date +%s) - st )); ec=$(cat /tmp/kiosk.rc 2>/dev/null)
@@ -530,8 +534,9 @@ power_off(){
   if systemctl is-active -q openthinrdp-update.service; then
     ev "$act waits for the software update to finish"
     echo $act > /tmp/openthinrdp-poweroff-pending   # install.sh does not restart the X session, auto-update.sh does this
-    yad --center --undecorated --skip-taskbar --no-buttons --width=420 --text="<b>$L_WAIT_UPDATE</b>" 2>/dev/null & local y=$!
-    wait_update; kill $y 2>/dev/null
+    # full screen with the progress; ends when the update is over
+    ui message --update --icon=update --heading="$(plain "$L_UPDATE_RUNNING")" --text="$(plain "$L_WAIT_UPDATE") (%p%)"
+    wait_update
   fi
   sleep 1; systemctl $act; exit 0
 }
@@ -539,6 +544,11 @@ power_off(){
 # the yad form of the earlier versions
 GREETER=0
 python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' 2>/dev/null && GREETER=1
+# ui MODE ARGS...: the screens of ui.py (sign-in, messages, progress) with the colors and pictures of the site
+ui(){ local m=$1; shift; python3 "$OTR/ui.py" "$m" --title="$TITLE" --top="$(cfg BG_TOP)" --bottom="$(cfg BG_BOTTOM)" \
+        --splash="$SPLASH" --logo="$LOGO" "$@" 2>/dev/null; }
+# plain text for ui.py: no Pango tags
+plain(){ printf '%s' "$1" | sed 's/<[^>]*>//g'; }
 
 # --- main loop ----------------------------------------------------------------------------------
 # first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device).
@@ -571,9 +581,9 @@ while true; do
   if [ $GREETER = 1 ]; then
     WEBL=""; case "$WEB" in app|browser) WEBL=$(cfg WEB_LABEL) ;; kiosk) WEBL=$L_KIOSK ;; esac
     NOTE=$(printf '%b' "$KTXT" | sed 's/<[^>]*>//g; /^$/d')
-    OUT=$(python3 "$OTR/login.py" --class=OtrLogin --title="$TITLE" --heading="$L_LOGIN_HEADING" \
-          --info="$HOSTN${IPNOW:+  ·  $IPNOW}" --note="$NOTE" --user="$DEF" --logo="$LOGO" --splash="$SPLASH" \
-          --top="$(cfg BG_TOP)" --bottom="$(cfg BG_BOTTOM)" --web="$WEBL" --t-user="$L_USER" --t-password="$L_PASSWORD" \
+    OUT=$(ui login --class=OtrLogin --heading="$L_LOGIN_HEADING" \
+          --info="$HOSTN${IPNOW:+  ·  $IPNOW}" --note="$NOTE" --user="$DEF" \
+          --web="$WEBL" --t-user="$L_USER" --t-password="$L_PASSWORD" \
           --t-signin="$L_SIGNIN" --t-shutdown="$L_SHUTDOWN" --t-restart="$L_RESTART" --t-settings="$L_SETTINGS" \
           --t-diag="$L_DIAG" --t-power="$L_POWER" 2>/dev/null)
     rc=$?
@@ -614,8 +624,8 @@ while true; do
   OTHER=$(session_elsewhere "$U")
   if [ -n "$OTHER" ]; then
     # dialog WITHOUT fields: Enter presses the FIRST button -> Cancel (nobody drops a colleague by mistake)
-    yad $IMG --title="$TITLE" --width=470 --center --text="$(printf "$L_ELSEWHERE" "$U" "$OTHER")" \
-        --button="$L_CANCEL:1" --button="$L_CONNECT_ANYWAY:10" 2>/dev/null
+    ui message --icon=warn --text="$(plain "$(printf "$L_ELSEWHERE" "$U" "$OTHER")")" \
+       --button="$L_CANCEL:1" --button="$L_CONNECT_ANYWAY:10" --primary=1 --default=1
     [ $? -eq 10 ] || { ev "sign-in of $U cancelled: session already active on $OTHER"; continue; }
     ev "session of $U already active on $OTHER: connecting here confirmed"
   fi
@@ -635,9 +645,8 @@ while true; do
     if [ $res -eq 4 ]; then
       # no reconnection; the user moved to the other device -> this one switches off after 30 s.
       # Dialog WITHOUT fields: Enter presses the FIRST button -> Back to login; Resume here only by click
-      yad $IMG --title="$TITLE" --width=460 --center --text="$(printf "$L_TAKEN" "$U")" \
-          --timeout=30 --timeout-indicator=bottom \
-          --button="$L_BACK_LOGIN:1" --button="$L_RESUME_HERE:10" --button="$L_SHUTDOWN:5" 2>/dev/null
+      ui message --icon=warn --text="$(plain "$(printf "$L_TAKEN" "$U")")" --timeout=30 \
+         --button="$L_BACK_LOGIN:1" --button="$L_RESUME_HERE:10" --button="$L_SHUTDOWN:5" --primary=1 --default=1
       rc=$?
       [ $rc -eq 10 ] && { ev "session of $U resumed on this device (user choice)"; continue; }
       { [ $rc -eq 5 ] || [ $rc -eq 70 ]; } && power_off "session taken over by another device"
@@ -645,17 +654,16 @@ while true; do
     fi
     if [ $res -eq 0 ]; then
       OFF=$(cfg_num SHUTDOWN_SECS 10); TOPT=(); TXT=$L_END_ASK
-      [ "$OFF" -gt 0 ] && { TOPT=(--timeout="$OFF" --timeout-indicator=bottom); TXT=$(printf "$L_END_COUNTDOWN" "$OFF"); }
-      # dialog WITHOUT fields: Enter presses the FIRST button -> Connect goes first.
-      # 10/0 = Connect, 5 = Shut down, 70 = countdown expired, anything else = login
-      yad $IMG --title="$TITLE" --width=380 --center --text="<b>$L_END_TITLE</b>\n$TXT" "${TOPT[@]}" \
-          --button="$L_CONNECT:10" --button="$L_SHUTDOWN:5" 2>/dev/null
+      [ "$OFF" -gt 0 ] && { TOPT=(--timeout="$OFF"); TXT=$(printf "$L_END_COUNTDOWN" "$OFF"); }
+      # Enter = Connect. 10/0 = Connect, 5 = Shut down, 70 = countdown expired, anything else = login
+      ui message --icon=power --heading="$(plain "$L_END_TITLE")" --text="$(plain "$TXT")" "${TOPT[@]}" \
+         --button="$L_SHUTDOWN:5" --button="$L_CONNECT:10" --primary=10 --default=10
       rc=$?
       { [ $rc -eq 10 ] || [ $rc -eq 0 ]; } && continue
       { [ $rc -eq 5 ] || [ $rc -eq 70 ]; } && power_off "after the session ended"
       break
     elif [ $res -eq 1 ]; then
-      yad --error --center --timeout=4 --text="${CRED_MSG:-$L_C_INVALID}" 2>/dev/null; break
+      ui message --icon=error --text="$(plain "${CRED_MSG:-$L_C_INVALID}")" --timeout=8 --button="$L_OK:0" --primary=0 --default=0; break
     else
       show_err "$LAST_ERR" "$U"; break
     fi

@@ -24,7 +24,9 @@ if [ "$1" = install ]; then
   [ -f "$P/install.sh" ] || { echo "ERROR $V: package not found" > $ST; exit 1; }
   echo "installing: $V (since $(date '+%d/%m %H:%M'))" > $ST
   ev "software update $V: installing"
+  echo "2 $V" > /run/openthinrdp-update-progress   # percent and version, for the screens (ui.py)
   ( cd "$P" && timeout 1800 bash ./install.sh ) > "$L" 2>&1; rc=$?
+  rm -f /run/openthinrdp-update-progress
   if [ $rc = 0 ]; then
     echo "$V" > "$OTR_LIB/update-version"
     echo "up to date: $V ($(date '+%d/%m %H:%M'))" > $ST

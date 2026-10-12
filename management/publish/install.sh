@@ -7,6 +7,9 @@ cd "$(dirname "$0")"
 OTR=/opt/openthinrdp
 log(){ echo "$(date '+%H:%M:%S') $*"; }
 log "### $(hostname), remote sessions open: $(pgrep -c xfreerdp3)"
+# progress for the screens of the device (ui.py): "percent version"
+prog(){ echo "$1 $(cat VERSION 2>/dev/null)" > /run/openthinrdp-update-progress 2>/dev/null; }
+prog 5
 
 # 1) everything must be valid before anything is touched
 for f in rootfs/opt/openthinrdp/*.sh rootfs/opt/openthinrdp/lib/*.sh rootfs/opt/openthinrdp/lang/*.sh; do
@@ -14,6 +17,7 @@ for f in rootfs/opt/openthinrdp/*.sh rootfs/opt/openthinrdp/lib/*.sh rootfs/opt/
 done
 visudo -cqf rootfs/etc/sudoers.d/openthinrdp || { log "ERROR: sudoers file not valid"; exit 1; }
 
+prog 15
 # 2) Debian packages the new version needs and that are missing (needs the Debian mirror)
 if [ -f packages.list ]; then
   MISSING=$(grep -vE '^\s*(#|$)' packages.list | while read -r p; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done | tr '\n' ' ')
@@ -24,6 +28,7 @@ if [ -f packages.list ]; then
   fi
 fi
 
+prog 40
 # 3) .deb files shipped in the package (e.g. a FreeRDP build): only when newer than the installed ones.
 # /etc/openthinrdp/freerdp-pinned (with the reason inside) keeps FreeRDP as it is on this device.
 if ls debs/*.deb >/dev/null 2>&1; then
@@ -42,6 +47,7 @@ if ls debs/*.deb >/dev/null 2>&1; then
   fi
 fi
 
+prog 75
 # 4) files: the whole rootfs of the package. The device settings (/etc/openthinrdp/openthinrdp.conf,
 # smb.cred, keys) are not in the rootfs, so they are never overwritten.
 # cp -a also gives /, /etc, /opt... the modes of the package's folders: always 755/644 here, whatever the package
@@ -75,6 +81,7 @@ if [ -d site ]; then
   [ -f site/authorized_keys ] && install -m644 site/authorized_keys /etc/openthinrdp/authorized_keys
 fi
 
+prog 88
 # 5) services, rules and settings applied again
 systemctl daemon-reload
 systemctl enable openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer openthinrdp-report.path openthinrdp-schedule.timer >/dev/null 2>&1
@@ -85,6 +92,7 @@ $OTR/browser-policy.sh
 $OTR/apply.sh now
 pgrep -x openbox >/dev/null && runuser -u kiosk -- env DISPLAY=:0 openbox --reconfigure >/dev/null 2>&1
 
+prog 98
 # 6) the new kiosk: at once if nobody is connected (restart of the X session, synchronous: started in the
 # background inside the update unit it would be killed when the unit ends), otherwise at the next start
 # the Shut down button was pressed during the install: no restart (it would kill the kiosk that waits to switch off)
