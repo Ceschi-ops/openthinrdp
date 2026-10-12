@@ -94,6 +94,12 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
 <img src="docs/screenshots/manager-common.png" alt="Manager: settings for all devices" width="49%">
 </p>
 
+<p align="center">
+<img src="docs/screenshots/connecting.png" alt="Desktop start with the real steps" width="32%">
+<img src="docs/screenshots/end-of-session.png" alt="End of session with a countdown" width="32%">
+<img src="docs/screenshots/update.png" alt="Software update in progress" width="32%">
+</p>
+
 ## Why it is built this way
 
 **Why FreeRDP is not updated automatically.** Debian security updates install by themselves, but FreeRDP is

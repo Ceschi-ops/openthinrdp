@@ -72,6 +72,8 @@ in `config\branding\<hostname>\` for that device only; a device without them use
 The manager's **Logo and background...** button (common settings, or a device) takes any picture, scales it
 down and saves it as PNG there; files copied by hand are fine too.
 
+<p align="center"><img src="screenshots/manager-branding.png" alt="Manager: logo and background" width="60%"></p>
+
 The boot screen never changes from here: it always shows the picture and colors of the image (OpenThinRDP's,
 or your own when you build your image with `image/site/splash.png`). At power on the device shows the boot
 screen, then the background of your site from the sign-in form on.

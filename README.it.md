@@ -94,6 +94,12 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
 <img src="docs/screenshots/manager-common.png" alt="Gestore: impostazioni comuni" width="49%">
 </p>
 
+<p align="center">
+<img src="docs/screenshots/connecting.png" alt="Avvio del desktop con i passi reali" width="32%">
+<img src="docs/screenshots/end-of-session.png" alt="Fine sessione con conto alla rovescia" width="32%">
+<img src="docs/screenshots/update.png" alt="Aggiornamento in corso" width="32%">
+</p>
+
 ## Perché è fatto così
 
 **Perché FreeRDP non si aggiorna da solo.** Gli aggiornamenti di sicurezza di Debian si installano da soli, ma
