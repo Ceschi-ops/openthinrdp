@@ -11,7 +11,8 @@ Downloads and signed update packages: [releases](https://github.com/Ceschi-ops/o
   Windows keeps the microphone of such a device in the console session: Teams and Zoom in the remote session found
   no microphone at all. Webcams and USB headsets now stay on the thin client: the camera goes through the RDP
   camera channel ([MS-RDPECAM]), the microphone and the speaker through the RDP audio channels. Devices plugged in
-  during the session follow the same rule.
+  during the session follow the same rule, and a webcam an earlier version had passed over USB is given back to
+  the thin client by itself (its Linux drivers are attached again).
 - The mouse pointer on the kiosk screens (sign-in, progress, messages) hides while the mouse is still and comes
   back as soon as it moves; in the remote desktop it is Windows' own pointer as before.
 - Fix: a device moved to another management folder by `MGMT_SHARE` in the common settings went back to the

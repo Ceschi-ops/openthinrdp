@@ -171,6 +171,42 @@ usb_sound_card(){
   done
   return 1
 }
+# Webcams and USB sound devices kept on the thin client (see HASCAM) but left without their Linux driver: taken
+# whole by an earlier session, or by an older kiosk that passed them over USB, they come back unbound and the
+# session would have no camera and no USB microphone. The kernel is asked to attach its driver to those interfaces
+# again (USBDEVFS_CONNECT, what libusb_attach_kernel_driver does; a USB reset does not, it only re-attaches the
+# drivers an interface had). An interface already taken by the driver of another one answers "busy". Never during
+# a session, once per device while the kiosk runs (connect runs in a subshell: the devices done are kept in a file).
+RECLAIMED=/tmp/kiosk.reclaimed; : > "$RECLAIMED"
+usb_reclaim(){
+  pgrep -x xfreerdp3 >/dev/null && return 0
+  local d i c drv ifs id n done=0
+  for d in /sys/bus/usb/devices/[0-9]*-[0-9]*; do
+    [ -f "$d/busnum" ] || continue
+    ifs=""
+    for i in "$d"/*:*; do
+      c=$(cat "$i/bInterfaceClass" 2>/dev/null) || continue
+      case "$c" in 01) ;; 0e) [ $HASCAM = 1 ] || continue ;; *) continue ;; esac
+      drv=$(basename "$(readlink "$i/driver" 2>/dev/null)" 2>/dev/null)
+      { [ -z "$drv" ] || [ "$drv" = usbfs ]; } && ifs="$ifs $(cat "$i/bInterfaceNumber")"
+    done
+    id="$(cat "$d/idVendor"):$(cat "$d/idProduct")"
+    [ -n "$ifs" ] && ! grep -qx "$id" "$RECLAIMED" 2>/dev/null || continue
+    echo "$id" >> "$RECLAIMED"
+    n=$(printf '/dev/bus/usb/%03d/%03d' "$(cat "$d/busnum")" "$(cat "$d/devnum")")
+    # struct usbdevfs_ioctl { int ifno; int ioctl_code; void *data; } with USBDEVFS_CONNECT, through USBDEVFS_IOCTL
+    python3 - "$n" $ifs <<'PY' 2>/dev/null && { ev "USB: $(cat "$d/product" 2>/dev/null) ($id) given back to the thin client"; done=1; }
+import errno, fcntl, struct, sys
+f = open(sys.argv[1], 'wb')
+for n in sys.argv[2:]:
+    try: fcntl.ioctl(f, 0xC0105512, struct.pack('iiQ', int(n, 16), 0x5517, 0))
+    except OSError as e:
+        if e.errno != errno.EBUSY: raise
+PY
+  done
+  [ $done = 1 ] && sleep 2
+  return 0
+}
 # USB reset of the webcam before connecting: some webcams are not re-enumerated reliably otherwise
 reset_cam(){
   [ -z "$CAMID" ] && return
@@ -192,7 +228,7 @@ HASUDP=0; xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && HAS
 
 # connect USER PASSWORD BROKER: one xfreerdp3 run; its exit code is the result
 connect(){
-  reset_cam; sleep 1
+  usb_reclaim; reset_cam; sleep 1
   local -a o=(/v:"$3" /u:"$1" /p:"$2") extra
   local v i=1 dev usb mic
   v=$(cfg DOMAIN); [ -n "$v" ] && o+=(/d:"$v")
