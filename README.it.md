@@ -70,9 +70,11 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
   non parte, password sbagliata (mai ritentata, così l'account non si blocca).
 - **Si riconnette da solo** dopo le cadute di rete, si ferma quando la sessione viene chiusa apposta (disconnetti,
   esci, VM spenta dall'amministratore), e avvisa prima di prendersi una sessione aperta su un'altra postazione.
-- **USB pensato per la VDI**: webcam con microfono, chiavette di firma, chiavi tachigrafo e altri dispositivi
-  particolari vanno a Windows interi, anche collegati a sessione aperta. Tastiere, mouse, touch, hub e schede
-  di rete restano locali; i lettori di smart card passano dal canale smart card.
+- **USB pensato per la VDI**: chiavette di firma, chiavi tachigrafo e altri dispositivi particolari vanno a
+  Windows interi, anche collegati a sessione aperta. **Webcam e cuffie funzionano in riunione**: la telecamera
+  passa dal canale telecamera di RDP e il microfono dal canale audio, così Teams, Zoom e il browser della sessione
+  li vedono entrambi (un microfono passato come dispositivo USB resta fuori dalla sessione remota). Tastiere,
+  mouse, touch, hub e schede di rete restano locali; i lettori di smart card passano dal canale smart card.
 - **Gestione da una cartella condivisa (SMB).** Ogni postazione ci scrive stato e registro eventi; un gestore
   Windows (italiano e inglese, nessuna installazione) li mostra, modifica la configurazione di tutte o di una
   postazione, le chiavi SSH, logo e immagine di sfondo (per tutte o per una), e porta nella cartella le release di

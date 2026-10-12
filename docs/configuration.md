@@ -43,11 +43,14 @@ Every other ending (network drop, crash, server restart) reconnects without aski
 
 | Key | Default | Meaning |
 |---|---|---|
-| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, network adapter and smart card reader goes to Windows as a whole device. `disks` = USB sticks as network drives |
+| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, network adapter, smart card reader, webcam and USB headset goes to Windows as a whole device. `disks` = USB sticks as network drives |
 | `USB_REDIRECT` | | `VID:PID` list always passed whole, also in `disks` mode |
 
-Webcams are always passed whole, and their microphone becomes the Windows default (the thin client's own
-microphone is then not redirected, so meeting apps do not fall back to an empty input).
+Webcams and USB sound devices (headsets, speakerphones) stay on the thin client: the camera goes through the RDP
+camera channel and appears in Windows as "*name* (redirected)", the microphone and the speaker through the RDP
+audio channels ("Remote Audio"). Passed as whole USB devices they reach Windows as devices of the console session,
+and the apps of the remote session see no microphone at all. When there is no USB microphone the thin client's
+own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 
 ## Network
 

@@ -27,7 +27,8 @@ what works and what does not).
 
 ## USB devices seen in the field
 
-- Webcams with microphone (UVC + audio): passed whole; their microphone becomes the Windows default.
+- Webcams with microphone (UVC + audio): camera through the RDP camera channel, microphone through the RDP audio
+  channel (tested with an eMeet Nova and an HD Web Camera 05a3:9331 against Windows 11 and Zoom).
 - Signature keys with smart card reader + storage: the reader goes through the smart card channel, the
   storage as a whole device.
 - Composite devices that restart in another mode once they see a PC (e.g. tachograph download keys): passed

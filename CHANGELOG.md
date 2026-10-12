@@ -3,6 +3,18 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/Ceschi-ops/openthinrdp/releases).
 
+## 0.1.4 (2026-10-12)
+
+- **Security: FreeRDP 3.32.2**, the security release of 2026-10-12, with the UDP transport (pull request #13608)
+  on top. The USB fixes #13674, #13679 and #13618 are part of 3.32.2.
+- **Fix: no microphone in meetings with a webcam.** A webcam was passed to Windows as a whole USB device, and
+  Windows keeps the microphone of such a device in the console session: Teams and Zoom in the remote session found
+  no microphone at all. Webcams and USB headsets now stay on the thin client: the camera goes through the RDP
+  camera channel ([MS-RDPECAM]), the microphone and the speaker through the RDP audio channels. Devices plugged in
+  during the session follow the same rule.
+- Fix: a device moved to another management folder by `MGMT_SHARE` in the common settings went back to the
+  folder of its image at the next report, and kept bouncing between the two.
+
 ## 0.1.3 (2026-10-12)
 
 In production: this version runs a fleet of thin clients converted in place, updated from their management folder.

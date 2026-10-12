@@ -73,11 +73,22 @@ update_watch &
 
 DEF=$(cfg DEFAULT_USER)
 
-# Webcam: always passed whole to Windows (FreeRDP has no camera redirection channel for Linux clients)
+# Webcams and USB sound devices (headsets, speakerphones, the microphone of a webcam). Passed whole over USB they
+# reach the VM as devices of the console session, and Windows does not offer their microphone to the apps of the
+# remote session: the session sees no microphone and a meeting has picture but no sound. So the thin client keeps
+# them: sound goes through the RDP audio channels and, with a FreeRDP that captures through the camera channel
+# ([MS-RDPECAM] with Video4Linux, as Debian builds it), the picture through that channel (/dvc:rdpecam). Without it
+# a webcam is still passed whole, for the picture. --buildconfig does not list channels: the client library is
+# looked at instead.
+HASCAM=0
+_L=$(ldd "$(command -v xfreerdp3)" 2>/dev/null | sed -n 's/.*libfreerdp-client3[^ ]* => \([^ ]*\).*/\1/p')
+[ -n "$_L" ] && grep -aq v4l_freerdp_rdpecam_client_subsystem_entry "$_L" && HASCAM=1
 CAMID=""
-_V=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_VENDOR_ID=//p')
-_P=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_MODEL_ID=//p')
-[ -n "$_V" ] && [ -n "$_P" ] && CAMID="$_V:$_P"
+if [ $HASCAM = 0 ]; then
+  _V=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_VENDOR_ID=//p')
+  _P=$(udevadm info -q property -n /dev/video0 2>/dev/null | sed -n 's/^ID_MODEL_ID=//p')
+  [ -n "$_V" ] && [ -n "$_P" ] && CAMID="$_V:$_P"
+fi
 
 # Touch screens (VID:PID) stay on the thin client and the touches go to Windows through the RDP touch channel
 # (+multitouch). Passed whole over USB a touch screen reaches the VM as a raw device that is not tied to the
@@ -93,20 +104,24 @@ touch_ids(){
     done; } | tr 'A-F' 'a-f' | grep -E '^[0-9a-f]{4}:[0-9a-f]{4}$' | sort -u
 }
 # Every connected USB device except keyboards and mice (HID boot protocol 1/2), hubs, Bluetooth, smart card
-# readers, touch screens and network adapters
+# readers, touch screens, network adapters, sound devices and, with the camera channel, webcams (see HASCAM)
 usb_all_ids(){
-  local d i skip dp n touch=" $(touch_ids | tr '\n' ' ') "
+  local d i skip dp n audio video touch=" $(touch_ids | tr '\n' ' ') "
   for d in /sys/bus/usb/devices/[0-9]*-[0-9]*; do
     [ -f "$d/idVendor" ] || continue
     [ "$(cat "$d/bDeviceClass" 2>/dev/null)" = 09 ] && continue
-    skip=0
+    skip=0; audio=0; video=0
     for i in "$d"/*:*; do
       [ -f "$i/bInterfaceClass" ] || continue
       case "$(cat "$i/bInterfaceClass")" in
         09|e0|0b) skip=1 ;;     # hub, Bluetooth, smart card reader (goes with /smartcard through pcscd)
         03) case "$(cat "$i/bInterfaceProtocol")" in 01|02) skip=1 ;; esac ;;
+        01) audio=1 ;;
+        0e) video=1 ;;
       esac
     done
+    [ $video = 1 ] && [ $HASCAM = 1 ] && skip=1
+    [ $audio = 1 ] && [ $video = 0 ] && skip=1
     # USB network adapter: given to Windows, the thin client would lose its network and the session
     dp=$(readlink -f "$d")
     for n in /sys/class/net/*/device; do case "$(readlink -f "$n")" in "$dp"/*) skip=1 ;; esac; done
@@ -118,9 +133,12 @@ usb_all_ids(){
   done | sort -u | tr '\n' ' '
 }
 # FreeRDP with the filter: option (upstream since 3.33): devices plugged in during the session follow the same
-# rules, HID, hubs, smart card readers and Bluetooth stay here, storage and webcams go to Windows
+# rules, HID, hubs, smart card readers, Bluetooth and sound devices stay here (with the camera channel webcams
+# too), storage goes to Windows. A class matches the device or any of its interfaces.
 USBFILTER=""
-xfreerdp3 /help 2>/dev/null | grep -q 'filter:<class>' && USBFILTER=",filter:03#09#0b#e0"
+if xfreerdp3 /help 2>/dev/null | grep -q 'filter:<class>'; then
+  USBFILTER=",filter:03#09#0b#e0#01"; [ $HASCAM = 1 ] && USBFILTER="$USBFILTER#0e"
+fi
 usb_opt(){
   local ids="$CAMID $(cfg USB_REDIRECT)" l="" i x scard
   [ "$(cfg USB_MODE)" != disks ] && ids="$ids $(usb_all_ids)"
@@ -133,16 +151,14 @@ usb_opt(){
   # passed again instead of being lost. The channel is always open, also without devices at login.
   echo "/usb:auto${l:+,id:$l}$USBFILTER"
 }
-# First device with a microphone (audio interface, class 01) among those passed whole ($1 = the /usb option).
-# Webcams and USB headsets bring their own microphone into Windows: the redirected thin client microphone
-# (usually an empty analog input) would become the default "Remote Audio" device, and every time the webcam
-# is re-attached Windows creates a new microphone and apps fall back to the empty one.
-usb_audio_to_windows(){
-  local ids=" $(echo "$1" | sed -n 's/.*,id:\([^,]*\).*/\1/p' | tr '#' ' ') " x id
-  for x in /sys/bus/usb/devices/*:*; do
-    [ "$(cat "$x/bInterfaceClass" 2>/dev/null)" = 01 ] || continue
-    id="$(cat "${x%:*}/idVendor" 2>/dev/null):$(cat "${x%:*}/idProduct" 2>/dev/null)"
-    case "$ids" in *" $id "*) echo "$id"; return 0 ;; esac
+# ALSA card of a USB sound device kept on the thin client (see HASCAM): $1 = c for a microphone, p for a speaker,
+# $2 = the /usb option (a device listed there is passed whole and FreeRDP holds it). Prints the card id.
+usb_sound_card(){
+  local ids=" $(echo "$2" | sed -n 's/.*,id:\([^,]*\).*/\1/p' | tr '#' ' ') " c u
+  for c in /proc/asound/card[0-9]*; do
+    u=$(cat "$c/usbid" 2>/dev/null); [ -n "$u" ] || continue
+    case "$ids" in *" $u "*) continue ;; esac
+    compgen -G "$c/pcm*$1" >/dev/null && { cat "$c/id"; return 0; }
   done
   return 1
 }
@@ -190,12 +206,16 @@ connect(){
   for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyS0; do [ -e "$dev" ] && { o+=(/serial:"COM$i,$dev"); i=$((i+1)); }; done
   usb=$(usb_opt); o+=("$usb")
   [ -n "$(touch_ids)" ] && o+=(+multitouch)
-  # microphone: the one of the USB device passed to Windows, if any (see usb_audio_to_windows), else ours
-  if mic=$(usb_audio_to_windows "$usb"); then ev "microphone: the one of $mic in Windows, no thin client microphone"
+  # microphone and speaker: those of a USB headset, speakerphone or webcam when there is one, else the built-in
+  # ones (see HASCAM); plughw converts to the rate and channels the session asks for
+  local snd=/sound:sys:alsa card
+  if card=$(usb_sound_card c "$usb"); then o+=(/microphone:sys:alsa,dev:plughw:CARD="$card"); ev "microphone: USB ($card)"
   else o+=(/microphone:sys:alsa); fi
+  card=$(usb_sound_card p "$usb") && snd=/sound:sys:alsa,dev:plughw:CARD="$card"
+  [ $HASCAM = 1 ] && o+=(/dvc:rdpecam)
   read -ra extra <<< "$(cfg RDP_EXTRA)"
   xfreerdp3 "${o[@]}" /gdi:hw /bpp:32 /dynamic-resolution /f /smartcard /drive:hotplug,'*' \
-    /sound:sys:alsa /clipboard "${extra[@]}" > /tmp/kiosk.log 2>&1
+    "$snd" /clipboard "${extra[@]}" > /tmp/kiosk.log 2>&1
 }
 
 # --- settings dialog ----------------------------------------------------------------------------

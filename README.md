@@ -68,9 +68,11 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
   machine does not start", wrong password (never retried, so accounts are not locked).
 - **Reconnects by itself** after network drops, stops when the session is ended on purpose (sign out,
   disconnect, VM shut down by an administrator), and warns before taking over a session open on another device.
-- **USB done right for VDI.** Webcams with their microphone, signature keys, tachograph keys and other special
-  devices go to Windows as whole USB devices, also when plugged in during the session. Keyboards, mice, touch
-  screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
+- **USB done right for VDI.** Signature keys, tachograph keys and other special devices go to Windows as whole
+  USB devices, also when plugged in during the session. **Webcams and headsets work in meetings**: the camera goes
+  through the RDP camera channel and the microphone through the RDP audio channel, so Teams, Zoom and the browser
+  in the session see both (a microphone passed as a USB device stays outside the remote session). Keyboards, mice,
+  touch screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
   Touch screens work as touch in Windows.
 - **Managed from a shared folder (SMB).** Each device writes its status and event log there; a Windows manager
   (English and Italian, no installation) shows them, edits the settings for all devices or one, the SSH keys,
