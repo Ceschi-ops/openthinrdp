@@ -1,0 +1,17 @@
+name: tests
+
+# The system tests (settings layers, validation, central configuration, status file, updates) at every push and
+# pull request, in a throw-away Debian 13 container as on a device. No hardware and no network beyond Debian.
+on:
+  push:
+  pull_request:
+
+jobs:
+  system-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax of every script
+        run: for f in rootfs/opt/openthinrdp/*.sh rootfs/opt/openthinrdp/lib/*.sh management/publish/*.sh image/*.sh image/freerdp/*.sh; do bash -n "$f" || exit 1; done
+      - name: System tests in Debian 13
+        run: docker run --rm -v "$PWD":/src:ro debian:trixie bash /src/tests/run-tests.sh
