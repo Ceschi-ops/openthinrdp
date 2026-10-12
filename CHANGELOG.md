@@ -3,6 +3,13 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/Ceschi-ops/openthinrdp/releases).
 
+## Next
+
+- The boot screen always shows the picture and colors of the image (OpenThinRDP's, or yours when you build your
+  own image); the picture of the management folder is the background of the sign-in form only. A device that
+  had put it on the boot screen with 0.1.1 or 0.1.2 gets the image's own back. In the manager the button is now
+  **Logo and background...**.
+
 ## 0.1.2 (2026-10-12)
 
 - **Fix**: update packages always carry 755/644 modes. The 0.1.1 package was built with umask 002, and a device

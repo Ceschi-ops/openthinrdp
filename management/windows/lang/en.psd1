@@ -95,15 +95,15 @@
   RelDone                = 'Release {0} published in updates\. The devices show it in the Software update column as they install it.'
   RelCopyFailed          = "Copy into updates\ failed:`r`n{0}"
 
-  # ---- logo and boot image ----
-  BtnBranding            = 'Logo and boot image...'
-  BrandTitleCommon       = 'Logo and boot image: every device'
-  BrandTitleDevice       = 'Logo and boot image: {0}'
-  BrandNoteCommon        = 'Every device takes them within 5 minutes, unless it has its own (Devices tab). The logo shows in the dialogs at once, the boot image behind the sign-in form at once and on the boot screen from the next restart. Any picture is scaled down to fit and saved as PNG in config\branding\.'
+  # ---- logo and background picture ----
+  BtnBranding            = 'Logo and background...'
+  BrandTitleCommon       = 'Logo and background: every device'
+  BrandTitleDevice       = 'Logo and background: {0}'
+  BrandNoteCommon        = 'Every device takes them within 5 minutes, unless it has its own (Devices tab). The logo shows in the dialogs, the background picture behind the sign-in form. The boot screen always keeps the picture of the image (OpenThinRDP, or yours if you build your own). Any picture is scaled down to fit and saved as PNG in config\branding\.'
   BrandNoteDevice        = 'Only for {0}: they win over the common ones. Remove = back to the common picture, or to the one of the image. Saved in config\branding\{0}\.'
   BrandReported          = 'The device reports: {0} (image = its own, common, device = this one).'
   BrandLogo              = 'Logo (dialogs and sign-in form)'
-  BrandSplash            = 'Boot image (boot screen and background of the sign-in form)'
+  BrandSplash            = 'Background picture (behind the sign-in form)'
   BrandImageOwn          = 'the picture built into the image'
   BrandFromImage         = 'In use: the picture built into the image.'
   BrandFromCommon        = 'In use: the common picture ({0}).'

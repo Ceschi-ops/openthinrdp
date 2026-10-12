@@ -1,9 +1,12 @@
 #!/bin/bash
-# Logo and boot image from the management folder, and the boot splash that goes with them. Runs as root.
+# Logo and background picture from the management folder, and the boot splash. Runs as root.
 #   branding.sh sync <mounted folder>   config\branding\<hostname>\<x>.png, else config\branding\<x>.png,
-#                                       else the image's own: copied to /var/lib/openthinrdp/branding
-#   branding.sh splash                  boot splash (Plymouth) = boot image + BG_TOP/BG_BOTTOM; the initramfs is
-#                                       rebuilt in the background when they changed (installed system only)
+#                                       else the image's own: copied to /var/lib/openthinrdp/branding. The logo
+#                                       goes into the dialogs, splash.png behind the sign-in form.
+#   branding.sh splash                  the boot splash (Plymouth) always shows the image's own picture and colors
+#                                       (site.conf/defaults), never the management folder's: a device that took
+#                                       the folder's picture there (0.1.1) gets it back, the initramfs is rebuilt
+#                                       in the background (installed system only)
 . /opt/openthinrdp/lib/common.sh
 BR=$OTR_LIB/branding
 THEME=/usr/share/plymouth/themes/openthinrdp
@@ -27,7 +30,7 @@ sync(){
     src=""; from=image
     if [ -f "$m/config/branding/$h/$f.png" ]; then src=$m/config/branding/$h/$f.png; from=device
     elif [ -f "$m/config/branding/$f.png" ]; then src=$m/config/branding/$f.png; from=common; fi
-    if [ $f = logo ]; then what="logo"; lim="400 240"; else what="boot image"; lim="1024 640"; fi
+    if [ $f = logo ]; then what="logo"; lim="400 240"; else what="background picture"; lim="1024 640"; fi
     if [ -n "$src" ]; then
       if ! png_ok "$src" $lim; then
         # reported once per file: the previous image stays
@@ -47,8 +50,14 @@ sync(){
   mv -f "$BR/source.new" "$BR/source"
 }
 
-# what the boot splash should show: picture + colors, as one fingerprint
-splash_want(){ { cat "$(otr_splash)"; echo "$(rgb "$(cfg BG_TOP)")|$(rgb "$(cfg BG_BOTTOM)")"; } | sha256sum | cut -c1-64; }
+# colors of the image: site.conf, then the defaults (not the device settings nor the central ones)
+img_cfg(){ local f
+  for f in "$OTR_SITE" "$OTR_DEFAULTS"; do
+    [ -f "$f" ] && grep -q "^$1=" "$f" && { sed -n "s/^$1=//p" "$f" | head -1 | tr -d '\r'; return; }
+  done; }
+IMG_SPLASH=$OTR/branding/splash.png
+# what the boot splash should show: picture + colors of the image, as one fingerprint
+splash_want(){ { cat "$IMG_SPLASH"; echo "$(rgb "$(img_cfg BG_TOP)")|$(rgb "$(img_cfg BG_BOTTOM)")"; } | sha256sum | cut -c1-64; }
 # what the theme in the system shows now
 splash_have(){ { cat "$THEME/logo.png"; echo "$(sed -n 's/^Window.SetBackgroundTopColor(\(.*\));.*/\1/p' "$THEME/openthinrdp.script")|$(sed -n 's/^Window.SetBackgroundBottomColor(\(.*\));.*/\1/p' "$THEME/openthinrdp.script")"; } | sha256sum | cut -c1-64; }
 
@@ -64,12 +73,12 @@ splash(){
 
 splash_now(){
   local want; want=$(splash_want)
-  cp "$(otr_splash)" "$THEME/logo.png"
-  sed -i -e "s/^Window.SetBackgroundTopColor(.*);/Window.SetBackgroundTopColor($(rgb "$(cfg BG_TOP)"));/" \
-         -e "s/^Window.SetBackgroundBottomColor(.*);/Window.SetBackgroundBottomColor($(rgb "$(cfg BG_BOTTOM)"));/" "$THEME/openthinrdp.script"
+  cp "$IMG_SPLASH" "$THEME/logo.png"
+  sed -i -e "s/^Window.SetBackgroundTopColor(.*);/Window.SetBackgroundTopColor($(rgb "$(img_cfg BG_TOP)"));/" \
+         -e "s/^Window.SetBackgroundBottomColor(.*);/Window.SetBackgroundBottomColor($(rgb "$(img_cfg BG_BOTTOM)"));/" "$THEME/openthinrdp.script"
   # never at the same time as the rebuild of the first boot (boot.sh)
   if flock -w 900 /run/openthinrdp-initramfs.lock update-initramfs -u >/dev/null 2>&1; then
-    echo "$want" > "$BR/splash-applied"; ev "boot splash updated (shown from the next restart)"
+    echo "$want" > "$BR/splash-applied"; ev "boot splash: the image's own again (shown from the next restart)"
   else ev "boot splash: update of the initramfs FAILED, retried at the next report"; fi
 }
 

@@ -70,7 +70,7 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
   di rete restano locali; i lettori di smart card passano dal canale smart card.
 - **Gestione da una cartella condivisa (SMB).** Ogni postazione ci scrive stato e registro eventi; un gestore
   Windows (italiano e inglese, nessuna installazione) li mostra, modifica la configurazione di tutte o di una
-  postazione, le chiavi SSH, logo e immagine di avvio (per tutte o per una), e porta nella cartella le release di
+  postazione, le chiavi SSH, logo e immagine di sfondo (per tutte o per una), e porta nella cartella le release di
   GitHub. Le impostazioni della cartella vincono sulle modifiche locali.
 - **Aggiornamenti firmati**, mai durante una sessione: dalle release di GitHub, o dalla vostra cartella quando
   decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.

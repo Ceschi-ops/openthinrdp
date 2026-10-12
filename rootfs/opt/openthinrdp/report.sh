@@ -5,7 +5,7 @@
 #   status\<hostname>-events.log   event log
 #   SUMMARY.csv                    one line per device, rewritten by whoever reports
 #   config\common.conf, config\<hostname>.conf, config\authorized_keys   central settings (central-apply.sh)
-#   config\branding\, config\branding\<hostname>\   logo and boot image (branding.sh)
+#   config\branding\, config\branding\<hostname>\   logo and background picture (branding.sh)
 #   updates\                       signed updates (auto-update.sh)
 . /opt/openthinrdp/lib/common.sh
 . "$OTR/lib/netif.sh"
@@ -59,7 +59,7 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   echo "UPDATE_VERSION=$(cat "$OTR_LIB/update-version" 2>/dev/null || echo none)"
   echo "CENTRAL_CONFIG=$(cat "$OTR_LIB/central-status" 2>/dev/null || echo 'never read')"
   echo "UPDATE_FROM=$(cfg UPDATE_FROM)"
-  # logo and boot image: image = the image's own, common = config\branding\, device = config\branding\<hostname>\
+  # logo and background picture: image = the image's own, common = config\branding\, device = config\branding\<hostname>\
   BRS=$(tr '\n' ' ' < "$OTR_LIB/branding/source" 2>/dev/null); BRS=${BRS% }
   echo "BRANDING=${BRS:-logo=image splash=image}"
   # status of the software updates, whatever the source (the name is kept for the manager)
@@ -190,6 +190,6 @@ case "$(cfg UPDATE_FROM)" in
 esac
 # apply the central settings (also when the folder does not answer: the last good copy is used)
 "$OTR/central-apply.sh"
-# boot splash: the boot image and the colors may have changed above
+# boot splash: always the image's own (a device that took the folder's picture there with 0.1.1 gets it back)
 "$OTR/branding.sh" splash
 exit 0

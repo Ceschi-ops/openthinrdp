@@ -168,7 +168,7 @@ png $M/config/branding/$H/logo.png 100 40; $OTR/branding.sh sync $M
 ok "the logo of the device wins" 'cmp -s $M/config/branding/$H/logo.png $B/logo.png && grep -qx logo=device $B/source'
 cp $B/logo.png /tmp/prev-logo.png
 png $M/config/branding/splash.png 2000 300; $OTR/branding.sh sync $M; $OTR/branding.sh sync $M
-ok "a boot image over the size limit is refused, reported once" '[ ! -f $B/splash.png ] && [ "$(grep -c "boot image of the management folder REJECTED" $OTR_EVENTS)" = 1 ]'
+ok "a background picture over the size limit is refused, reported once" '[ ! -f $B/splash.png ] && [ "$(grep -c "background picture of the management folder REJECTED" $OTR_EVENTS)" = 1 ]'
 echo "not a picture" > $M/config/branding/$H/logo.png; $OTR/branding.sh sync $M
 ok "a broken logo keeps the previous one" 'cmp -s /tmp/prev-logo.png $B/logo.png && grep -qx logo=device $B/source && grep -q "logo of the management folder REJECTED (device)" $OTR_EVENTS'
 # boot splash: an installed system (grub, theme), update-initramfs and systemd-run as stand-ins
@@ -180,12 +180,14 @@ printf '#!/bin/bash\necho run >> /tmp/initramfs.runs\n' > /usr/local/bin/update-
 printf 'BG_TOP=#1b2733\nBG_BOTTOM=#000000\n' >> $OTR_CONF
 $OTR/branding.sh splash
 ok "first run: what the theme shows counts as applied, nothing rebuilt" '[ -s $B/splash-applied ] && [ ! -f /tmp/systemd-run.args ]'
-png $M/config/branding/splash.png 640 360; $OTR/branding.sh sync $M; $OTR/branding.sh splash
-ok "a new boot image starts the rebuild in the background" 'grep -q "branding.sh splash-now" /tmp/systemd-run.args && [ "$(otr_splash)" = $B/splash.png ]'
+png $M/config/branding/splash.png 640 360; $OTR/branding.sh sync $M
+sed -i 's/^BG_TOP=.*/BG_TOP=#336699/' $OTR_CONF; $OTR/branding.sh splash
+ok "background picture and colors of the site never touch the boot splash" '[ "$(otr_splash)" = $B/splash.png ] && [ ! -f /tmp/systemd-run.args ] && cmp -s $OTR/branding/splash.png $TH/logo.png'
+# a device that put the folder's picture on the boot splash with 0.1.1
+cp $M/config/branding/splash.png $TH/logo.png; rm -f $B/splash-applied; $OTR/branding.sh splash
+ok "a boot splash changed by 0.1.1 is rebuilt in the background" 'grep -q "branding.sh splash-now" /tmp/systemd-run.args'
 $OTR/branding.sh splash-now; rm -f /tmp/systemd-run.args; $OTR/branding.sh splash
-ok "theme updated, initramfs rebuilt once, then in line" 'cmp -s $M/config/branding/splash.png $TH/logo.png && [ "$(wc -l < /tmp/initramfs.runs)" = 1 ] && grep -q "boot splash updated" $OTR_EVENTS && [ ! -f /tmp/systemd-run.args ]'
-sed -i 's/^BG_TOP=.*/BG_TOP=#336699/' $OTR_CONF; $OTR/branding.sh splash; $OTR/branding.sh splash-now
-ok "a new color rebuilds it too" '[ -f /tmp/systemd-run.args ] && grep -q "^Window.SetBackgroundTopColor(0.200, 0.400, 0.600);" $TH/openthinrdp.script && [ "$(wc -l < /tmp/initramfs.runs)" = 2 ]'
+ok "the image's own picture and colors again, initramfs rebuilt once, then in line" 'cmp -s $OTR/branding/splash.png $TH/logo.png && grep -q "^Window.SetBackgroundTopColor(0.106, 0.153, 0.200);" $TH/openthinrdp.script && [ "$(wc -l < /tmp/initramfs.runs)" = 1 ] && grep -q "boot splash: the image.s own again" $OTR_EVENTS && [ ! -f /tmp/systemd-run.args ]'
 sed -i '/^BG_/d' $OTR_CONF; rm -rf /boot/grub /etc/default/grub /usr/local/bin/systemd-run /usr/local/bin/update-initramfs
 rm -rf $M/config/branding/$H $M/config/branding/*.png; $OTR/branding.sh sync $M
 ok "removed from the folder: back to the image's own" '[ ! -f $B/logo.png ] && [ ! -f $B/splash.png ] && [ "$(otr_logo)" = "$(cfg LOGO)" ] && grep -q "logo removed from the management folder" $OTR_EVENTS'

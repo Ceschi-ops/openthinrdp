@@ -72,10 +72,11 @@ $OTR/security-updates.sh >/dev/null
 $OTR/browser-policy.sh
 $OTR/apply.sh now
 pgrep -x openbox >/dev/null && runuser -u kiosk -- env DISPLAY=:0 openbox --reconfigure >/dev/null 2>&1
-echo "$(date '+%Y-%m-%d %H:%M:%S') software update $(cat VERSION 2>/dev/null) installed" >> /var/log/openthinrdp/events.log
 
 # 6) the new kiosk: at once if nobody is connected (restart of the X session, synchronous: started in the
 # background inside the update unit it would be killed when the unit ends), otherwise at the next start
-if pgrep -x xfreerdp3 >/dev/null; then log "remote session open: new kiosk at the next start"
+# the Shut down button was pressed during the install: no restart (it would kill the kiosk that waits to switch off)
+if [ -f /tmp/openthinrdp-poweroff-pending ]; then log "power off requested during the install: auto-update.sh switches off"
+elif pgrep -x xfreerdp3 >/dev/null; then log "remote session open: new kiosk at the next start"
 else log "restarting the X session with the new kiosk"; sleep 1; pkill -x Xorg; fi
 exit 0

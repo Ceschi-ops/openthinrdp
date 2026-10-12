@@ -99,7 +99,7 @@ microphone is then not redirected, so meeting apps do not fall back to an empty 
 | `LANGUAGE` | `en` | `en`, `it` (a file in `/opt/openthinrdp/lang/`) |
 | `KEYBOARD` | `us` | X11 layout |
 | `TITLE` | `Remote desktop` | window titles |
-| `LOGO` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs. A logo in the management folder wins, see [management.md](management.md#logo-and-boot-image) |
+| `LOGO` | `/opt/openthinrdp/branding/logo.png` | logo in the dialogs. A logo in the management folder wins, see [management.md](management.md#logo-and-background-picture) |
 | `BG_TOP`, `BG_BOTTOM` | `#1b2733`, `#000000` | background gradient (boot splash and behind the form) |
 | `SUPPORT_TEXT` | | extra line in error messages, e.g. "Call the IT desk, ext. 123" |
 | `SETTINGS_PIN_SHA256` | | protects the settings dialog: `printf 1234 \| sha256sum`. Never shown in the status files |

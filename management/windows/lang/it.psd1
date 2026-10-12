@@ -88,15 +88,15 @@
   RelDone                = 'Release {0} pubblicata in updates\. Le postazioni la mostrano nella colonna dell''aggiornamento software man mano che la installano.'
   RelCopyFailed          = "Copia in updates\ non riuscita:`r`n{0}"
 
-  # ---- logo e immagine di avvio ----
-  BtnBranding            = 'Logo e immagine di avvio...'
-  BrandTitleCommon       = 'Logo e immagine di avvio: tutte le postazioni'
-  BrandTitleDevice       = 'Logo e immagine di avvio: {0}'
-  BrandNoteCommon        = 'Ogni postazione li prende entro 5 minuti, se non ne ha di propri (scheda Postazioni). Il logo compare subito nelle finestre, l''immagine di avvio subito dietro il modulo di accesso e nella schermata di avvio dal riavvio successivo. Qualsiasi immagine viene rimpicciolita se serve e salvata come PNG in config\branding\.'
+  # ---- logo e immagine di sfondo ----
+  BtnBranding            = 'Logo e sfondo...'
+  BrandTitleCommon       = 'Logo e sfondo: tutte le postazioni'
+  BrandTitleDevice       = 'Logo e sfondo: {0}'
+  BrandNoteCommon        = 'Ogni postazione li prende entro 5 minuti, se non ne ha di propri (scheda Postazioni). Il logo compare nelle finestre, l''immagine di sfondo dietro il modulo di accesso. La schermata di avvio tiene sempre l''immagine del sistema (OpenThinRDP, o la vostra se costruite la vostra immagine). Qualsiasi immagine viene rimpicciolita se serve e salvata come PNG in config\branding\.'
   BrandNoteDevice        = 'Solo per {0}: vincono su quelli comuni. Rimuovi = si torna all''immagine comune, o a quella dell''immagine di sistema. Salvati in config\branding\{0}\.'
   BrandReported          = 'La postazione dichiara: {0} (image = la propria, common = comune, device = questa).'
   BrandLogo              = 'Logo (finestre e modulo di accesso)'
-  BrandSplash            = 'Immagine di avvio (schermata di avvio e sfondo del modulo di accesso)'
+  BrandSplash            = 'Immagine di sfondo (dietro il modulo di accesso)'
   BrandImageOwn          = 'l''immagine compresa nel sistema'
   BrandFromImage         = 'In uso: l''immagine compresa nel sistema.'
   BrandFromCommon        = 'In uso: l''immagine comune ({0}).'

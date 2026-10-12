@@ -70,7 +70,7 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
   Touch screens work as touch in Windows.
 - **Managed from a shared folder (SMB).** Each device writes its status and event log there; a Windows manager
   (English and Italian, no installation) shows them, edits the settings for all devices or one, the SSH keys,
-  logo and boot image (for all devices or one), and brings GitHub releases into the folder. Settings that come
+  logo and background picture (for all devices or one), and brings GitHub releases into the folder. Settings that come
   from the folder win over local changes.
 - **Signed updates**, never during a session: from GitHub releases, or from your folder when you decide.
   Debian security updates install by themselves.

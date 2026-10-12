@@ -6,9 +6,10 @@ otr_lang
 export DISPLAY=${DISPLAY:-:0}
 for i in $(seq 1 200); do xset q >/dev/null 2>&1 && break; sleep 0.1; done
 
-# Same picture as the boot splash, then Plymouth quits leaving it on screen: no black gap before the form
+# Background: the boot splash is always the image's own; from here on the background picture of the site
+# (management folder, otherwise the image's). Plymouth quits leaving its picture until X draws: no black gap.
 background(){ command -v hsetroot >/dev/null && hsetroot -add "$(cfg BG_TOP)" -add "$(cfg BG_BOTTOM)" -gradient 0 -center "$SPLASH" 2>/dev/null; }
-# title, logo and background, read again before every form: a logo or boot image of the management folder
+# title, logo and background, read again before every form: a logo or background picture of the management folder
 # (branding.sh) and new colors show up without restarting the kiosk
 LOOK=""
 look(){
@@ -44,6 +45,22 @@ monitor_watch(){
   done
 }
 monitor_watch &
+
+# Software update installing: a small notice in the top right corner while it lasts, so nobody switches the device
+# off in the middle (the Shut down button waits for it anyway). Not during a remote session: it would cover it.
+update_watch(){
+  local y="" w
+  while sleep 5; do
+    if systemctl is-active -q openthinrdp-update.service && ! pgrep -x xfreerdp3 >/dev/null; then
+      if [ -z "$y" ] || ! kill -0 "$y" 2>/dev/null; then
+        w=$(xrandr --current 2>/dev/null | sed -n 's/.*current \([0-9]*\) x.*/\1/p' | head -1)
+        yad --undecorated --skip-taskbar --on-top --no-focus --no-buttons --borders=10 --width=360 \
+            --posx=$(( ${w:-1024} - 380 )) --posy=20 --text="⟳  $L_UPDATE_RUNNING" 2>/dev/null & y=$!
+      fi
+    elif [ -n "$y" ]; then kill "$y" 2>/dev/null; y=""; fi
+  done
+}
+update_watch &
 
 DEF=$(cfg DEFAULT_USER)
 
@@ -506,7 +523,16 @@ kiosk_idle(){
   while sleep 5; do idle=$(xprintidle 2>/dev/null); [ -n "$idle" ] && [ "$idle" -gt 300000 ] && break; done
   touch $KEXP; pkill -f -- '--class=OtrLogin' 2>/dev/null
 }
-power_off(){ ev "power off ($1)"; sleep 1; systemctl poweroff; exit 0; }
+power_off(){
+  ev "power off ($1)"
+  if systemctl is-active -q openthinrdp-update.service; then
+    ev "power off waits for the software update to finish"
+    : > /tmp/openthinrdp-poweroff-pending   # install.sh switches off instead of restarting the X session
+    yad --center --undecorated --skip-taskbar --no-buttons --width=420 --text="<b>$L_WAIT_UPDATE</b>" 2>/dev/null & local y=$!
+    wait_update; kill $y 2>/dev/null
+  fi
+  sleep 1; systemctl poweroff; exit 0
+}
 
 # --- main loop ----------------------------------------------------------------------------------
 # first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device).

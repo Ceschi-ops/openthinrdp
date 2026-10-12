@@ -23,7 +23,7 @@ cfg_num(){ local v; v=$(cfg "$1"); [[ $v =~ ^[0-9]{1,6}$ ]] && echo $((10#$v)) |
 # every key that a configuration file may contain (the ones documented in defaults.conf + HOSTNAME)
 cfg_keys(){ echo HOSTNAME; grep -oE '^[A-Z][A-Z0-9_]*=' "$OTR_DEFAULTS" | tr -d '='; }
 
-# logo and boot image in use: the ones of the management folder (branding.sh) when there, otherwise LOGO and
+# logo and background picture in use: the ones of the management folder (branding.sh) when there, otherwise LOGO and
 # the image's own
 otr_logo(){ if [ -f "$OTR_LIB/branding/logo.png" ]; then echo "$OTR_LIB/branding/logo.png"; else cfg LOGO; fi; }
 otr_splash(){ if [ -f "$OTR_LIB/branding/splash.png" ]; then echo "$OTR_LIB/branding/splash.png"; else echo "$OTR/branding/splash.png"; fi; }
@@ -38,3 +38,7 @@ otr_lang(){
   [[ $l =~ ^[a-z]{2}$ ]] && [ "$l" != en ] && [ -f "$OTR/lang/$l.sh" ] && . "$OTR/lang/$l.sh"
   return 0
 }
+
+# never switch off in the middle of a software update (an interrupted install is only retried 10 minutes later):
+# wait for it, 15 minutes at most
+wait_update(){ local i; for i in $(seq 1 180); do systemctl is-active -q openthinrdp-update.service || return 0; sleep 5; done; }

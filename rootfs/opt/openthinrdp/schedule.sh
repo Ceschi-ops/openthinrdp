@@ -77,5 +77,5 @@ if [ $RC -eq 1 ]; then ev "power off at $OFFT cancelled by the user"; echo "$TOD
 in_session && { ev "power off at $OFFT postponed: session opened during the warning"; echo "${STATE%% *} postponed" > $STF; exit 0; }
 echo "$TODAY done" > $STF
 ev "scheduled power off ($OFFT)"
-sleep 2; systemctl poweroff
+wait_update; sleep 2; systemctl poweroff
 exit 0

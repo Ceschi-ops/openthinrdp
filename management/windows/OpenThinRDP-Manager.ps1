@@ -808,7 +808,7 @@ function Complete-Renames {
       $p = Join-Path $script:StatusDir $s
       if (Test-Path -LiteralPath $p) { if (-not (Test-Path -LiteralPath $prev)) { New-Item -ItemType Directory -Path $prev | Out-Null }; Move-Item -LiteralPath $p -Destination (Join-Path $prev $s) -Force }
     }
-    # logo and boot image of the device follow it
+    # logo and background picture of the device follow it
     $bo = Get-BrandingDir $old; $bn = Get-BrandingDir $new
     if ((Test-Path -LiteralPath $bo) -and -not (Test-Path -LiteralPath $bn)) { Move-Item -LiteralPath $bo -Destination $bn }
     Add-ChangeLog ("rename completed: {0} -> {1} ({0}.conf becomes {1}.conf)" -f $old, $new)
@@ -818,9 +818,9 @@ function Complete-Renames {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Logo and boot image: config\branding\<kind>.png for every device, config\branding\<hostname>\<kind>.png for
+# Logo and background picture: config\branding\<kind>.png for every device, config\branding\<hostname>\<kind>.png for
 # one (branding.sh on the device; the device file wins). Any picture is scaled down to fit and saved as PNG:
-# the devices accept only PNG files up to 2 MB, logo up to 400 x 240, boot image up to 1024 x 640.
+# the devices accept only PNG files up to 2 MB, logo up to 400 x 240, background up to 1024 x 640.
 # ---------------------------------------------------------------------------------------------
 $script:BrandingSize = @{ logo = @(300, 120); splash = @(640, 400) }
 function Get-BrandingDir([string]$hostName = '') {
@@ -1292,7 +1292,7 @@ function Save-Keys {
   Update-KeysView
 }
 
-# Logo and boot image of every device ($d = $null) or of one device: a preview on the background colors, where the
+# Logo and background picture of every device ($d = $null) or of one device: a preview on the background colors, where the
 # picture comes from, Choose... and Remove for this level
 function Show-BrandingDialog($d) {
   $hostName = if ($d) { $d.Name } else { '' }

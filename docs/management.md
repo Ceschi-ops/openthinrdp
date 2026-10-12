@@ -11,7 +11,7 @@ mounts it every 5 minutes, at boot and at every new event, writes its status and
   config\common.conf           settings for every device
   config\<hostname>.conf       settings for one device (wins over common.conf)
   config\authorized_keys       SSH public keys of the administrators (optional)
-  config\branding\logo.png, splash.png              logo and boot image for every device (optional)
+  config\branding\logo.png, splash.png              logo and background picture for every device (optional)
   config\branding\<hostname>\logo.png, splash.png   for one device (wins over the common ones)
   config\backup\, changes.log  written by the Windows manager
   updates\LATEST.txt(.sig)     signed update index, and the packages
@@ -64,20 +64,22 @@ Before saving `common.conf` it lists the devices that would reject it.
 It is available in English and Italian: it follows the Windows display language (English for any language
 without a file in `management/windows/lang/`), or `-Language en` / `-Language it` chooses one.
 
-## Logo and boot image
+## Logo and background picture
 
-`logo.png` is the logo of the dialogs and of the sign-in form; `splash.png` is the boot image, shown on the boot
-screen and behind the sign-in form on the `BG_TOP`/`BG_BOTTOM` gradient. In `config\branding\` they are for every
-device, in `config\branding\<hostname>\` for that device only; a device without them uses the ones of its image.
-The manager's **Logo and boot image...** button (common settings, or a device) takes any picture, scales it down
-and saves it as PNG there; files copied by hand are fine too.
+`logo.png` is the logo of the dialogs and of the sign-in form; `splash.png` is the background picture, shown
+behind the sign-in form on the `BG_TOP`/`BG_BOTTOM` gradient. In `config\branding\` they are for every device,
+in `config\branding\<hostname>\` for that device only; a device without them uses the ones of its image.
+The manager's **Logo and background...** button (common settings, or a device) takes any picture, scales it
+down and saves it as PNG there; files copied by hand are fine too.
 
-A device accepts PNG files only, up to 2 MB, a logo up to 400 x 240 pixels and a boot image up to 1024 x 640
-(anything else is refused once with an event, and the previous picture stays). Logo and sign-in background change
-within 5 minutes; the boot screen from the next restart, as the device rebuilds its initramfs in the background
-(also when only the colors change). The status file says where each picture comes from: `BRANDING=logo=common
-splash=image` (`image`, `common` or `device`).
+The boot screen never changes from here: it always shows the picture and colors of the image (OpenThinRDP's,
+or your own when you build your image with `image/site/splash.png`). At power on the device shows the boot
+screen, then the background of your site from the sign-in form on.
 
+A device accepts PNG files only, up to 2 MB, a logo up to 400 x 240 pixels and a background up to 1024 x 640
+(anything else is refused once with an event, and the previous picture stays), and shows them within 5
+minutes. The status file says where each picture comes from: `BRANDING=logo=common splash=image` (`image`,
+`common` or `device`).
 ## SSH keys
 
 With `SSH=on`, the `otradmin` account accepts only the keys in `/etc/openthinrdp/authorized_keys`: from the image
