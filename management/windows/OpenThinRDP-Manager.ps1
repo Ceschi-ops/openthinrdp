@@ -842,7 +842,8 @@ function Save-BrandingImage([string]$source, [string]$kind, [string]$hostName = 
   $max = $script:BrandingSize[$kind]
   try { $img = Read-Picture $source } catch { throw (Get-Text 'BrandLoadFailed' $_.Exception.Message) }
   try {
-    $k = [Math]::Min(1.0, [Math]::Min($max[0] / $img.Width, $max[1] / $img.Height))
+    # [double]: 640 / 640 is an Int32 in PowerShell, and Min(Int32, Double) would round the other ratio to 1
+    $k = [Math]::Min(1.0, [Math]::Min([double]$max[0] / $img.Width, [double]$max[1] / $img.Height))
     $w = [Math]::Max(1, [int][Math]::Round($img.Width * $k)); $h = [Math]::Max(1, [int][Math]::Round($img.Height * $k))
     $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -1318,7 +1319,7 @@ function Show-BrandingDialog($d) {
       $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($s.ClientRectangle, $s.Tag.Top, $s.Tag.Bottom, 90.0)
       $e.Graphics.FillRectangle($br, $s.ClientRectangle); $br.Dispose()
       if ($s.Tag.Image) { $i = $s.Tag.Image
-        $k = [Math]::Min(1.0, [Math]::Min(($s.Width - 8) / $i.Width, ($s.Height - 8) / $i.Height)); $w = [int]($i.Width * $k); $h = [int]($i.Height * $k)
+        $k = [Math]::Min(1.0, [Math]::Min([double]($s.Width - 8) / $i.Width, [double]($s.Height - 8) / $i.Height)); $w = [int]($i.Width * $k); $h = [int]($i.Height * $k)
         $e.Graphics.DrawImage($i, [int](($s.Width - $w) / 2), [int](($s.Height - $h) / 2), $w, $h) }
       elseif ($s.Tag.Text) { [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $s.Tag.Text, $fontBase, $s.ClientRectangle, [System.Drawing.Color]::White) } })
     $lbl = New-Object System.Windows.Forms.Label; $lbl.SetBounds(494, 22, 172, 60)
