@@ -47,6 +47,9 @@ fi
 # Unix line endings and modes, whatever the checkout did
 find "$STAGE" -type f \( -name '*.sh' -o -name '*.conf' -o -name '*.rules' -o -name '*.service' -o -name '*.timer' \
   -o -name '*.path' -o -name '*.list' -o -name '*.xml' -o -name 'openthinrdp' \) -exec sed -i 's/\r$//' {} +
+# modes of the system, whatever the umask or checkout: install.sh copies them onto /, /etc, /opt... (a
+# group-writable /etc makes sshd refuse every key)
+chmod -R u=rwX,go=rX "$STAGE"
 chmod 755 "$STAGE/install.sh" "$STAGE"/rootfs/opt/openthinrdp/*.sh
 F="openthinrdp-update-$V.tar.gz"
 tar -czf "$OUT/$F" --owner=0 --group=0 -C "$STAGE" .

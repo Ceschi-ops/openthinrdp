@@ -44,6 +44,10 @@ fi
 
 # 4) files: the whole rootfs of the package. The device settings (/etc/openthinrdp/openthinrdp.conf,
 # smb.cred, keys) are not in the rootfs, so they are never overwritten.
+# cp -a also gives /, /etc, /opt... the modes of the package's folders: always 755/644 here, whatever the package
+# was built with. This also repairs a device that got the 0.1.1 package built with umask 002 (/etc group-writable:
+# sshd refused every key).
+chmod -R u=rwX,go=rX rootfs
 cp -a --no-preserve=ownership rootfs/. /
 chmod 755 $OTR/*.sh; chmod 0440 /etc/sudoers.d/openthinrdp
 # /etc/skel only reaches new accounts: the kiosk account gets its Openbox settings here
