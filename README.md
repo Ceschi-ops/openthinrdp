@@ -154,6 +154,7 @@ The result is `out/openthinrdp-<version>.iso`. See [docs/building.md](docs/build
 
 ## Documentation
 
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 - [docs/configuration.md](docs/configuration.md): every setting.
 - [docs/management.md](docs/management.md): the management folder, central settings, SSH keys, signed updates.
 - [docs/building.md](docs/building.md): building and customizing the image.

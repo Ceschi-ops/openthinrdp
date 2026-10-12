@@ -151,7 +151,7 @@ cp -r image/site.example image/site      # poi modificare site.conf, build.conf,
 image/build.sh                           # -> out/openthinrdp-<versione>.iso
 ```
 
-La documentazione è in inglese nella cartella [docs](docs/).
+La documentazione è in inglese nella cartella [docs](docs/); le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuire
 
