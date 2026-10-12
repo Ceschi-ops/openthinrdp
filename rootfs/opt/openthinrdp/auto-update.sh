@@ -35,7 +35,11 @@ if [ "$1" = install ]; then
     ev "software update $V FAILED (code $rc): $(grep -v '^$' "$L" | tail -1 | cut -c1-150)"
   fi
   # Shut down was pressed during the install (kiosk.sh waits for it): switch off now that it is recorded
-  [ -f /tmp/openthinrdp-poweroff-pending ] && { ev "power off after the software update"; systemctl --no-block poweroff; }
+  # (the file says poweroff or reboot)
+  if [ -f /tmp/openthinrdp-poweroff-pending ]; then
+    a=$(cat /tmp/openthinrdp-poweroff-pending); [ "$a" = reboot ] || a=poweroff
+    ev "$a after the software update"; systemctl --no-block "$a"
+  fi
   exit $rc
 fi
 

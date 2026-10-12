@@ -523,16 +523,22 @@ kiosk_idle(){
   while sleep 5; do idle=$(xprintidle 2>/dev/null); [ -n "$idle" ] && [ "$idle" -gt 300000 ] && break; done
   touch $KEXP; pkill -f -- '--class=OtrLogin' 2>/dev/null
 }
+# power_off REASON [reboot]: switch off (or restart), after a software update that is installing
 power_off(){
-  ev "power off ($1)"
+  local act=poweroff; [ "$2" = reboot ] && act=reboot
+  ev "$([ $act = reboot ] && echo restart || echo 'power off') ($1)"
   if systemctl is-active -q openthinrdp-update.service; then
-    ev "power off waits for the software update to finish"
-    : > /tmp/openthinrdp-poweroff-pending   # install.sh switches off instead of restarting the X session
+    ev "$act waits for the software update to finish"
+    echo $act > /tmp/openthinrdp-poweroff-pending   # install.sh does not restart the X session, auto-update.sh does this
     yad --center --undecorated --skip-taskbar --no-buttons --width=420 --text="<b>$L_WAIT_UPDATE</b>" 2>/dev/null & local y=$!
     wait_update; kill $y 2>/dev/null
   fi
-  sleep 1; systemctl poweroff; exit 0
+  sleep 1; systemctl $act; exit 0
 }
+# the sign-in screen (login.py, GTK); without the Python GTK bindings (a device updated without the Debian mirror)
+# the yad form of the earlier versions
+GREETER=0
+python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' 2>/dev/null && GREETER=1
 
 # --- main loop ----------------------------------------------------------------------------------
 # first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device).
@@ -562,19 +568,33 @@ while true; do
   fi
   # IP only if already there: the form does not wait for it (it is always shown in the settings dialog)
   IPNOW=$(ipv4)
-  # Enter in the password field presses the LAST button: Sign in goes last with the highest code
-  OUT=$(yad --form $IMG --class=OtrLogin --title="$TITLE" \
-        --text="<b>$L_LOGIN_HEADING</b>   [ $HOSTN${IPNOW:+  -  IP $IPNOW} ]$KTXT" \
-        --separator="|" --field="$L_USER" --field="$L_PASSWORD:H" --focus-field=2 --width=430 --center \
-        --button="$L_SHUTDOWN:5" --button="⚙:3" --button="ℹ:4" "${WEBBTN[@]}" --button="$L_SIGNIN:10" "$DEF" "" 2>/dev/null)
-  rc=$?
+  if [ $GREETER = 1 ]; then
+    WEBL=""; case "$WEB" in app|browser) WEBL=$(cfg WEB_LABEL) ;; kiosk) WEBL=$L_KIOSK ;; esac
+    NOTE=$(printf '%b' "$KTXT" | sed 's/<[^>]*>//g; /^$/d')
+    OUT=$(python3 "$OTR/login.py" --class=OtrLogin --title="$TITLE" --heading="$L_LOGIN_HEADING" \
+          --info="$HOSTN${IPNOW:+  ·  $IPNOW}" --note="$NOTE" --user="$DEF" --logo="$LOGO" --splash="$SPLASH" \
+          --top="$(cfg BG_TOP)" --bottom="$(cfg BG_BOTTOM)" --web="$WEBL" --t-user="$L_USER" --t-password="$L_PASSWORD" \
+          --t-signin="$L_SIGNIN" --t-shutdown="$L_SHUTDOWN" --t-restart="$L_RESTART" --t-settings="$L_SETTINGS" \
+          --t-diag="$L_DIAG" --t-power="$L_POWER" 2>/dev/null)
+    rc=$?
+  else
+    # Enter in the password field presses the LAST button: Sign in goes last with the highest code
+    OUT=$(yad --form $IMG --class=OtrLogin --title="$TITLE" \
+          --text="<b>$L_LOGIN_HEADING</b>   [ $HOSTN${IPNOW:+  -  IP $IPNOW} ]$KTXT" \
+          --separator="|" --field="$L_USER" --field="$L_PASSWORD:H" --focus-field=2 --width=430 --center \
+          --button="$L_SHUTDOWN:5" --button="⚙:3" --button="ℹ:4" "${WEBBTN[@]}" --button="$L_SIGNIN:10" "$DEF" "" 2>/dev/null)
+    rc=$?
+  fi
   # kiosk: nobody touched anything -> page; otherwise the form stays without countdown
   if [ -n "$KPID" ]; then
     kill $KPID 2>/dev/null; wait $KPID 2>/dev/null
     if [ -f $KEXP ]; then rm -f $KEXP; KSTOPPED=0; kiosk_page; continue; fi
     # stopped only when a button closed the form: closed by monitor_watch (late monitor) = draw it again
-    case $rc in 0|3|4|5|7|10) [ $KSTOPPED -eq 0 ] && ev "kiosk page: start stopped by the user"; KSTOPPED=1 ;; *) continue ;; esac
+    case $rc in 0|3|4|5|6|7|10) [ $KSTOPPED -eq 0 ] && ev "kiosk page: start stopped by the user"; KSTOPPED=1 ;; *) continue ;; esac
   fi
+  # the power menu of the sign-in screen is already a deliberate choice: no second question
+  [ $rc -eq 6 ] && power_off "Restart button" reboot
+  [ $rc -eq 5 ] && [ $GREETER = 1 ] && power_off "Shut down button"
   if [ $rc -eq 5 ]; then
     # dialog WITHOUT fields: Enter presses the FIRST button -> No goes first
     yad $IMG --title="$TITLE" --width=360 --center --text="<b>$L_ASK_SHUTDOWN</b>" \
