@@ -58,7 +58,7 @@ settings and follows `site.conf` or the project defaults again, like a device in
 would not be valid (e.g. removing `WEB_URL` while `WEB_BUTTON=app` stays), the key is kept, the event is logged
 once and the release is retried at every run.
 
-The Windows manager (`management/windows/OpenThinRDP-Manager.cmd`) shows the devices, their status and events,
+The Windows manager (`management/windows/OpenThinRDP-Manager.vbs`, or the `.cmd` to pass `-Folder`/`-Language`) shows the devices, their status and events,
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
 Before saving `common.conf` it lists the devices that would reject it.
 It is available in English and Italian: it follows the Windows display language (English for any language
