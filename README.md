@@ -67,8 +67,9 @@ PCs without UEFI.
 2. Boot the PC from the stick. The menu starts the **live system** by itself after 10 seconds: it runs from the
    stick and **never writes to the disk**.
 3. The settings dialog opens: set the broker (or the name of a Windows PC) and the domain, save, sign in.
-4. Like it? Restart and choose **Install**: about three minutes, no questions. It **erases the first internal
-   disk** (never a USB disk, not even the installation stick).
+4. Like it? Restart and choose **Install**: it shows the disk it is going to erase and asks before writing
+   anything (answer *Yes* to go on), then about three minutes. It installs on the **first internal disk**, never
+   a USB disk (not even the installation stick). For rollouts, *Unattended install* skips the question.
 
 Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installation. Tested hardware:
 [docs/hardware.md](docs/hardware.md).

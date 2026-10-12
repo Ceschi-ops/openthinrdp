@@ -70,8 +70,9 @@ ARM, PC senza UEFI.
 2. Avviate il PC dalla chiavetta. Il menu fa partire da solo il **sistema live** dopo 10 secondi: gira dalla
    chiavetta e **non scrive mai sul disco**.
 3. Si apre la configurazione: impostate il broker (o il nome di un PC Windows) e il dominio, salvate, accedete.
-4. Vi piace? Riavviate e scegliete **Install**: circa tre minuti, nessuna domanda. **Cancella il primo disco
-   interno** (mai un disco USB, nemmeno la chiavetta di installazione).
+4. Vi piace? Riavviate e scegliete **Install**: mostra il disco che sta per cancellare e chiede conferma prima
+   di scrivere qualsiasi cosa (confermate per proseguire), poi circa tre minuti. Installa sul **primo disco interno**, mai
+   su un disco USB (nemmeno la chiavetta). Per le installazioni in serie, *Unattended install* salta la domanda.
 
 Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazione. Hardware provato:
 [docs/hardware.md](docs/hardware.md).

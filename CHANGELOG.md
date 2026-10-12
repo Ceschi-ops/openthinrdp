@@ -5,6 +5,10 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **The installer asks before erasing the disk.** *Install* shows the internal disk it is going to use and
+  the partitions it will write, and asks ("No" preselected); old LVM volumes or software RAID on that disk are
+  never removed without a question either. *Unattended install*, a separate entry of the boot menu, keeps the
+  old behaviour for rollouts on known hardware.
 - **FreeRDP: pull request #13608 unchanged, no patches of ours.** The author took our two fixes into the pull
   request (ten SYN attempts, and the root cause of the false "stream is stuck" on lossy lines), which also
   removes a 1 s freeze at every wrap of the channel sequence under loss: with 70% of the packets lost the
