@@ -32,6 +32,25 @@ Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva 
 > provatela in live, poi su una postazione, prima di estenderla; le segnalazioni da altro hardware sono molto
 > benvenute.
 
+## RDP su UDP che regge anche su una linea pessima
+
+Tutto è partito da una porta di switch guasta che perdeva il 43% dei pacchetti grandi: in TCP il desktop remoto
+si bloccava. Abbiamo riprodotto quella linea e poi alzato la perdita su tutti i pacchetti della macchina virtuale
+un gradino alla volta (VDI Windows 11, carico a schermo intero che cambia ogni pixel, fotogrammi misurati dal
+server):
+
+| pacchetti persi | in TCP | **OpenThinRDP in UDP** |
+|---|---|---|
+| 20% | 0,6 fotogrammi al secondo: lo schermo quasi non si muove | |
+| 43% di quelli grandi (la porta guasta) | 0-0,1 fps | **16-21 fps**, 7 minuti di fila |
+| 50% | | **19-21 fps**, come su una linea pulita |
+| 70% | | **9 fps** |
+| 80% | | 4 fps, poi il tunnel si arrende |
+
+Per arrivarci abbiamo corretto un difetto nel trasporto UDP di FreeRDP (proposto in
+[#13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). Tutti i gradini, il metodo e i numeri del TCP:
+[docs/udp.md](docs/udp.md#on-a-lossy-line).
+
 ## Per chi è
 
 - Pubblicate desktop con **Servizi Desktop remoto di Windows**: broker RDS con host di sessione o raccolta VDI su

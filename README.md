@@ -30,6 +30,24 @@ Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from
 > management folder. The ISO installation is tested in QEMU/KVM with Secure Boot at every release. Still young
 > (0.1): try it live, then on one device, before rolling it out; reports from other hardware are very welcome.
 
+## RDP over UDP that keeps going on a bad line
+
+It started with a faulty switch port losing 43% of the large packets: over TCP the remote desktop froze. We
+reproduced that line, then raised the loss on every packet from the virtual machine step by step (Windows 11 VDI,
+full-screen load changing every pixel, frame rate measured by the server):
+
+| packets lost | over TCP | **OpenThinRDP over UDP** |
+|---|---|---|
+| 20% | 0.6 frames per second: the screen barely moves | |
+| 43% of the large ones (the faulty port) | 0-0.1 fps | **16-21 fps**, 7 minutes in a row |
+| 50% | | **19-21 fps**, as on a clean line |
+| 70% | | **9 fps** |
+| 80% | | 4 fps, then the tunnel gives up |
+
+Getting there took a fix of ours to FreeRDP's UDP transport (proposed upstream in
+[#13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). Every step, the method and the TCP numbers:
+[docs/udp.md](docs/udp.md#on-a-lossy-line).
+
 ## Who it is for
 
 - You publish desktops with **Windows Remote Desktop Services**: RD Connection Broker with session hosts or a
