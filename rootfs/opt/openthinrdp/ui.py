@@ -300,7 +300,7 @@ def today():
     t = time.localtime()
     if A.lang in DAYS:
         return f"{DAYS[A.lang][t.tm_wday].capitalize()} {t.tm_mday} {MONTHS[A.lang][t.tm_mon - 1]}"
-    return time.strftime('%A %d %B', t).capitalize()
+    s = time.strftime('%A %d %B', t); return s[:1].upper() + s[1:]   # capitalize() would lower "October"
 
 def corner_button(kind, tip, cb):
     b = Gtk.Button(); b.add(icon(kind)); b.set_tooltip_text(tip); b.get_style_context().add_class('corner')
