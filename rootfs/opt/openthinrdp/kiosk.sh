@@ -304,13 +304,13 @@ diag_dialog(){
       if [ -z "$a" ]; then echo "Remote desktop  $h: name $L_DIAG_NOTFOUND (DNS)"
       else echo "Remote desktop  $h ($a): port 3389 $(diag_port "$a" 3389)"; fi
     done
-    echo "Transport       $(cfg TRANSPORT), $(xfreerdp3 --version 2>/dev/null | head -1)$(xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && echo ', with UDP')"
+    echo "Transport       $(cfg TRANSPORT), FreeRDP ${FRV:-?}$([ "$HASUDP" = 1 ] && echo ' with UDP')"
     s=$(cfg MGMT_SHARE)
     echo "Management      ${s:-none}${s:+   last report: $(tail -1 "$OTR_LOG/report.log" 2>/dev/null | cut -c1-90)}"
     echo
     echo "Last events:"
     tail -n 10 "$OTR_EVENTS" 2>/dev/null
-  } | yad --text-info $IMG --title="$L_DIAG" --width=780 --height=540 --center --fontname="Monospace 10" \
+  } | yad --text-info --wrap $IMG --title="$L_DIAG" --width=780 --height=540 --center --fontname="Monospace 10" \
           --text="$L_DIAG_TEXT" --button="$L_CLOSE:0" 2>/dev/null
 }
 
