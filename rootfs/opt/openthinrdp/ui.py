@@ -24,7 +24,7 @@ from gi.repository import Gtk, Gdk, GdkPixbuf, GLib
 MODE = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('-') else 'login'
 ap = argparse.ArgumentParser()
 for a in ('class', 'title', 'heading', 'text', 'small', 'info', 'note', 'user', 'logo', 'splash', 'top', 'bottom',
-          'web', 'icon', 'timeout', 'primary', 'default',
+          'web', 'icon', 'timeout', 'primary', 'default', 'lang',
           't-user', 't-password', 't-signin', 't-shutdown', 't-restart', 't-settings', 't-diag', 't-power',
           'open-power'):     # open-power: tests only, the power menu open (for a screenshot)
     ap.add_argument('--' + a, default='')
@@ -291,6 +291,17 @@ def sign_in(*_):
         ep.grab_focus()
 bs.connect('clicked', sign_in); ep.connect('activate', sign_in); eu.connect('activate', lambda *_: ep.grab_focus())
 
+# day and month in the language of the kiosk (LANGUAGE), not of the system: a system installed in English with
+# LANGUAGE=it would show "Monday 12 October"
+DAYS = {'it': ('lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica')}
+MONTHS = {'it': ('gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre',
+                 'ottobre', 'novembre', 'dicembre')}
+def today():
+    t = time.localtime()
+    if A.lang in DAYS:
+        return f"{DAYS[A.lang][t.tm_wday].capitalize()} {t.tm_mday} {MONTHS[A.lang][t.tm_mon - 1]}"
+    return time.strftime('%A %d %B', t).capitalize()
+
 def corner_button(kind, tip, cb):
     b = Gtk.Button(); b.add(icon(kind)); b.set_tooltip_text(tip); b.get_style_context().add_class('corner')
     b.set_can_focus(False)
@@ -303,7 +314,7 @@ clk = Gtk.Label(xalign=0); clk.get_style_context().add_class('clock')
 dt = Gtk.Label(xalign=0); dt.get_style_context().add_class('date')
 tl.pack_start(clk, False, False, 0); tl.pack_start(dt, False, False, 0); ov.add_overlay(tl)
 def tick():
-    clk.set_text(time.strftime('%H:%M')); dt.set_text(time.strftime('%A %d %B').capitalize()); return True
+    clk.set_text(time.strftime('%H:%M')); dt.set_text(today()); return True
 tick(); GLib.timeout_add_seconds(10, tick)
 tr = Gtk.Box(spacing=10, halign=Gtk.Align.END, valign=Gtk.Align.START, margin=22)
 tr.pack_start(corner_button('info', A.t_diag or 'Diagnostics', lambda *_: leave(4)), False, False, 0)

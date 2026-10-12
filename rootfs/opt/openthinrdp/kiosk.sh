@@ -49,9 +49,13 @@ monitor_watch &
 # Software update installing: a small notice in the top right corner while it lasts, so nobody switches the device
 # off in the middle (the Shut down button waits for it anyway). Not during a remote session: it would cover it.
 update_watch(){
-  local y="" w UIOK=0
+  local y="" w UIOK=0 bsig nsig
+  bsig=$(stat -c %Y "$OTR_LIB"/branding/*.png 2>/dev/null | tr '\n' ' ')
   python3 -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null && UIOK=1
   while sleep 5; do
+    # a new logo or background picture of the management folder: draw the sign-in screen again (not in a session)
+    nsig=$(stat -c %Y "$OTR_LIB"/branding/*.png 2>/dev/null | tr '\n' ' ')
+    if [ "$nsig" != "$bsig" ]; then bsig=$nsig; pgrep -x xfreerdp3 >/dev/null || pkill -f -- "--class=OtrLogin" 2>/dev/null; fi
     # not while the full screen power-off notice shows the same progress
     if systemctl is-active -q openthinrdp-update.service && ! pgrep -x xfreerdp3 >/dev/null && [ ! -f /tmp/openthinrdp-poweroff-pending ]; then
       if [ -z "$y" ] || ! kill -0 "$y" 2>/dev/null; then
@@ -555,7 +559,7 @@ power_off(){
 GREETER=0
 python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' 2>/dev/null && GREETER=1
 # ui MODE ARGS...: the screens of ui.py (sign-in, messages, progress) with the colors and pictures of the site
-ui(){ local m=$1; shift; python3 "$OTR/ui.py" "$m" --title="$TITLE" --top="$(cfg BG_TOP)" --bottom="$(cfg BG_BOTTOM)" \
+ui(){ local m=$1; shift; python3 "$OTR/ui.py" "$m" --title="$TITLE" --lang="$(cfg LANGUAGE)" --top="$(cfg BG_TOP)" --bottom="$(cfg BG_BOTTOM)" \
         --splash="$SPLASH" --logo="$LOGO" "$@" 2>/dev/null; }
 # plain text for ui.py: no Pango tags
 plain(){ printf '%s' "$1" | sed 's/<[^>]*>//g'; }
