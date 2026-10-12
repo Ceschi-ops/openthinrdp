@@ -71,6 +71,15 @@ update_watch(){
 }
 update_watch &
 
+# Pointer on the kiosk screens: hidden while the mouse is still, back as soon as it moves (unclutter-xfixes). Not in
+# the remote desktop, where Windows draws its own pointer: stopped as soon as the desktop window is on screen.
+pointer_idle_hide(){
+  command -v unclutter >/dev/null || return 0
+  pgrep -u "$(id -u)" -x unclutter >/dev/null || { unclutter --timeout 2 --jitter 3 --start-hidden --hide-on-touch >/dev/null 2>&1 & }
+}
+pointer_show(){ pkill -u "$(id -u)" -x unclutter 2>/dev/null; return 0; }
+pointer_idle_hide
+
 DEF=$(cfg DEFAULT_USER)
 
 # Webcams and USB sound devices (headsets, speakerphones, the microphone of a webcam). Passed whole over USB they
@@ -453,7 +462,7 @@ session(){
           [ -z "$first" ] && first=$(echo "$ips" | head -1)
           if [ $s1 -eq 0 ] && [ -n "$ips" ]; then echo "30"; echo "# $L_P_AUTH"; s1=1; fi
           if [ $s2 -eq 0 ] && [ -n "$first" ] && echo "$ips" | grep -qvx "$first"; then echo "65"; echo "# $L_P_STARTING"; s2=1; fi
-          if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then echo "# $L_P_READY"; echo "100"; s3=1; fi
+          if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then pointer_show; echo "# $L_P_READY"; echo "100"; s3=1; fi
         fi 2>/dev/null
         sleep 0.4; n=$((n + 1))
         # Watchdog, every ~5 s: FreeRDP alive but without any TCP connection for 60 s = stuck. Seen with USB
@@ -480,6 +489,7 @@ session(){
           --title="$TITLE" --text="$L_P_TITLE" 2>/dev/null; fi
     wait $xp 2>/dev/null
     kill $wp 2>/dev/null
+    pointer_idle_hide
     d=$(( $(date +%s) - st )); ec=$(cat /tmp/kiosk.rc 2>/dev/null)
     SESS_SECS=$d
     # credentials: from the EXIT CODE and first, at any duration. Never retry a wrong password (the attempts
