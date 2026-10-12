@@ -29,7 +29,8 @@ Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from
 > behind two RD Connection Brokers. The devices were converted in place from the system they ran before and take
 > every release as a signed package from their management folder, installed during sessions and applied when the
 > session is over. FreeRDP security releases reach OpenThinRDP [within 7 days](SECURITY.md#freerdp-security-fixes)
-> (3.32.2: four hours). The ISO is tested in QEMU/KVM with Secure Boot at every release. What is in production,
+> (3.32.2: four hours). The ISO is tested in QEMU/KVM with Secure Boot at every release and the system tests run on
+> every commit ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). What is in production,
 > what is only tested and what does not exist yet:
 > **[docs/status.md](docs/status.md)**. Try it live, then on one device, before rolling it out.
 

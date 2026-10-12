@@ -31,7 +31,8 @@ Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva 
 > ogni versione come pacchetto firmato dalla loro cartella di gestione, installato durante le sessioni e applicato
 > quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
 > [entro 7 giorni](SECURITY.md#freerdp-security-fixes) (la 3.32.2: in quattro ore). La ISO è provata in QEMU/KVM
-> con Secure Boot a ogni versione. Cosa è in produzione, cosa è solo
+> con Secure Boot a ogni versione e i test di sistema girano a ogni commit
+> ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). Cosa è in produzione, cosa è solo
 > provato e cosa non c'è ancora: **[docs/status.md](docs/status.md)**. Provatela in live, poi su una postazione,
 > prima di estenderla.
 
