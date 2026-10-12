@@ -886,6 +886,107 @@ function Remove-BrandingImage([string]$kind, [string]$hostName = '') {
   $true
 }
 
+# ---------------------------------------------------------------------------------------------
+# Permissions of the management folder (docs/management.md#account). Every device can read the password of
+# its account, so that account must be able to write in status\ only: settings, logos and updates read-only.
+# Read from the NTFS permissions; the permissions of the share can only take rights away.
+# ---------------------------------------------------------------------------------------------
+# rights that change something: write/create, append/create folders, extended attributes, delete children,
+# attributes, delete, permissions, owner
+$script:WriteMask = 0x2 -bor 0x4 -bor 0x10 -bor 0x40 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000
+# Administrators, SYSTEM, CREATOR OWNER, and (any domain) Domain Admins, Enterprise Admins: expected to write
+$script:AdminSid = '^(S-1-5-32-544|S-1-5-18|S-1-3-0|S-1-5-21-.+-(512|519))$'
+# groups that mean "every user": Everyone, Authenticated Users, NETWORK, Users, Domain Users
+$script:EveryoneSid = '^(S-1-1-0|S-1-5-11|S-1-5-2|S-1-5-32-545|S-1-5-21-.+-513)$'
+
+# the account the devices use: what they report (MGMT_ACCOUNT, since 0.1.6), else MGMT_USER of common.conf
+function Get-MgmtAccounts($devices) {
+  $a = @($devices | ForEach-Object { $_.S['MGMT_ACCOUNT'] } | Where-Object { $_ -and $_ -ne 'none' })
+  if (-not $a.Count) {
+    $c = Read-ConfFile $script:CommonFile
+    if ($c['MGMT_USER']) { $a = @(if ($c['MGMT_USER'] -match '[\\@]' -or -not $c['DOMAIN']) { $c['MGMT_USER'] } else { "$($c['DOMAIN'])\$($c['MGMT_USER'])" }) }
+  }
+  @($a | Sort-Object -Unique)
+}
+function Get-SidName([string]$sid) {
+  try { (New-Object Security.Principal.SecurityIdentifier $sid).Translate([Security.Principal.NTAccount]).Value } catch { $sid }
+}
+# the SIDs that count for an account: itself, its domain groups (nested too) and the groups every signed-in
+# account is in on a file server
+function Get-AccountSids([string]$account) {
+  $sid = (New-Object Security.Principal.NTAccount $account).Translate([Security.Principal.SecurityIdentifier]).Value
+  $sids = @($sid, 'S-1-1-0', 'S-1-5-11', 'S-1-5-2', 'S-1-5-32-545')
+  try {
+    $de = New-Object DirectoryServices.DirectoryEntry "LDAP://<SID=$sid>"
+    $de.RefreshCache([string[]]@('tokenGroups'))
+    foreach ($b in $de.Properties['tokenGroups']) { $sids += (New-Object Security.Principal.SecurityIdentifier ([byte[]]$b), 0).Value }
+  } catch { }   # local account or no domain controller: the account and the groups of everybody
+  @($sids | Sort-Object -Unique)
+}
+# rights of an access rule as plain file rights (generic rights mapped the way NTFS maps them)
+function Get-RuleMask($rule) {
+  $m = [int64]([int]$rule.FileSystemRights) -band 0xFFFFFFFFL
+  if ($m -band 0x10000000) { $m = $m -bor 0x1F01FF }   # GENERIC_ALL
+  if ($m -band 0x40000000) { $m = $m -bor 0x116 }      # GENERIC_WRITE
+  if ($m -band 0x80000000) { $m = $m -bor 0x120089 }   # GENERIC_READ
+  $m -band 0x1F01FF
+}
+# what $sids may do on $path, and who gives write rights: to them, and to anybody else who is not an
+# administrator. Windows reads the rules in their order and the first one that allows or denies a right
+# decides it: a Deny after an Allow of the same right changes nothing (an inherited Deny comes after an
+# explicit Allow, and the rules of the parent folder before those of the grandparent).
+function Get-PathAccess([string]$path, [string[]]$sids) {
+  $granted = 0L; $denied = 0L; $via = @(); $others = @()
+  $rules = (Get-Acl -LiteralPath $path).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
+  foreach ($r in $rules) {
+    if ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
+    $id = $r.IdentityReference.Value; $m = Get-RuleMask $r
+    if ($sids -contains $id) {
+      $new = $m -band (-bnot ($granted -bor $denied))
+      if ($r.AccessControlType -eq 'Deny') { $denied = $denied -bor $new }
+      else { $granted = $granted -bor $new; if ($new -band $script:WriteMask) { $via += $id } }
+    }
+    elseif ($r.AccessControlType -eq 'Allow' -and ($m -band $script:WriteMask) -and $id -notmatch $script:AdminSid) { $others += $id }
+  }
+  [pscustomobject]@{ Mask = $granted; Via = @($via | Sort-Object -Unique); Others = @($others | Sort-Object -Unique) }
+}
+# the check: one line per finding, Problem = something to correct
+function Test-FolderPermissions([string]$account) {
+  $out = New-Object Collections.ArrayList
+  $add = { param($problem, $text) [void]$out.Add([pscustomobject]@{ Problem = $problem; Text = $text }) }
+  try { $sids = Get-AccountSids $account } catch { & $add $true (Get-Text 'PermUnknownAccount' $account); return $out }
+  $names = { param($l) (@($l | ForEach-Object { Get-SidName $_ }) -join ', ') }
+  $st = Get-PathAccess $script:StatusDir $sids
+  if (($st.Mask -band 0x7) -eq 0x7) { & $add $false (Get-Text 'PermStatusOk') } else { & $add $true (Get-Text 'PermStatusNoWrite') }
+  # read-only places: the folder itself, config\ with logos (not backup\: only the manager uses it), updates\
+  $ro = @($script:Folder, $script:ConfigDir)
+  $bd = Join-Path $script:ConfigDir 'branding'
+  if (Test-Path -LiteralPath $bd) { $ro += @($bd) + @(Get-ChildItem -LiteralPath $bd -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object FullName) }
+  $ro += @(Get-ChildItem -LiteralPath $script:ConfigDir -File -Force -ErrorAction SilentlyContinue | ForEach-Object FullName)
+  $ud = Join-Path $script:Folder 'updates'
+  if (Test-Path -LiteralPath $ud) { $ro += @($ud) + @(Get-ChildItem -LiteralPath $ud -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object FullName) }
+  # the same finding on many files = one line: text key + who, with the places
+  $found = [ordered]@{}
+  $note = { param($key, $who, $rel) $k = "$key|$who"; if (-not $found.Contains($k)) { $found[$k] = New-Object Collections.ArrayList }; [void]$found[$k].Add($rel) }
+  $root = $script:Folder.TrimEnd('\') + '\'
+  foreach ($p in $ro) {
+    $a = Get-PathAccess $p $sids
+    $dir = (Get-Item -LiteralPath $p -Force).PSIsContainer
+    $rel = if ($p -eq $script:Folder) { Get-Text 'PermTheFolder' } else { $p.Substring($root.Length) + $(if ($dir) { '\' } else { '' }) }
+    if ($a.Mask -band $script:WriteMask) { & $note 'PermDevicesWrite' (& $names $a.Via) $rel }
+    $every = @($a.Others | Where-Object { $_ -match $script:EveryoneSid })
+    if ($every.Count) { & $note 'PermEveryoneWrites' (& $names $every) $rel }
+    if ($dir -and -not ($a.Mask -band 0x1)) { & $note 'PermNoRead' '' $rel }
+  }
+  foreach ($k in $found.Keys) {
+    $key, $who = $k -split '\|', 2; $l = $found[$k]
+    $where = (@($l | Select-Object -First 4) -join ', ') + $(if ($l.Count -gt 4) { ' ' + (Get-Text 'PermMore' ($l.Count - 4)) } else { '' })
+    & $add $true (Get-Text $key $where $who)
+  }
+  if (-not @($out | Where-Object Problem).Count) { & $add $false (Get-Text 'PermReadOnlyOk') }
+  $out
+}
+
 function Get-LastFolder {
   try { if (Test-Path -LiteralPath $script:SettingsFile) { return [string](Get-Content -LiteralPath $script:SettingsFile -Raw | ConvertFrom-Json).Folder } } catch { }
   $null
@@ -1001,9 +1102,10 @@ $topPanel.Dock = 'Top'; $topPanel.Height = 38
 $btnRefresh = New-Button 'BtnRefresh' 120 26
 $btnOpen = New-Button 'BtnOpenFolder' 110 26
 $btnRelease = New-Button 'BtnImportRelease' 150 26
+$btnPerm = New-Button 'BtnCheckPermissions' 130 26
 $lblNote = New-Object System.Windows.Forms.Label
 $lblNote.Text = Get-Text 'NoteDevices'
-Set-ButtonRow $topPanel @($btnRefresh, $btnOpen, $btnRelease) $lblNote 6
+Set-ButtonRow $topPanel @($btnRefresh, $btnOpen, $btnRelease, $btnPerm) $lblNote 6
 
 $split = New-Object System.Windows.Forms.SplitContainer
 $split.Dock = 'Fill'; $split.Orientation = 'Horizontal'
@@ -1396,6 +1498,24 @@ $btnRelease.add_Click({
   try { Publish-Release $rel; Show-Message (Get-Text 'RelTitle') (Get-Text 'RelDone' $rel.Version) 'Information' }
   catch { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error' }
   Update-DeviceList
+})
+$btnPerm.add_Click({
+  $acc = @(Get-MgmtAccounts $script:Devices)
+  if (-not $acc.Count) {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $a = [Microsoft.VisualBasic.Interaction]::InputBox((Get-Text 'PermAskAccount'), (Get-Text 'PermTitle'), '')
+    if (-not $a.Trim()) { return }; $acc = @($a.Trim())
+  }
+  $form.Cursor = 'WaitCursor'; $bad = $false
+  try {
+    $lines = foreach ($x in $acc) {
+      Get-Text 'PermAccount' $x
+      foreach ($r in (Test-FolderPermissions $x)) { if ($r.Problem) { $bad = $true; "  $([char]0x2717) $($r.Text)" } else { "  $([char]0x2713) $($r.Text)" } }
+      ''
+    }
+    $lines += Get-Text 'PermFooter'
+  } catch { $bad = $true; $lines = @($_.Exception.Message) } finally { $form.Cursor = 'Default' }
+  Show-Message (Get-Text 'PermTitle') ($lines -join "`r`n") $(if ($bad) { 'Warning' } else { 'Information' })
 })
 $btnSaveDev.add_Click({ Save-Device })
 $btnReloadDev.add_Click({ Update-DeviceGrid })

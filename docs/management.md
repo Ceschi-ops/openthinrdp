@@ -5,9 +5,9 @@ mounts it every 5 minutes, at boot and at every new event, writes its status and
 
 ```
 \\fileserver\thinclients\
-  SUMMARY.csv                  one line per device (rewritten by the devices)
   status\<hostname>.txt        status: KEY=value lines + last errors and events
   status\<hostname>-events.log event log
+  status\SUMMARY.csv           one line per device (rewritten by the devices)
   config\common.conf           settings for every device
   config\<hostname>.conf       settings for one device (wins over common.conf)
   config\authorized_keys       SSH public keys of the administrators (optional)
@@ -54,8 +54,20 @@ icacls D:\thinclients /grant "EXAMPLE\svc-thinclients:(OI)(CI)RX"
 icacls D:\thinclients\status /grant "EXAMPLE\svc-thinclients:(OI)(CI)M"
 ```
 
-Check from a device that the account cannot write in `config\` or `updates\`, nor list anything outside the
-folder.
+The icacls lines only add rights: whatever the folder inherits stays, and a group such as Users or Domain
+Users with write access inherited from above still lets the devices, or every user, change the settings.
+**Check permissions** in the Windows manager reads the permissions of the folder for the account the devices
+report (`MGMT_ACCOUNT` in their status, from 0.1.6; older devices: it asks for the account) and lists:
+
+- whether the devices can write in `status\`;
+- every place outside `status\` they can change (the folder itself, `config\` and its files, logos,
+  `updates\`), and through which account or group;
+- every place outside `status\` that Everyone, Authenticated Users, Users or Domain Users can change.
+
+It follows the order of the rules as Windows does (the first rule that allows or denies a right decides it),
+and the groups of the account in the domain, nested ones included. It reads the NTFS permissions only: the
+permissions of the share can only take rights away. Check also from a device that the account cannot list
+anything outside the folder.
 
 ## Central settings
 

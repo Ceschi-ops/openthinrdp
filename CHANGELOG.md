@@ -3,6 +3,14 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **Manager: Check permissions.** Lists what the devices' account can change in the management folder
+  besides `status\`, through which group, and what every user can change there
+  ([management.md](docs/management.md#account)).
+- Devices report the account of the management folder (`MGMT_ACCOUNT`, never the password).
+- `SUMMARY.csv` moves into `status\`, so the devices need write access there only.
+
 ## 0.1.5 (2026-10-12)
 
 - **The installer asks before erasing the disk.** *Install* shows the internal disk it is going to use and

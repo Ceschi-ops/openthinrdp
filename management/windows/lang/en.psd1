@@ -95,6 +95,22 @@
   RelDone                = 'Release {0} published in updates\. The devices show it in the Software update column as they install it.'
   RelCopyFailed          = "Copy into updates\ failed:`r`n{0}"
 
+  # ---- permissions of the management folder ----
+  BtnCheckPermissions    = 'Check permissions'
+  PermTitle              = 'Permissions of the management folder'
+  PermAccount            = 'Account of the devices: {0}'
+  PermAskAccount         = 'No device reports its account yet (it does from 0.1.6). Account the devices use for the management folder (DOMAIN\user):'
+  PermUnknownAccount     = 'Account {0} not found: check the name (DOMAIN\user).'
+  PermStatusOk           = 'status\: the devices can write their status there, as they must.'
+  PermStatusNoWrite      = 'status\: the devices CANNOT write there, so their status does not reach this list. Give the account Modify on status\.'
+  PermDevicesWrite       = '{0}: the devices can change it (through {1}). Every device can read the password of this account, so a stolen device could change settings or files of all the others: make it read-only for this account.'
+  PermEveryoneWrites     = '{0}: writable by {1}, that is by every user who can sign in, who can then change the settings of all the devices. Leave write access to the administrators only.'
+  PermNoRead             = '{0}: the devices cannot read it.'
+  PermMore               = 'and {0} more'
+  PermTheFolder          = 'the management folder itself'
+  PermReadOnlyOk         = 'Everything else is read-only for the devices, and only the administrators can change it.'
+  PermFooter             = 'Read from the NTFS permissions; the permissions of the share can only take rights away. What each folder needs: docs/management.md, section Account.'
+
   # ---- logo and background picture ----
   BtnBranding            = 'Logo and background...'
   BrandTitleCommon       = 'Logo and background: every device'

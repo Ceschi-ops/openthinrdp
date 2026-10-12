@@ -88,6 +88,22 @@
   RelDone                = 'Release {0} pubblicata in updates\. Le postazioni la mostrano nella colonna dell''aggiornamento software man mano che la installano.'
   RelCopyFailed          = "Copia in updates\ non riuscita:`r`n{0}"
 
+  # ---- permessi della cartella di gestione ----
+  BtnCheckPermissions    = 'Controlla permessi'
+  PermTitle              = 'Permessi della cartella di gestione'
+  PermAccount            = 'Account delle postazioni: {0}'
+  PermAskAccount         = 'Nessuna postazione comunica ancora il suo account (lo fa dalla 0.1.6). Account che le postazioni usano per la cartella di gestione (DOMINIO\utente):'
+  PermUnknownAccount     = 'Account {0} non trovato: controllate il nome (DOMINIO\utente).'
+  PermStatusOk           = 'status\: le postazioni ci possono scrivere il loro stato, come devono.'
+  PermStatusNoWrite      = 'status\: le postazioni NON ci possono scrivere, quindi il loro stato non arriva in questo elenco. Date all''account la modifica su status\.'
+  PermDevicesWrite       = '{0}: le postazioni lo possono modificare (tramite {1}). Ogni postazione può leggere la password di questo account, quindi una postazione rubata potrebbe cambiare impostazioni o file di tutte le altre: per questo account va in sola lettura.'
+  PermEveryoneWrites     = '{0}: modificabile da {1}, cioè da ogni utente che può accedere, che può quindi cambiare le impostazioni di tutte le postazioni. Lasciate la scrittura ai soli amministratori.'
+  PermNoRead             = '{0}: le postazioni non lo possono leggere.'
+  PermMore               = 'e altri {0}'
+  PermTheFolder          = 'la cartella di gestione stessa'
+  PermReadOnlyOk         = 'Tutto il resto è in sola lettura per le postazioni, e lo possono modificare solo gli amministratori.'
+  PermFooter             = 'Letto dai permessi NTFS; i permessi della condivisione possono solo togliere diritti. Cosa serve a ogni cartella: docs/management.md, sezione Account.'
+
   # ---- logo e immagine di sfondo ----
   BtnBranding            = 'Logo e sfondo...'
   BrandTitleCommon       = 'Logo e sfondo: tutte le postazioni'

@@ -3,7 +3,7 @@
 # Runs as root every 5 minutes, at boot and at every new event (openthinrdp-report.timer / .path).
 #   status\<hostname>.txt          status (KEY=value) + last errors and events
 #   status\<hostname>-events.log   event log
-#   SUMMARY.csv                    one line per device, rewritten by whoever reports
+#   status\SUMMARY.csv             one line per device, rewritten by whoever reports
 #   config\common.conf, config\<hostname>.conf, config\authorized_keys   central settings (central-apply.sh)
 #   config\branding\, config\branding\<hostname>\   logo and background picture (branding.sh)
 #   updates\                       signed updates (auto-update.sh)
@@ -59,6 +59,10 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   echo "UPDATE_VERSION=$(cat "$OTR_LIB/update-version" 2>/dev/null || echo none)"
   echo "CENTRAL_CONFIG=$(cat "$OTR_LIB/central-status" 2>/dev/null || echo 'never read')"
   echo "UPDATE_FROM=$(cfg UPDATE_FROM)"
+  # the account of the management folder (never the password): the manager checks what it may write there
+  MA=$(sed -n 's/^username=//p' "$CRED" 2>/dev/null | head -1); MD=$(sed -n 's/^domain=//p' "$CRED" 2>/dev/null | head -1)
+  case "$MA" in *\\*|*@*) MD="" ;; esac
+  echo "MGMT_ACCOUNT=${MD:+$MD\\}${MA:-none}"
   # logo and background picture: image = the image's own, common = config\branding\, device = config\branding\<hostname>\
   BRS=$(tr '\n' ' ' < "$OTR_LIB/branding/source" 2>/dev/null); BRS=${BRS% }
   echo "BRANDING=${BRS:-logo=image splash=image}"
@@ -148,7 +152,8 @@ else
       rm -f "$OTR_LIB/authorized_keys.new"
     fi
     "$OTR/branding.sh" sync "$MNT"
-    # SUMMARY.csv: one line per device, rewritten by whoever reports (atomic write)
+    # status\SUMMARY.csv: one line per device, rewritten by whoever reports (atomic write). In status\ because
+    # that is the only folder the devices need to write to (docs/management.md#account)
     NOW=$(date +%s)
     {
       printf '\xEF\xBB\xBF'
@@ -163,7 +168,7 @@ else
         else S="ok"; fi
         echo "$S;$(g HOSTNAME);$(g IP);$(g MAC);$(g NETWORK);$(g DEFAULT_USER);$(g SESSION);$A;$(g TIME_SYNC);$(g MONITORS);$FS;$(g SOFTWARE);$(g FREERDP);$(g CENTRAL_CONFIG)"
       done
-    } > "$MNT/.SUMMARY.$H.tmp" && mv -f "$MNT/.SUMMARY.$H.tmp" "$MNT/SUMMARY.csv"
+    } > "$MNT/status/.SUMMARY.$H.tmp" && mv -f "$MNT/status/.SUMMARY.$H.tmp" "$MNT/status/SUMMARY.csv"
     # sessions open on the OTHER devices, for the "already active" warning of the kiosk:
     # user (lowercase, no domain)|hostname|IP, only from reports sent in the last 10 minutes (a device
     # switched off abruptly does not block anybody). The kiosk reads it locally: no wait for the share.
