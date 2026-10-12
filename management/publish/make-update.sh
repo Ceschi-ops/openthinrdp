@@ -37,6 +37,8 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 cp -a "$ROOT/rootfs" "$STAGE/rootfs"
 cp "$HERE/install.sh" "$STAGE/"; echo "$V" > "$STAGE/VERSION"
 cp "$ROOT/image/lb/packages.list" "$STAGE/packages.list"
+# the project's pictures: install.sh puts them only where a device still shows an older project picture
+mkdir -p "$STAGE/project-branding"; cp "$ROOT"/image/branding/logo.png "$ROOT"/image/branding/splash.png "$STAGE/project-branding/"
 if [ -n "$DEBS" ]; then mkdir -p "$STAGE/debs"; cp "$DEBS"/*.deb "$STAGE/debs/"; fi
 if [ -n "$FRDP" ]; then mkdir -p "$STAGE/debs"; cp "$FRDP"/*.deb "$STAGE/debs/"; fi
 if [ -n "$SITE" ]; then

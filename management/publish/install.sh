@@ -53,6 +53,18 @@ chmod 755 $OTR/*.sh; chmod 0440 /etc/sudoers.d/openthinrdp
 # /etc/skel only reaches new accounts: the kiosk account gets its Openbox settings here
 install -D -m644 -o kiosk -g kiosk rootfs/etc/skel/.config/openbox/rc.xml /home/kiosk/.config/openbox/rc.xml
 [ -f VERSION ] && cp VERSION $OTR/VERSION
+# pictures of the project (logo, boot splash): a device still showing an OLDER project picture gets the current
+# one. Only a file that is exactly a known project picture is replaced, so the pictures of your own image stay.
+# When image/branding changes, add the sha256 of the pictures being replaced here.
+PROJECT_PICTURES="f74ab1f03903e282fe309fcde20b72d74980f53317f5346cd330a550703641db db53949e775da810e22110aaea8c70f927da77d8bd43b5fcbe09a49bc8590366
+  c0164681359bdf3bc6c2ca16c42fb633232b467725be9acc082dd287f269dcd0 502303aede93b009d1dd7dfb294478de11da555a7bf8817d0c2d53ea43f05270"
+for f in logo splash; do
+  [ -f project-branding/$f.png ] && [ -f $OTR/branding/$f.png ] || continue
+  h=$(sha256sum < $OTR/branding/$f.png | cut -c1-64)
+  if [[ " $(echo $PROJECT_PICTURES) " == *" $h "* ]] && ! cmp -s project-branding/$f.png $OTR/branding/$f.png; then
+    install -m644 project-branding/$f.png $OTR/branding/$f.png; log "$f.png: the current picture of the project"
+  fi
+done
 # site files, when the package carries them (make-update.sh -s)
 if [ -d site ]; then
   [ -f site/site.conf ] && install -m644 site/site.conf /etc/openthinrdp/site.conf
