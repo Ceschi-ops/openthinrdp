@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.5 (2026-10-12)
 
 - **The installer asks before erasing the disk.** *Install* shows the internal disk it is going to use and
   the partitions it will write, and asks ("No" preselected); old LVM volumes or software RAID on that disk are
@@ -20,6 +20,8 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 - FreeRDP gets 20 s instead of 30 to bring a connection up: a broker that accepts the connection and then hangs
   costs this much on every attempt before the next broker is tried. Still above the 15 s a broker took to prepare
   a virtual machine.
+- The system tests (93) and a shell syntax check run in Debian 13 on every push and pull request
+  ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)).
 
 ## 0.1.4 (2026-10-12)
 
