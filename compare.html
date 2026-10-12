@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open source alternative to IGEL OS and Dell ThinOS for RDP – OpenThinRDP compared</title>
+<meta name="description" content="OpenThinRDP compared with IGEL OS, Dell ThinOS, Stratodesk NoTouch, ThinStation and openthinclient: cost, licence, hardware, protocols, management and updates of thin client operating systems for Windows Remote Desktop.">
+<link rel="canonical" href="https://ceschi-ops.github.io/openthinrdp/compare.html">
+<link rel="icon" href="img/icon.png">
+<meta property="og:title" content="OpenThinRDP compared with IGEL OS, Dell ThinOS, Stratodesk and ThinStation">
+<meta property="og:description" content="A free, open source thin client OS for RDP: how it compares with the commercial and open source thin client systems.">
+<meta property="og:image" content="https://ceschi-ops.github.io/openthinrdp/img/social.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <nav><a href="./">Home</a><a href="https://github.com/Ceschi-ops/openthinrdp">GitHub</a><a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest">Download</a></nav>
+  <h1>OpenThinRDP compared with IGEL OS, Dell ThinOS, Stratodesk, ThinStation and openthinclient</h1>
+  <p class="lead">Looking for a free, open source alternative to a commercial thin client OS for Windows Remote Desktop? This is how OpenThinRDP compares, and when another system is the better choice.</p>
+</header>
+<main>
+  <section>
+    <div class="tablewrap"><table>
+      <tr><th></th><th>OpenThinRDP</th><th>Dell ThinOS</th><th>IGEL OS</th><th>Stratodesk NoTouch</th><th>ThinStation</th><th>openthinclient</th></tr>
+      <tr><td>Cost</td><td>free</td><td>comes with Dell thin clients</td><td>subscription per device</td><td>licence per device</td><td>free</td><td>free, paid support and editions</td></tr>
+      <tr><td>Source</td><td>open (Apache 2.0)</td><td>closed</td><td>closed</td><td>closed</td><td>open</td><td>open</td></tr>
+      <tr><td>Runs on</td><td>x86-64 PCs and thin clients with UEFI</td><td>Dell thin clients</td><td>many x86-64 devices</td><td>x86-64 PCs, Raspberry Pi</td><td>x86 PCs</td><td>x86 PCs, network boot</td></tr>
+      <tr><td>Protocols</td><td>RDP only (with UDP)</td><td>Citrix, Omnissa/VMware, Microsoft and more</td><td>Citrix, Omnissa/VMware, Microsoft and more</td><td>many</td><td>many (you build the image)</td><td>RDP, Citrix and others</td></tr>
+      <tr><td>RDP over UDP</td><td><b>yes</b> (FreeRDP with the UDP transport, TCP fallback)</td><td>vendor RDP client</td><td>vendor RDP client</td><td>vendor RDP client</td><td>no: upstream FreeRDP has no UDP transport yet</td><td>no: upstream FreeRDP has no UDP transport yet</td></tr>
+      <tr><td>Management</td><td>shared folder + Windows tool, no server</td><td>Wyse Management Suite</td><td>UMS server</td><td>NoTouch Center</td><td>configuration files on a network server</td><td>management server (Java)</td></tr>
+      <tr><td>Updates</td><td>signed, from GitHub or your folder</td><td>vendor firmware</td><td>vendor</td><td>vendor</td><td>rebuild the image</td><td>from the server</td></tr>
+      <tr><td>Install</td><td>ISO: live, or automatic installation</td><td>preinstalled</td><td>installer or preinstalled</td><td>installer</td><td>build, then PXE or USB</td><td>PXE or local install</td></tr>
+    </table></div>
+    <p style="font-size:14px;color:#64748b">Based on public information and our understanding; corrections are welcome in the <a href="https://github.com/Ceschi-ops/openthinrdp/discussions">discussions</a>. Product names are trademarks of their owners.</p>
+  </section>
+  <section>
+    <h2>When OpenThinRDP fits</h2>
+    <div class="grid">
+      <div class="card"><h3>Your desktops are Windows Remote Desktop</h3><p>RD Connection Broker with session hosts, a Hyper-V VDI collection, or users who connect to their own Windows PC.</p></div>
+      <div class="card"><h3>You want to keep old thin clients useful</h3><p>Repurpose Dell, HP, Wyse or Fujitsu thin clients and small PCs with UEFI instead of paying a licence per device or replacing them.</p></div>
+      <div class="card"><h3>You want simple management</h3><p>A file share and a Windows tool instead of a management server: status, central settings, logo and signed updates in plain files.</p></div>
+      <div class="card"><h3>You want RDP over UDP</h3><p>The FreeRDP UDP transport makes sessions smoother on busy servers and lossy networks, with fallback to TCP.</p></div>
+    </div>
+  </section>
+  <section>
+    <h2>When another system is better</h2>
+    <p>If you need Citrix or VMware/Omnissa Horizon, ARM devices, vendor support or certified hardware, the commercial systems (IGEL OS, Dell ThinOS, Stratodesk NoTouch) are the right choice. If you want many protocols and are happy to build your own image, ThinStation is a long-standing open source option; openthinclient suits networks that prefer network boot with a management server.</p>
+  </section>
+  <section>
+    <h2>Try it</h2>
+    <p class="note">Download the ISO, write it to a USB stick and boot it: the live system runs without touching the disk. <a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest">Latest release</a> · <a href="./">Overview</a> · <a href="https://github.com/Ceschi-ops/openthinrdp#readme">Documentation</a></p>
+  </section>
+</main>
+<footer><p>OpenThinRDP · Apache License 2.0 · <a href="https://github.com/Ceschi-ops/openthinrdp">GitHub</a> · <a href="./">Home</a></p></footer>
+</body>
+</html>
