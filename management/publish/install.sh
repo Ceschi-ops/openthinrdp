@@ -94,9 +94,13 @@ pgrep -x openbox >/dev/null && runuser -u kiosk -- env DISPLAY=:0 openbox --reco
 
 prog 98
 # 6) the new kiosk: at once if nobody is connected (restart of the X session, synchronous: started in the
-# background inside the update unit it would be killed when the unit ends), otherwise at the next start
+# background inside the update unit it would be killed when the unit ends), otherwise as soon as the open session
+# is over (kiosk-after-session.sh, in a unit of its own) or at the next start
 # the Shut down button was pressed during the install: no restart (it would kill the kiosk that waits to switch off)
 if [ -f /tmp/openthinrdp-poweroff-pending ]; then log "power off requested during the install: auto-update.sh switches off"
-elif pgrep -x xfreerdp3 >/dev/null; then log "remote session open: new kiosk at the next start"
+elif pgrep -x xfreerdp3 >/dev/null; then
+  if systemd-run --unit=openthinrdp-kiosk-after-session --collect "$OTR/kiosk-after-session.sh" >/dev/null 2>&1; then
+    log "remote session open: new kiosk when it is over"
+  else log "remote session open: new kiosk at the next start"; fi
 else log "restarting the X session with the new kiosk"; sleep 1; pkill -x Xorg; fi
 exit 0

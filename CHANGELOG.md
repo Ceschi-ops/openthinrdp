@@ -22,6 +22,8 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   camera channel ([MS-RDPECAM]), the microphone and the speaker through the RDP audio channels. Devices plugged in
   during the session follow the same rule, and a webcam an earlier version had passed over USB is given back to
   the thin client by itself (its Linux drivers are attached again).
+- **Updates installed during a session take effect when it is over**: as soon as the device is back to the
+  sign-in screen, or a new connection starts, the screen reloads with the new version (before: at the next start).
 - The mouse pointer on the kiosk screens (sign-in, progress, messages) hides while the mouse is still and comes
   back as soon as it moves; in the remote desktop it is Windows' own pointer as before.
 - Fix: a device moved to another management folder by `MGMT_SHARE` in the common settings went back to the
