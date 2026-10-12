@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://ceschi-ops.github.io/openthinrdp/sitemap.xml
