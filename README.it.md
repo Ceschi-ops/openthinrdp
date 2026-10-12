@@ -1,11 +1,12 @@
 <p align="center"><img src="docs/logo.png" alt="OpenThinRDP" width="480"></p>
 
-<p align="center"><b>Un sistema operativo per thin client libero e gratuito per Desktop remoto Windows e VDI,<br>
-con il trasporto UDP che FreeRDP non distribuisce ancora.</b></p>
+<p align="center"><b>Il sistema operativo per thin client open source con l'RDP su UDP<br>
+per Desktop remoto Windows, RDS e VDI: FreeRDP con il trasporto UDP che la versione ufficiale non ha ancora.</b></p>
 
 <p align="center">
 <a href="https://github.com/Ceschi-ops/openthinrdp/releases/latest"><b>⬇ Scarica la ISO (ultima versione)</b></a>
 &nbsp;·&nbsp; <a href="#provarlo-in-cinque-minuti">Provalo in live, senza installare niente</a>
+&nbsp;·&nbsp; <a href="https://ceschi-ops.github.io/openthinrdp/it/">Sito</a>
 &nbsp;·&nbsp; <a href="README.md">English</a>
 </p>
 
