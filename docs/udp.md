@@ -39,29 +39,41 @@ Nothing to install. UDP must be allowed:
 It started with a switch port with a faulty transceiver, losing **43% of the large packets** (5% of the small
 ones). We reproduced it with netem on the thin client, on the traffic from the virtual machine only, then raised
 the loss on every packet step by step until the session gave up. Windows 11 VDI behind the broker, full-screen
-load that changes every pixel at 30 frames per second; frame rate and loss as reported by the server.
+load that changes every pixel at 30 frames per second; frame rate and loss as reported by the server; 90-120 s per
+step.
 
 | packets lost | OpenThinRDP over UDP | TCP, same line and load |
 |---|---|---|
-| 0% | 15-21 fps | |
-| 5% | | 7-12 fps |
-| 10% | | 6 fps |
-| 20% | | **0.6 fps**, the screen barely moves |
-| 30% | | 0.2 fps, 26 frames a second dropped by the server |
-| 43% of the large ones (the faulty port) | **16-21 fps**, 7 minutes in a row | 0-0.1 fps |
-| 50% | **19-21 fps** | |
-| 60% | 14-21 fps | |
-| **70%** | **9 fps** | |
-| 80% | 4 fps, then the tunnel gives up after 18 s | |
+| 0% | 15-21 fps | not measured |
+| 5% | not measured | 7-12 fps |
+| 10% | not measured | 6 fps |
+| 20% | not measured | **0.6 fps**, the screen barely moves |
+| 30% | not measured | 0.2 fps, 26 frames a second dropped by the server |
+| 43% of the large packets only\* (the faulty port) | **16-21 fps**, 7 minutes in a row | 0-0.1 fps |
+| 50% | **19-21 fps** | not measured (already at 0.2 fps with 30%) |
+| 60% | 14-21 fps | not measured |
+| **70%** | **18-19 fps**\*\* | not measured |
+| 80% | 4 fps, then the tunnel gives up after 18 s | not measured |
+
+\* Every other row loses that share of all the packets from the virtual machine; this one, as on the faulty port,
+43% of the large packets and 5% of the small ones.
+\*\* With the FreeRDP of OpenThinRDP 0.1.5 (no 1 s freeze at every wrap of the channel sequence; 9-13 fps
+before). At 70% the first thing to give up is the TCP connection that RDP keeps beside the UDP tunnel: after
+20 s without an acknowledgement (`/timeout`, set by the kiosk) it ends the session, which happened once after
+100 s and not in another run of 150 s.
 
 On UDP no frame was dropped by the server for network reasons up to 70%. A session opened when the line is
 already bad is set up over UDP too (14-19 fps at 43%).
 
+**Limits of these numbers:** one environment (Dell OptiPlex 3000 Thin Client, Windows 11 VDI on Hyper-V behind an
+RD Connection Broker), one kind of load, loss emulated with netem on the client. The method and the scripts are
+in [tests/udp-bench](../tests/udp-bench/README.md): numbers from other networks and servers are very welcome.
+
 Over TCP every lost packet holds up everything behind it until it is resent; over UDP the lost packets are resent
-while the rest of the stream goes on. Getting there took a fix of ours to the UDP transport: after the channel
-sequence wrapped, an unsigned difference went below zero, the client believed the stream had been stuck for ages
-and ended the connection within 1-25 seconds of the loss starting. With the fix the session held until we stopped
-the test. Both changes are proposed upstream in the pull request.
+while the rest of the stream goes on. Getting there took a fix to the UDP transport: after the channel sequence
+wrapped, an unsigned difference went below zero, the client believed the stream had been stuck for ages and
+ended the connection within 1-25 seconds of the loss starting. We reported it with a fix in the pull request; its
+author fixed the root cause there (the client now skips channel sequence 0 like Windows does).
 
 ## The FreeRDP in the image
 

@@ -8,6 +8,16 @@ possible; fixes are released as a new version and announced in a security adviso
 
 Supported versions: the latest release only.
 
+## FreeRDP security fixes
+
+OpenThinRDP ships its own FreeRDP build (the UDP transport is not in a FreeRDP release yet), so Debian's
+security updates do not cover it: we do. When FreeRDP publishes a security release or a security advisory, an
+OpenThinRDP release with the fix comes out **within 7 days**, usually much sooner, after the same tests as any
+other release. Example: FreeRDP 3.32.2, a security release, was published on 2026-10-12 at 12:08 UTC and was in
+OpenThinRDP 0.1.4 the same day. Debian's security updates for everything else install by themselves
+(`SECURITY_UPDATES=on`). When the UDP transport is part of a FreeRDP release, the image goes back to Debian's
+FreeRDP packages and their security updates.
+
 What OpenThinRDP protects and its known limits are described in [docs/security.md](docs/security.md).
 
 ## Release signing key

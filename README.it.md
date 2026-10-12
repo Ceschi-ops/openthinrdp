@@ -25,12 +25,15 @@ gestione, niente cloud, nessuna licenza per postazione.
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
 
-> **Stato: in produzione.** Proprio questa versione fa girare i thin client dell'azienda da cui nasce (Dell
-> OptiPlex 3000 Thin Client, VDI Windows 11 su Hyper-V dietro un broker RDS): le postazioni sono state convertite
-> sul posto dal sistema che avevano prima e ricevono ogni versione come pacchetto firmato dalla loro cartella di
-> gestione. L'installazione dalla ISO è provata in QEMU/KVM con Secure Boot a ogni versione. Ancora giovane (0.1):
-> provatela in live, poi su una postazione, prima di estenderla; le segnalazioni da altro hardware sono molto
-> benvenute.
+> **Stato: in produzione ogni giorno.** Fa girare tutti i thin client dell'azienda da cui nasce: 14 Dell OptiPlex
+> 3000 Thin Client in ufficio, alle casse, in laboratorio e alle pese, con una VDI Windows 11 su Hyper-V dietro due
+> RD Connection Broker. Le postazioni sono state convertite sul posto dal sistema che avevano prima e ricevono
+> ogni versione come pacchetto firmato dalla loro cartella di gestione, installato durante le sessioni e applicato
+> quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
+> [entro 7 giorni](SECURITY.md#freerdp-security-fixes) (la 3.32.2: in quattro ore). La ISO è provata in QEMU/KVM
+> con Secure Boot a ogni versione. Cosa è in produzione, cosa è solo
+> provato e cosa non c'è ancora: **[docs/status.md](docs/status.md)**. Provatela in live, poi su una postazione,
+> prima di estenderla.
 
 ## RDP su UDP che regge anche su una linea pessima
 
@@ -41,14 +44,19 @@ server):
 
 | pacchetti persi | in TCP | **OpenThinRDP in UDP** |
 |---|---|---|
-| 20% | 0,6 fotogrammi al secondo: lo schermo quasi non si muove | |
-| 43% di quelli grandi (la porta guasta) | 0-0,1 fps | **16-21 fps**, 7 minuti di fila |
-| 50% | | **19-21 fps**, come su una linea pulita |
-| 70% | | **9 fps** |
-| 80% | | 4 fps, poi il tunnel si arrende |
+| 20% | 0,6 fotogrammi al secondo: lo schermo quasi non si muove | non misurato (19-21 fps al 50%) |
+| 43% di quelli grandi\* (la porta guasta) | 0-0,1 fps | **16-21 fps**, 7 minuti di fila |
+| 50% | non misurato (0,2 fps già al 30%) | **19-21 fps**, come su una linea pulita |
+| 70% | non misurato | **18-19 fps**\*\* |
+| 80% | non misurato | 4 fps, poi il tunnel si arrende |
 
-Per arrivarci abbiamo corretto un difetto nel trasporto UDP di FreeRDP (proposto in
-[#13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). Tutti i gradini, il metodo e i numeri del TCP:
+\* Le altre righe perdono quella quota di tutti i pacchetti; questa il 43% dei pacchetti grandi e il 5% dei piccoli.
+\*\* Al 70% la connessione TCP che RDP tiene accanto al tunnel può chiudere la sessione dopo 20 s senza conferme.
+Un solo ambiente (Dell OptiPlex 3000 Thin Client, VDI Windows 11 su Hyper-V), perdita simulata con netem:
+[metodo e script](tests/udp-bench/README.md) per avere i vostri numeri.
+
+Per arrivarci è servita una correzione al trasporto UDP di FreeRDP, che abbiamo trovato e segnalato in
+[#13608](https://github.com/FreeRDP/FreeRDP/pull/13608) e che ora ne fa parte. Tutti i gradini e i numeri del TCP:
 [docs/udp.md](docs/udp.md#on-a-lossy-line).
 
 ## Per chi è
