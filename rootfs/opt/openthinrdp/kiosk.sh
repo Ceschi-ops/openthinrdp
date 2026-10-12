@@ -509,8 +509,17 @@ kiosk_idle(){
 power_off(){ ev "power off ($1)"; sleep 1; systemctl poweroff; exit 0; }
 
 # --- main loop ----------------------------------------------------------------------------------
-# first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device)
-[ -z "$(cfg BROKER)" ] && { ev "no broker configured: settings dialog opened"; settings_dialog; }
+# first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device).
+# A new device takes its name from the MAC address in the boot service, which runs alongside: wait for it (20 s
+# at most), otherwise the dialog shows "thinclient" and saving it would undo the new name.
+if [ -z "$(cfg BROKER)" ]; then
+  for i in $(seq 1 40); do
+    [ "$(hostname)" != thinclient ] && break
+    case "$(systemctl show -p ActiveState --value openthinrdp-boot.service 2>/dev/null)" in active|failed) break ;; esac
+    sleep 0.5
+  done
+  ev "no broker configured: settings dialog opened"; settings_dialog
+fi
 KSTOPPED=0   # 1 = somebody used the form: no countdown until we go back to the page
 while true; do
   look
