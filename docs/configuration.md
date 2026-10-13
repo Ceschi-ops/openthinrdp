@@ -27,7 +27,7 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 | `LOAD_BALANCE_INFO` | | RDS collection, as `loadbalanceinfo` in the .rdp file, e.g. `tsv://VMResource.1.VDI` |
 | `DEFAULT_USER` | | user name pre-filled in the sign-in form |
 | `TRANSPORT` | `auto` | `auto` = UDP, TCP when UDP is blocked or fails; `udp` = UDP only; `tcp` = TCP only. See [udp.md](udp.md) |
-| `RDP_AUTH` | `negotiate` | `ntlm` = NTLM only (when Kerberos fails on the broker redirect) |
+| `RDP_AUTH` | `negotiate` | `negotiate` = Kerberos, NTLM when Kerberos is not available (`DOMAIN` must be the full DNS name, e.g. `example.local`); `ntlm` = NTLM only. Behind an alias shared by several brokers the device connects to one of them by its own name, so that the Kerberos ticket is for the server it talks to |
 | `RDP_CERT` | `tofu` | `ignore`, `tofu` (trust on first use) or `verify` |
 | `RDP_GFX` | `progressive,AVC420:off,AVC444:off` | `/gfx` options. Without a GPU on the server this keeps text pixel exact |
 | `RDP_KEYBOARD` | | keyboard layout id for Windows, e.g. `0x00000409`. Empty = taken from the X keyboard |

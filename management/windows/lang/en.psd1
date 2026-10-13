@@ -269,7 +269,7 @@
   Label_TRANSPORT           = 'Transport'
   Help_TRANSPORT            = 'auto = UDP, and TCP when UDP is blocked or fails; udp = UDP only (a connection without UDP is closed and retried, after 3 tries an error); tcp = TCP only. Used from the next connection.'
   Label_RDP_AUTH            = 'Authentication'
-  Help_RDP_AUTH             = 'negotiate = Kerberos then NTLM; ntlm = NTLM only (when Kerberos breaks on the broker redirect, "Ticket/authenticator don''t match").'
+  Help_RDP_AUTH             = 'negotiate = Kerberos, and NTLM when Kerberos is not available (DOMAIN must be the full DNS name); ntlm = NTLM only. Behind a broker alias the device connects to one broker by its own name, so Kerberos works there too.'
   Label_RDP_CERT            = 'Server certificate'
   Help_RDP_CERT             = 'tofu = trust on first use; ignore = accept any; verify = must be trusted.'
   Label_RDP_GFX             = 'Graphics pipeline (/gfx)'

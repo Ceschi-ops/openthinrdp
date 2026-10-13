@@ -5,6 +5,10 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **Kerberos behind a broker alias.** With `RDP_AUTH=negotiate` the device connects to one of the brokers behind
+  a round-robin name by that broker's own name: the Kerberos ticket was otherwise asked for whichever broker the
+  Kerberos library looked up, and the other one refused it. NTLM-only (`RDP_AUTH=ntlm`) is no longer needed there,
+  and the device keeps two ways to sign in instead of one.
 - **Manager: Check permissions.** Lists what the devices' account can change in the management folder
   besides `status\`, through which group, and what every user can change there
   ([management.md](docs/management.md#account)).
