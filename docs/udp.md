@@ -8,6 +8,17 @@ FreeRDP does not ship UDP support yet: it is under review upstream
 ([FreeRDP pull request #13608](https://github.com/FreeRDP/FreeRDP/pull/13608)). OpenThinRDP ships FreeRDP
 built with it, so it works out of the box.
 
+## What travels over UDP
+
+With the UDP transport Windows moves the dynamic virtual channels onto the reliable UDP tunnel (with Soft-Sync):
+graphics, USB redirection, audio, camera, input and the other dynamic channels. The static channels stay on the
+TCP connection: clipboard, drive redirection (smart cards and serial ports included) and printing. The TCP
+connection also carries sign-in and licensing and is always needed, also with `TRANSPORT=udp`: if it drops, the
+session drops.
+
+A USB stick passed whole over the UDP tunnel moved 1 GiB each way and 4000 small files each way, all with the
+same SHA-256 at both ends.
+
 ## Modes
 
 `TRANSPORT`, per device or for all of them (settings dialog, central settings, manager):
@@ -77,12 +88,12 @@ author fixed the root cause there (the client now skips channel sequence 0 like 
 
 ## The FreeRDP in the image
 
-`image/freerdp/freerdp.conf` names the exact source: branch
-[`openthinrdp-udp-3.32.2`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2) of a FreeRDP fork, which is
-the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the commits of pull request #13608, the UDP
-transport, applied unchanged, and two commits of ours: no false "stream is stuck" after a delivery in `run_timers`
-(see above), and ten SYN attempts instead of four (SYN and SYN+ACK are padded to the MTU, the first packets a bad
-line loses).
+`image/freerdp/freerdp.conf` names the exact source: commit `179ed68` on branch
+[`openthinrdp-udp-3.32.2-pr`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2-pr) of a FreeRDP fork,
+which is the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the 39 commits of pull request
+#13608, the UDP transport, applied unchanged, and no patches of ours. Two of those commits came from our tests: no
+false "stream is stuck" on lossy lines (see above), and ten SYN attempts instead of four (SYN and SYN+ACK are padded
+to the MTU, the first packets a bad line loses). OpenThinRDP 0.1.7 ships the same FreeRDP as 0.1.6.
 
 FreeRDP 3.32.2 already contains the USB fixes found while building OpenThinRDP: #13674 (deadlock between USB hotplug
 and the closing of the USB channel) and #13679 (from our #13677: no hang on disconnect with a USB transfer pending),
@@ -99,7 +110,9 @@ FreeRDP instead (TCP only), set `FREERDP_FROM=backports` in `build.conf`.
 Problems with UDP itself (a session that freezes, drops, falls back to TCP) are worth reporting upstream,
 in the pull request thread, with:
 
-- the FreeRDP log of the session (`/tmp/kiosk.log` on the device, or `events.log` in the management folder);
+- the FreeRDP log of the session (`/tmp/kiosk.log` on the device; for a session that dropped,
+  `/tmp/kiosk.log.prev`) and the events (`status\<hostname>-events.log` in the management folder: the DROPPED
+  event ends with FreeRDP's last error);
 - what the network was doing (Wi-Fi, VPN, loss), and the Windows version of the session host.
 
 Problems with the kiosk or the image: issues in this repository.

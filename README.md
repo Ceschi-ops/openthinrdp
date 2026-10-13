@@ -85,7 +85,7 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
 
 ## What it does
 
-- **Remote desktop over UDP.** Windows sends the graphics over UDP and adapts frame rate and quality to the line
+- **Remote desktop over UDP.** Windows sends the graphics (and USB, sound and camera) over UDP and adapts frame rate and quality to the line
   instead of queueing: smoother on busy servers, lossy Wi-Fi and VPNs. The image ships FreeRDP built with the UDP
   transport that is still under review upstream ([FreeRDP #13608](https://github.com/FreeRDP/FreeRDP/pull/13608)).
   Per device: `auto` (UDP, TCP when UDP is blocked), `udp` (UDP only) or `tcp`. In our 3-hour test with packet
@@ -93,20 +93,24 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
   ([results](https://github.com/FreeRDP/FreeRDP/pull/13608#issuecomment-6110587552)). See [docs/udp.md](docs/udp.md).
 - **Sign-in form, then full screen remote desktop.** Boots in a few seconds with your logo, no desktop, no
   shell. Retries, fallback brokers, clear messages for "no network", "broker not reachable", "the virtual
-  machine does not start", wrong password (never retried, so accounts are not locked).
+  machine does not start", wrong password (never retried, so accounts are not locked). A virtual machine that is
+  restarting or installing a Windows update gets "Waiting for Windows" (up to 20 minutes) instead of an error.
 - **Reconnects by itself** after network drops, stops when the session is ended on purpose (sign out,
   disconnect, VM shut down by an administrator), and warns before taking over a session open on another device.
+  A session taken over by another device shows "Session opened elsewhere" with *Resume here*.
 - **USB done right for VDI.** Signature keys, tachograph keys and other special devices go to Windows as whole
   USB devices, also when plugged in during the session. **Webcams and headsets work in meetings**: the camera goes
   through the RDP camera channel and the microphone through the RDP audio channel, so Teams, Zoom and the browser
   in the session see both (a microphone passed as a USB device stays outside the remote session). Keyboards, mice,
   touch screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
-  Touch screens work as touch in Windows.
+  Touch screens work as touch in Windows. With `USB_MODE=disks` USB sticks stay on the thin client and appear in
+  Windows as drives.
 - **Managed from a shared folder (SMB).** Each device writes its status and event log there; a Windows manager
   (English and Italian, no installation) shows them, edits the settings for all devices or one, the SSH keys,
   logo and background picture (for all devices or one), and brings GitHub releases into the folder. Settings that come
   from the folder win over local changes.
-- **Signed updates**, never during a session: from GitHub releases, or from your folder when you decide.
+- **Signed updates** that never interrupt a session: from GitHub releases (checked every 3 hours, installed in
+  the background, applied when the session is over), or from your folder when you decide.
   Debian security updates install by themselves.
 - **Settings dialog on the device** (optionally behind a PIN): broker or PC, network (DHCP, static, Wi-Fi),
   management folder and its account, USB mode, web button, power schedule, language. A new device names itself
@@ -195,6 +199,7 @@ The result is `out/openthinrdp-<version>.iso`. See [docs/building.md](docs/build
 ## Documentation
 
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
+- [docs/status.md](docs/status.md): what is in production, what is only tested, what does not exist yet.
 - [docs/configuration.md](docs/configuration.md): every setting.
 - [docs/management.md](docs/management.md): the management folder, central settings, SSH keys, signed updates.
 - [docs/building.md](docs/building.md): building and customizing the image.

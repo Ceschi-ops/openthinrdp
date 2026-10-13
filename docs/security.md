@@ -19,7 +19,8 @@ keyboard is untrusted and that the management folder is readable by the devices 
 - **`kiosk` has one root privilege:** `save-config.sh`, which validates every value before touching the system.
 - **No password in the image.** `root` is locked; `otradmin` has no password unless you set a hash in
   `build.conf`; SSH is off by default and accepts only keys.
-- **Signed updates.** A package is installed only with a valid signature of your key (verified with `sqv`)
+- **Signed updates.** A package is installed only with a valid signature (verified with `sqv`): the
+  project key, or with `UPDATE_FROM=share` also your own key ([management.md](management.md#signed-updates)),
   and a matching hash; never an older version.
 - **Credentials.** The user's password goes to FreeRDP on its command line, which FreeRDP overwrites with `*`
   right after start (visible to the local `kiosk` account for a moment at most). The Wi-Fi key is stored only
@@ -35,7 +36,8 @@ keyboard is untrusted and that the management folder is readable by the devices 
   the password if a device is lost (`MGMT_PASSWORD` in the central settings rotates it on every device that can
   still reach the folder).
 - The management folder is trusted: whoever can write `config\` can change the settings of every device
-  (within the validation rules) and can make devices mount another folder. Updates still need your signature.
+  (within the validation rules) and can make devices mount another folder. Updates still need a valid
+  signature (the project key, or your own key).
 - `RDP_CERT=ignore` accepts any server certificate. The default `tofu` trusts the first certificate seen per
   server; `verify` requires certificates trusted by the system.
 - The PIN is a speed bump, not a vault. The manager stores it salted and stretched (PBKDF2-SHA256, 600,000

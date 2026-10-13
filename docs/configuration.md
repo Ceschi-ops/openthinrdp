@@ -37,14 +37,22 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 | `SHUTDOWN_SECS` | `10` | after the user disconnects, switch off after these seconds (0 = never) |
 
 The device switches off only after a deliberate end (disconnect, sign out, VM shut down by an administrator).
-Every other ending (network drop, crash, server restart) reconnects without asking.
+Every other ending (network drop, crash, server restart) reconnects without asking. A session taken over by
+another device shows "Session opened elsewhere" with *Resume here* instead of reconnecting. When the broker
+answers but the virtual machine refuses the desktop (it is restarting or installing a Windows update), the device
+shows *Waiting for Windows* with a Cancel button and tries again every 20 s, without counting attempts, for up to
+20 minutes.
 
 ## USB
 
 | Key | Default | Meaning |
 |---|---|---|
-| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, network adapter, smart card reader, webcam and USB headset goes to Windows as a whole device. `disks` = USB sticks as network drives |
-| `USB_REDIRECT` | | `VID:PID` list always passed whole, also in `disks` mode |
+| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, Bluetooth adapter, network adapter, smart card reader, webcam and USB headset goes to Windows as a whole device (RemoteFX USB redirection). `disks` = USB sticks stay on the thin client, are mounted there and appear in Windows as redirected drives (`\\tsclient`), also when plugged in during a session (since 0.1.7) |
+| `USB_REDIRECT` | | `VID:PID` list always passed whole, in both modes (smart card readers excepted: they always go through the smart card channel) |
+
+A USB stick passed whole (`USB_MODE=all`) gets its drive letter from Windows inside the session of the user it is
+redirected to, as on a physical PC. That letter is not visible to services or to other sessions, so a tool running
+as SYSTEM sees no letter: this is how Windows works, not something to fix by assigning letters.
 
 Webcams and USB sound devices (headsets, speakerphones) stay on the thin client: the camera goes through the RDP
 camera channel and appears in Windows as "*name* (redirected)", the microphone and the speaker through the RDP
@@ -60,6 +68,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `IPADDR`, `NETMASK`, `GATEWAY` | | static address (static mode only) |
 | `DNS1`, `DNS2` | | DNS servers; empty = from DHCP. Required with a static address |
 | `NTP` | | time servers; empty = Debian pool |
+| `HOSTNAME` | `thinclient-` + the last 6 digits of the MAC address | name of the device (the system host name, not stored in the settings file) |
 | `WIFI` | `off` | `on` = use Wi-Fi when no cable is connected |
 | `WIFI_SSID`, `WIFI_COUNTRY` | | network name, regulatory country (two letters) |
 | `WIFI_PSK` | | password or 64-hex key. Only in central settings or the dialog; stored only in `/etc/wpa_supplicant` |
@@ -72,7 +81,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `MGMT_USER` | | account of the management folder: `user`, `DOMAIN\user` or `user@domain`. Empty = `smb.cred` of the image |
 | `MGMT_PASSWORD` | | its password. Only in central settings or the dialog; stored only in `/etc/openthinrdp/smb.cred` |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
-| `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
+| `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 

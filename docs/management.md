@@ -78,7 +78,8 @@ Files saved on Windows are fine (BOM, CRLF, spaces around `=`, `#` and `;` comme
 - validates the result with the same rules as the settings dialog, and applies it only if something changed;
 - refuses the whole result if anything is invalid (event "central configuration REJECTED", reported once),
   keeping the previous settings;
-- keeps the last good copy when the folder is unreachable.
+- keeps the last good copy when the folder is unreachable;
+- does not apply them while a software update is installing (since 0.1.7): the next run does.
 
 Central values win: a key in the central files is written into the device settings at every run (every 5
 minutes and at boot), so a change made in the settings dialog of a device lasts only until then. Keys that the
@@ -113,14 +114,16 @@ A device accepts PNG files only, up to 2 MB, a logo up to 400 x 240 pixels and a
 (anything else is refused once with an event, and the previous picture stays), and shows them within 5
 minutes. The status file says where each picture comes from: `BRANDING=logo=common splash=image` (`image`,
 `common` or `device`).
+
 ## Problems across the fleet
 
-Every device sends its event log to `status<hostname>-events.log`. The **Problems** tab of the Windows manager
-reads them all together for a period (today, 24 hours, 7 or 30 days) and groups what went wrong: sign-in attempts
-that failed (by the broker really contacted), desktops that did not start, sign-ins refused, sessions dropped (by
+Every device sends its event log to `status\<hostname>-events.log`. The **Problems** tab of the Windows manager
+(since 0.1.7) reads them all together for a period (today, 24 hours, 7 or 30 days) and groups what went wrong:
+sign-in attempts that failed (by the broker really contacted), desktops that did not start, sign-ins refused, sessions dropped (by
 cause: network lost, FreeRDP stuck, error code), sessions taken over, UDP blocked, failed updates, rejected settings.
-Each line says how many times, on which devices and for which users, first and last time; a line is orange when the
-same problem hit 3 or more devices, which points at a server or the network rather than at a device. The line at
+A dropped session's event ends with FreeRDP's last error, and the device keeps its FreeRDP log as
+`/tmp/kiosk.log.prev`. Each line of the tab says how many times, on which devices and for which users, first
+and last time; a line is orange when the same problem hit 3 or more devices, which points at a server or the network rather than at a device. The line at
 the top sums up the problems that touched most devices; selecting a line shows its events. A device keeps the last
 2000 lines of its log, which is weeks for a normal device.
 
@@ -144,7 +147,8 @@ The project key is `/opt/openthinrdp/keys/openthinrdp-release.asc`, in the image
 (fingerprint `8552 734B 5C1B 67D7 C576 F1AB 79B2 3AE6 1CD4 F6AF`, see [SECURITY.md](../SECURITY.md)). A
 device installs a package only if `LATEST.txt` carries a valid signature, the hash of the package matches, and
 the version is newer than the installed one (or than the image, when no update was installed yet).
-Installation runs in the background and never interrupts a session: the new kiosk starts at the next sign-in.
+Installation runs in the background and never interrupts a session: a running kiosk is replaced as soon as the
+session is over.
 Three failed attempts per version at most. The status file shows the source (`UPDATE_FROM`) and the result.
 
 **A fleet you manage**: set `UPDATE_FROM=share` in `config\common.conf` and `UPDATE_FROM=github` in the

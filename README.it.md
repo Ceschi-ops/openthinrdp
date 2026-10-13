@@ -88,28 +88,33 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
 
 ## Cosa fa
 
-- **Desktop remoto in UDP.** Windows manda la grafica in UDP e adatta fotogrammi e qualità alla linea invece di
+- **Desktop remoto in UDP.** Windows manda la grafica (e USB, audio e telecamera) in UDP e adatta fotogrammi e qualità alla linea invece di
   accumulare ritardo: più fluido con server carichi, Wi-Fi con perdite e VPN. L'immagine contiene FreeRDP
   compilato con il trasporto UDP ancora in revisione ([FreeRDP #13608](https://github.com/FreeRDP/FreeRDP/pull/13608)).
   Per postazione: `auto` (UDP, TCP se l'UDP è bloccato), `udp` (solo UDP) o `tcp`. Nella nostra prova di 3 ore con
   perdita di pacchetti, banda limitata, rete staccata e client uccisi la sessione è rimasta sempre in UDP
   ([risultati](https://github.com/FreeRDP/FreeRDP/pull/13608#issuecomment-6110587552)). Vedi [docs/udp.md](docs/udp.md).
-- **Form di accesso, poi desktop remoto a schermo intero**, avvio in pochi secondi con il vostro logo.
-  Tentativi, broker di riserva, messaggi chiari per rete assente, broker irraggiungibile, macchina virtuale che
-  non parte, password sbagliata (mai ritentata, così l'account non si blocca).
+- **Form di accesso, poi desktop remoto a schermo intero**, avvio in pochi secondi con il vostro logo, niente
+  desktop, niente shell. Tentativi, broker di riserva, messaggi chiari per rete assente, broker irraggiungibile,
+  macchina virtuale che non parte, password sbagliata (mai ritentata, così l'account non si blocca). Una macchina
+  virtuale che si sta riavviando o sta installando un aggiornamento di Windows mostra "In attesa di Windows" (fino
+  a 20 minuti) invece di un errore.
 - **Si riconnette da solo** dopo le cadute di rete, si ferma quando la sessione viene chiusa apposta (disconnetti,
   esci, VM spenta dall'amministratore), e avvisa prima di prendersi una sessione aperta su un'altra postazione.
+  Una sessione presa da un'altra postazione mostra "Sessione aperta altrove" con *Riprendi qui*.
 - **USB pensato per la VDI**: chiavette di firma, chiavi tachigrafo e altri dispositivi particolari vanno a
   Windows interi, anche collegati a sessione aperta. **Webcam e cuffie funzionano in riunione**: la telecamera
   passa dal canale telecamera di RDP e il microfono dal canale audio, così Teams, Zoom e il browser della sessione
   li vedono entrambi (un microfono passato come dispositivo USB resta fuori dalla sessione remota). Tastiere,
   mouse, touch, hub e schede di rete restano locali; i lettori di smart card passano dal canale smart card.
+  I touch screen funzionano come touch in Windows. Con `USB_MODE=disks` le chiavette USB restano sul thin client e
+  compaiono in Windows come unità.
 - **Gestione da una cartella condivisa (SMB).** Ogni postazione ci scrive stato e registro eventi; un gestore
   Windows (italiano e inglese, nessuna installazione) li mostra, modifica la configurazione di tutte o di una
   postazione, le chiavi SSH, logo e immagine di sfondo (per tutte o per una), e porta nella cartella le release di
   GitHub. Le impostazioni della cartella vincono sulle modifiche locali.
-- **Aggiornamenti firmati**, mai durante una sessione: dalle release di GitHub, o dalla vostra cartella quando
-  decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.
+- **Aggiornamenti firmati** che non interrompono mai una sessione: dalle release di GitHub (controllate ogni 3
+  ore, installati in background, applicati quando la sessione finisce), o dalla vostra cartella quando decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.
 - **Configurazione sulla postazione** (anche protetta da PIN): broker o PC, rete (DHCP, statica, Wi-Fi), cartella
   di gestione e il suo account, modalità USB, pulsante web, orari, lingua. Una postazione nuova prende il nome
   dalla propria scheda di rete (`thinclient-1a2b3c`).
@@ -118,8 +123,9 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
 - **Blindata**: niente desktop, niente menu, niente console di testo (Ctrl+Alt+F1..F12 non fanno nulla), nessun
   account senza password.
 - **Più monitor** diventano un unico desktop remoto su tutti (`MULTIMON`).
-- Orari di accensione e spegnimento, Wake-on-LAN, pulsante web con Chromium (app, browser o pagina kiosk).
-- Interfaccia in italiano e inglese.
+- **Orari di accensione e spegnimento e Wake-on-LAN**, schermo sempre acceso, monitor accesi in ritardo gestiti.
+- **Pulsante web**: un'applicazione web, navigazione libera o una pagina kiosk a schermo intero, con Chromium.
+- Interfaccia in italiano e inglese; altre lingue sono un file ciascuna.
 
 <p align="center">
 <img src="docs/screenshots/manager-devices.png" alt="Gestore: postazioni" width="49%">
@@ -193,11 +199,36 @@ cp -r image/site.example image/site      # poi modificare site.conf, build.conf,
 image/build.sh                           # -> out/openthinrdp-<versione>.iso
 ```
 
-La documentazione è in inglese nella cartella [docs](docs/); le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
+Vedi [docs/building.md](docs/building.md).
+
+## Documentazione
+
+La documentazione è in inglese nella cartella [docs](docs/).
+
+- [CHANGELOG.md](CHANGELOG.md): le novità di ogni versione.
+- [docs/status.md](docs/status.md): cosa è in produzione, cosa è solo provato, cosa non c'è ancora.
+- [docs/configuration.md](docs/configuration.md): tutte le impostazioni.
+- [docs/management.md](docs/management.md): la cartella di gestione, la configurazione centrale, le chiavi SSH, gli
+  aggiornamenti firmati.
+- [docs/building.md](docs/building.md): costruire e personalizzare l'immagine.
+- [docs/security.md](docs/security.md): modello di sicurezza e limiti noti.
+- [docs/hardware.md](docs/hardware.md): hardware provato e impostazioni del firmware.
+- [docs/udp.md](docs/udp.md): il trasporto UDP e il FreeRDP contenuto nell'immagine.
+
+## Struttura
+
+| Cartella | Contenuto |
+|---|---|
+| `rootfs/` | tutto quello che si installa sul thin client (`/opt/openthinrdp`, regole udev, unità systemd) |
+| `image/` | la costruzione della ISO (live-build in un container), la compilazione di FreeRDP e la cartella del sito di esempio |
+| `management/windows/` | il gestore Windows (PowerShell, nessuna installazione) |
+| `management/publish/` | costruzione e firma dei pacchetti di aggiornamento |
+| `tests/` | test che girano in un container Debian |
 
 ## Contribuire
 
-Issue e pull request sono benvenute, anche in italiano. I problemi di sicurezza vanno segnalati in privato,
+Issue e pull request sono benvenute, anche in italiano. Per tutto ciò che riguarda connessioni o dispositivi,
+descrivete l'hardware e il lato Windows (broker, versione dell'host di sessione). I problemi di sicurezza vanno segnalati in privato,
 vedi [SECURITY.md](SECURITY.md). Come contribuire: [CONTRIBUTING.md](CONTRIBUTING.md); regole di convivenza:
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
