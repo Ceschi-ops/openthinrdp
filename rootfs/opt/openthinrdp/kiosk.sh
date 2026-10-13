@@ -439,8 +439,13 @@ reason(){ case "$1" in
   3) echo "idle timeout" ;; 5) echo "session opened from another device" ;;
   11|12) echo "user disconnect or sign out" ;; 137) echo "killed (watchdog or kill -9)" ;; 147) echo "network lost" ;; *) echo "error $1" ;; esac; }
 deliberate(){ case "$1" in 0|1|2|3|11|12) return 0 ;; *) return 1 ;; esac; }
-# the last error FreeRDP logged in this session, for the event of a drop (" - text", or nothing)
-last_error(){ local l; l=$(grep -a '\[ERROR\]' /tmp/kiosk.log 2>/dev/null | tail -1 | sed 's/.*\] - //' | tr -d '\r' | cut -c1-160); [ -n "$l" ] && echo " - $l"; }
+# Why FreeRDP ended this session, for the event of a drop (" - text", or nothing): its last connection error
+# (ERRCONNECT_/ERRINFO_), else its last error that is not the noise of the channels closing behind it. Plain "last
+# ERROR" named a smart card channel failing after the UDP tunnel broke down (measured 13/10/2026).
+last_error(){ local l
+  l=$(grep -a '\[ERROR\]' /tmp/kiosk.log 2>/dev/null | grep -a -E 'ERRCONNECT_|ERRINFO_' | tail -1)
+  [ -n "$l" ] || l=$(grep -a '\[ERROR\]' /tmp/kiosk.log 2>/dev/null | grep -a -v -E 'CHANNEL_RC_BAD|VirtualChannelWriteEx|LIBUSB_ERROR|QueryContextAttributes' | tail -1)
+  l=$(echo "$l" | sed 's/.*\] - //' | tr -d '\r' | cut -c1-160); [ -n "$l" ] && echo " - $l"; }
 # The VM of the session (the watchdog writes its address while connected) still accepts RDP, twice 5 s apart: it is
 # not shutting down or restarting.
 vm_alive(){ local a; a=$(cat /tmp/kiosk.vm 2>/dev/null); [ -n "$a" ] || return 1

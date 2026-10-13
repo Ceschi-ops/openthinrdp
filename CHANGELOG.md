@@ -3,6 +3,11 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- The DROPPED event names why FreeRDP ended the session (its last connection error), not the channels that
+  fail while the connection closes behind it (it named a smart card channel after the UDP tunnel broke down).
+
 ## 0.1.7 (2026-10-13)
 
 - **Manager: Problems tab.** The event logs of all devices read together for a period and grouped: failed sign-in
