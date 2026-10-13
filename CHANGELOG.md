@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.6 (2026-10-13)
 
 - **Session taken over from another device.** Windows 11 ends the session of the device left behind with code 1, the
   same as a VM shutdown (measured directly on the VM and through the broker), never with 5. The device now checks
