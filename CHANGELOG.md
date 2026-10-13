@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.7 (2026-10-13)
 
 - **Manager: Problems tab.** The event logs of all devices read together for a period and grouped: failed sign-in
   attempts by broker, dropped sessions by cause, refused sign-ins, sessions taken over, failed updates. The same
@@ -12,6 +12,9 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   class filter did not include storage, so FreeRDP took a stick plugged in mid-session as a whole USB device and
   Windows got a raw disk without a drive letter instead of the shared drive. Devices listed in `USB_REDIRECT` still
   go whole.
+- **Dropped sessions keep their log.** The FreeRDP log of a dropped session stays as `/tmp/kiosk.log.prev` (the
+  reconnection starts a new one at once) and the DROPPED event ends with its last error, so the cause can be read
+  afterwards, also in the manager's Problems tab.
 - Updates from GitHub are checked every 3 hours instead of 6.
 - The central settings are not applied while an update is installing (a valid setting could be rejected with half
   the files updated).
