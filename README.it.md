@@ -26,10 +26,10 @@ gestione, niente cloud, nessuna licenza per postazione.
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
 
 > **Stato: in produzione ogni giorno.** Fa girare tutti i thin client dell'azienda da cui nasce: 14 Dell OptiPlex
-> 3000 Thin Client in ufficio, alle casse, in laboratorio e alle pese, con una VDI Windows 11 su Hyper-V dietro due
-> RD Connection Broker. Le postazioni sono state convertite sul posto dal sistema che avevano prima e ricevono
-> ogni versione come pacchetto firmato dalla loro cartella di gestione, installato durante le sessioni e applicato
-> quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
+> 3000 Thin Client in ufficio, alle casse, in laboratorio, alle pese e uno schermo a parete in Wi-Fi, con una
+> VDI Windows 11 su Hyper-V dietro due RD Connection Broker, con accesso Kerberos e NTLM di riserva. Le postazioni
+> sono state convertite sul posto dal sistema che avevano prima e ricevono ogni versione direttamente dalle release
+> GitHub, firmata, installata durante le sessioni e applicata quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
 > [entro 7 giorni](SECURITY.md#freerdp-security-fixes) (la 3.32.2: in quattro ore). La ISO è provata in QEMU/KVM
 > con Secure Boot a ogni versione e i test di sistema girano a ogni commit
 > ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). Cosa è in produzione, cosa è solo

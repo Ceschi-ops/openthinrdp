@@ -6,28 +6,30 @@ not exist yet, so you know what to test before rolling it out.
 
 ## The production fleet
 
-- **14 Dell OptiPlex 3000 Thin Clients** (BIOS 1.19 to 1.37), wired, in offices, at the tills, in a laboratory
-  and at weighing stations.
+- **14 Dell OptiPlex 3000 Thin Clients** (BIOS 1.19 to 1.37) in offices, at the tills, in a laboratory and at
+  weighing stations: 13 wired, one on **Wi-Fi** (a wall screen that shows a web page all day).
 - **Windows 11 VDI on Hyper-V**: personal desktops behind two RD Connection Brokers (DNS round robin), plus a
   handful of session hosts.
 - Every device was **converted in place** from the system it ran before, by an update package, with its settings
   carried over; none was reinstalled by hand.
-- Updates reach them from the **management folder**, signed, installed in the background during sessions and
-  applied when the session is over.
+- Updates reach them **straight from the GitHub releases**, signed, installed in the background during sessions
+  and applied when the session is over. A release published here is the update of that fleet.
 
 ## In production every day
 
 | Area | What |
 |---|---|
-| Sign-in | Kiosk sign-in screen, default user, two brokers with fallback, load balance info for VDI collections |
+| Sign-in | Kiosk sign-in screen, default user, two brokers with fallback, load balance info for VDI collections; **Kerberos with NTLM as fallback** behind the brokers' round-robin name; a session opened from another device is told apart from a VM shutdown |
 | Transport | **RDP over UDP** (`TRANSPORT=auto`) with fallback to TCP; reconnection after network drops |
+| Network | Wired (DHCP) and **Wi-Fi** (WPA2-PSK) |
+| Web | **Web button** that opens the company portal (app mode, allowed sites only) on every device; a wall screen in **web kiosk** mode |
 | USB | Whole-device redirection of signature keys and other special devices, also plugged in during the session |
 | Meetings | Webcams through the RDP camera channel, microphones and speakers through the RDP audio channels |
 | Smart cards | Readers through the smart card channel (pcscd) |
 | Touch | Touch screens at the tills, as real touch in Windows |
 | Management | Status and events of every device, central settings (common and per device), logo and background, Windows manager |
-| Updates | Signed packages from the management folder; Debian security updates by themselves |
-| Power | Shutdown at the end of the session, Wake-on-LAN (also from the BIOS) |
+| Updates | Signed packages **from the GitHub releases** (`UPDATE_FROM=github`; the management folder before, same packages); Debian security updates by themselves |
+| Power | Shutdown at the end of the session, Wake-on-LAN (also from the BIOS), **power on and off on a schedule** (the wall screen: RTC wake alarm) |
 
 ## Available, not exercised by that fleet
 
@@ -36,10 +38,8 @@ production fleet does not use them, so test them in your environment first:
 
 - **ISO installation** on new hardware: live system and automatic installation, Secure Boot. Tested in QEMU/KVM
   with Secure Boot at every release; the fleet itself was converted in place, not installed from the ISO.
-- Updates straight from GitHub releases (`UPDATE_FROM=github`).
-- Wi-Fi and static addressing.
-- Web kiosk and web button (Chromium with policies).
-- Power-on schedule (RTC wake alarm, needs firmware support).
+- Static addressing (the fleet uses DHCP).
+- Web button in free browsing mode (`WEB_BUTTON=browser`).
 - `RDP_CERT=verify` with your own certificate authority.
 
 ## Not available yet
@@ -55,7 +55,7 @@ Tell us what you need first in the [discussions](https://github.com/OpenThinRdp/
 
 | Device | Status |
 |---|---|
-| Dell OptiPlex 3000 Thin Client | production (14 devices) |
+| Dell OptiPlex 3000 Thin Client | production (14 devices, one of them on its built-in Wi-Fi) |
 | QEMU/KVM, UEFI with Secure Boot | tested at every release |
 
 Other x86-64 PCs and thin clients with UEFI should work: reports in the

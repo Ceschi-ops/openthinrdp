@@ -25,10 +25,10 @@ It grew out of a real migration away from a commercial thin client OS, on a flee
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
 
 > **Status: in production every day.** It runs the whole thin client fleet of the company it comes from: 14 Dell
-> OptiPlex 3000 Thin Clients at desks, tills, a laboratory and weighing stations, on a Windows 11 VDI on Hyper-V
-> behind two RD Connection Brokers. The devices were converted in place from the system they ran before and take
-> every release as a signed package from their management folder, installed during sessions and applied when the
-> session is over. FreeRDP security releases reach OpenThinRDP [within 7 days](SECURITY.md#freerdp-security-fixes)
+> OptiPlex 3000 Thin Clients at desks, tills, a laboratory, weighing stations and a wall screen on Wi-Fi, on a
+> Windows 11 VDI on Hyper-V behind two RD Connection Brokers, signing in with Kerberos and NTLM as fallback. The
+> devices were converted in place from the system they ran before and take every release straight from the GitHub
+> releases, signed, installed during sessions and applied when the session is over. FreeRDP security releases reach OpenThinRDP [within 7 days](SECURITY.md#freerdp-security-fixes)
 > (3.32.2: four hours). The ISO is tested in QEMU/KVM with Secure Boot at every release and the system tests run on
 > every commit ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). What is in production,
 > what is only tested and what does not exist yet:
