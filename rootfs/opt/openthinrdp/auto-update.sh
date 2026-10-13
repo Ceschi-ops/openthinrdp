@@ -8,7 +8,7 @@
 #   share   the project key (a release copied into the folder by the manager) or the key of the site,
 #           /etc/openthinrdp/update-key.asc (your own packages, built into your image)
 # "check <mounted folder>": run by report.sh every 5 minutes and at boot, with the folder mounted.
-# "check-github": run by report.sh too, but asks GitHub at most every 6 hours (UPDATE_GITHUB = owner/repository,
+# "check-github": run by report.sh too, but asks GitHub at most every 3 hours (UPDATE_GITHUB = owner/repository,
 # the latest release that is not a pre-release).
 # A new version is downloaded, its hash checked, and installed in the background ("install <version>", unit
 # openthinrdp-update). Never an older version than the installed one; at most 3 attempts per version.
@@ -83,16 +83,16 @@ case "$1" in
     SRC=github; KEYS=("$PROJECT_KEY")
     REPO=$(cfg UPDATE_GITHUB)
     BASE=${OTR_UPDATE_BASE_URL:-https://github.com/$REPO/releases/latest/download}
-    # at most every 6 hours once GitHub answered (report.sh runs every 5 minutes: without network, e.g. right
+    # at most every 3 hours once GitHub answered (report.sh runs every 5 minutes: without network, e.g. right
     # after boot, it simply tries again at the next run)
-    [ -f $W/github-checked ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 21600 ] && exit 0 ;;
+    [ -f $W/github-checked ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 10800 ] && exit 0 ;;
   *) echo "usage: $0 check <mounted folder> | check-github | install <version>"; exit 2 ;;
 esac
 [ -s "${KEYS[0]}" ] || [ -s "${KEYS[1]:-}" ] || { echo "updates disabled: no signing key" > $ST; exit 0; }
 systemctl is-active -q openthinrdp-update.service 2>/dev/null && exit 0      # an install is already running
 rm -f $W/LATEST.txt $W/LATEST.txt.sig
 get LATEST.txt $W/LATEST.txt; rc=$?
-# GitHub answered (also "no release yet"): next question in 6 hours. No answer: at the next run
+# GitHub answered (also "no release yet"): next question in 3 hours. No answer: at the next run
 [ $SRC = github ] && { [ $rc = 0 ] || [ $rc = 3 ]; } && touch $W/github-checked
 if [ $rc != 0 ]; then
   echo "no update found ($SRC$([ $SRC = github ] && echo " $REPO$([ $rc = 1 ] && echo ', not reachable')"), $(date '+%d/%m %H:%M'))" > $ST; exit 0; fi

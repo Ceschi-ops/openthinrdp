@@ -136,7 +136,7 @@ Software updates (kiosk, FreeRDP with UDP, fixes) come from where `UPDATE_FROM` 
 
 | `UPDATE_FROM` | Source | Signature accepted |
 |---|---|---|
-| `github` (default) | the latest release of `UPDATE_GITHUB` (not pre-releases), asked every 6 hours | the project key only |
+| `github` (default) | the latest release of `UPDATE_GITHUB` (not pre-releases), asked every 3 hours | the project key only |
 | `share` | `updates\` in the management folder: you decide when the devices get a version | the project key, or your own key |
 | `off` | none | |
 

@@ -158,7 +158,10 @@ usb_opt(){
   done
   # auto = a device that disconnects and comes back (keys that restart in another mode once they see a PC) is
   # passed again instead of being lost. The channel is always open, also without devices at login.
-  echo "/usb:auto${l:+,id:$l}$USBFILTER"
+  # USB_MODE=disks: storage (class 08) stays here too, also when plugged in during the session: usb-mount.sh
+  # mounts it and /drive:hotplug shows it in Windows. Without it FreeRDP took the stick whole (measured 13/10/2026).
+  local f=$USBFILTER; [ -n "$f" ] && [ "$(cfg USB_MODE)" = disks ] && f="$f#08"
+  echo "/usb:auto${l:+,id:$l}$f"
 }
 # ALSA card of a USB sound device kept on the thin client (see HASCAM): $1 = c for a microphone, p for a speaker,
 # $2 = the /usb option (a device listed there is passed whole and FreeRDP holds it). Prints the card id.

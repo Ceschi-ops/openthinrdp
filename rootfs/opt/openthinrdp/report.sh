@@ -188,13 +188,15 @@ else
     echo "$(date '+%F %T') ERROR: management folder $SHARE not reachable" >> "$LOG"
   fi
 fi
-# software updates from GitHub (asked at most every 6 hours), or none
+# software updates from GitHub (asked at most every 3 hours), or none
 case "$(cfg UPDATE_FROM)" in
   github) "$OTR/auto-update.sh" check-github ;;
   off)    mkdir -p "$OTR_LIB/update"; echo "software updates off (UPDATE_FROM=off)" > "$OTR_LIB/update/status" ;;
 esac
-# apply the central settings (also when the folder does not answer: the last good copy is used)
-"$OTR/central-apply.sh"
+# apply the central settings (also when the folder does not answer: the last good copy is used). Not while an
+# update is installing: with half the files new and half old, a valid setting was rejected (13/10/2026, "colour
+# not valid: BG_BOTTOM" three seconds into 0.1.6); the next run, at most 5 minutes later, applies it.
+systemctl is-active -q openthinrdp-update.service 2>/dev/null || "$OTR/central-apply.sh"
 # boot splash: always the image's own (a device that took the folder's picture there with 0.1.1 gets it back)
 "$OTR/branding.sh" splash
 exit 0

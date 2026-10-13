@@ -8,6 +8,13 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 - **Manager: Problems tab.** The event logs of all devices read together for a period and grouped: failed sign-in
   attempts by broker, dropped sessions by cause, refused sign-ins, sessions taken over, failed updates. The same
   problem on 3 or more devices is highlighted ([management.md](docs/management.md#problems-across-the-fleet)).
+- **`USB_MODE=disks` keeps USB sticks on the thin client also when they are plugged in during a session.** The
+  class filter did not include storage, so FreeRDP took a stick plugged in mid-session as a whole USB device and
+  Windows got a raw disk without a drive letter instead of the shared drive. Devices listed in `USB_REDIRECT` still
+  go whole.
+- Updates from GitHub are checked every 3 hours instead of 6.
+- The central settings are not applied while an update is installing (a valid setting could be rejected with half
+  the files updated).
 
 ## 0.1.6 (2026-10-13)
 

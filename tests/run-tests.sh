@@ -225,7 +225,7 @@ ok "github: older than the image (no update installed yet) is ignored" 'grep -q 
 release 0.2.0 p@example.invalid /tmp/otr-release; gh
 ok "github: a release signed by the project key is taken" 'grep -q "^found 0.2.0 (github)" $U/status && [ -f $U/pkg-0.2.0/install.sh ]'
 echo x > $U/status; $OTR/auto-update.sh check-github
-ok "github: asked again only after 6 hours" '[ "$(cat $U/status)" = x ]'
+ok "github: asked again only after 3 hours" '[ "$(cat $U/status)" = x ]'
 rm -rf /tmp/otr-release; gh
 ok "github: not reachable is retried at the next run" 'grep -q "not reachable" $U/status && [ ! -f $U/github-checked ]'
 rm -rf $U/pkg-* $U/attempts-*
