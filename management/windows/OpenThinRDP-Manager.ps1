@@ -987,6 +987,82 @@ function Test-FolderPermissions([string]$account) {
   $out
 }
 
+# ---------------------------------------------------------------------------------------------
+# Problems: the event logs of all devices (status\<hostname>-events.log) read together, so that a broker refusing
+# sign-ins on six devices this morning shows as one line, not as six files nobody opens.
+# Each rule: the kind (text Prob_<kind> in lang\*.psd1) and the event it recognizes; named groups user, broker,
+# code, where (what the line is grouped by besides the kind).
+# ---------------------------------------------------------------------------------------------
+$script:ProblemRules = @(
+  @{ K = 'AttemptFailed'; R = '^attempt \d+ for (?<user>\S+) on (?<broker>\S+) failed after \d+s \(code (?<code>\d+), (?<where>\w+)\)' }
+  @{ K = 'DesktopUnavailable'; R = '^desktop not available for (?<user>\S+) after \d+ attempts: (?<where>\S*)' }
+  @{ K = 'SignInRefused'; R = '^sign-in refused for (?<user>\S+) \(code (?<code>\d+)\)' }
+  @{ K = 'NoNetwork'; R = '^attempt \d+ for (?<user>\S+): no network' }
+  @{ K = 'Dropped'; R = '^session of (?<user>\S+) DROPPED after [^(]*\((?<where>.+), code (?<code>\d+)\)' }
+  @{ K = 'TooManyDrops'; R = '^too many drops in a row for (?<user>\S+)' }
+  @{ K = 'TakenOver'; R = '^session of (?<user>\S+) (disconnected after .* while its VM still runs|taken over by another device)' }
+  @{ K = 'Watchdog'; R = '^watchdog: ' }
+  @{ K = 'UdpBlocked'; R = '^UDP only: the session of (?<user>\S+)' }
+  @{ K = 'UpdateFailed'; R = '^software update (?<where>\S+) FAILED' }
+  @{ K = 'ConfigRejected'; R = '^(central configuration REJECTED|settings rejected)' }
+  @{ K = 'WrongPin'; R = '^settings: wrong PIN' }
+)
+# causes as the devices log them (kiosk.sh reason/err_class) -> texts of the manager; brokers stay as they are
+$script:CauseText = @{ 'network lost' = 'CauseNetLost'; 'killed (watchdog or kill -9)' = 'CauseKilled'; 'net' = 'CauseNet'; 'dns' = 'CauseDns'
+  'broker' = 'CauseBroker'; 'vm' = 'CauseVm'; 'udp' = 'CauseUdp'; 'other' = 'CauseOther' }
+function Get-WhereLabel([string]$w) {
+  if ($script:CauseText.ContainsKey($w)) { return (Get-Text $script:CauseText[$w]) }
+  if ($w -match '^error (\d+)$') { return (Get-Text 'CauseError' $Matches[1]) }
+  $w
+}
+$script:HostNames = @{}
+# a broker given as an address shown with its name (cached: one lookup per address)
+function Get-HostLabel([string]$h) {
+  if ($h -notmatch '^\d+\.\d+\.\d+\.\d+$') { return ($h -split '\.')[0].ToLower() }
+  if (-not $script:HostNames.ContainsKey($h)) { $script:HostNames[$h] = try { ([Net.Dns]::GetHostEntry($h).HostName -split '\.')[0].ToLower() } catch { $h } }
+  $script:HostNames[$h]
+}
+# every problem event since $since: time, device, kind, user, broker (the server really contacted when the device
+# logged it: "broker X: connecting to Y (Kerberos)"), code, where, the line itself
+function Get-ProblemEvents([datetime]$since) {
+  $out = New-Object Collections.ArrayList
+  if (-not (Test-Path -LiteralPath $script:StatusDir)) { return @() }
+  foreach ($f in @(Get-ChildItem -LiteralPath $script:StatusDir -Filter '*-events.log' -File -ErrorAction SilentlyContinue)) {
+    $dev = $f.BaseName -replace '-events$', ''; $node = ''; $nodeAt = [datetime]::MinValue
+    foreach ($l in (Read-Lines $f.FullName)) {
+      if ($l -notmatch '^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)$') { continue }
+      $t = [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture); $txt = $Matches[2]
+      if ($txt -match '^broker \S+: connecting to (\S+)') { $node = $Matches[1]; $nodeAt = $t; continue }
+      if ($t -lt $since) { continue }
+      foreach ($r in $script:ProblemRules) {
+        if ($txt -notmatch $r.R) { continue }
+        $b = "$($Matches['broker'])"; if ($b -and $node -and ($t - $nodeAt).TotalSeconds -le 120) { $b = $node }
+        [void]$out.Add([pscustomobject]@{ Time = $t; Device = $dev; Kind = $r.K; User = "$($Matches['user'])"; Broker = $(if ($b) { Get-HostLabel $b } else { '' })
+          Code = "$($Matches['code'])"; Where = "$($Matches['where'])"; Text = $txt })
+        break
+      }
+    }
+  }
+  @($out | Sort-Object Time)
+}
+# one line per kind and place (broker for sign-in failures, cause for drops): how many times, how many devices
+# and users, when last. Wide = the same problem on 3 or more devices: rather the server or the network than a device.
+function Get-ProblemSummary($events) {
+  @($events | Group-Object { "$($_.Kind)|$(if ($_.Broker) { $_.Broker } else { $_.Where })" } | ForEach-Object {
+    $k, $w = $_.Name -split '\|', 2; $g = $_.Group
+    $devs = @($g.Device | Sort-Object -Unique); $users = @($g.User | Where-Object { $_ } | Sort-Object -Unique)
+    [pscustomobject]@{ Kind = $k; Where = $w; Count = $g.Count; Devices = $devs; Users = $users; First = ($g | Select-Object -First 1).Time
+      Last = ($g | Select-Object -Last 1).Time; Wide = ($devs.Count -ge 3); Events = $g }
+  } | Sort-Object @{ Expression = 'Wide'; Descending = $true }, @{ Expression = 'Count'; Descending = $true })
+}
+# the headline: the problems that touched most devices, in one sentence each
+function Get-ProblemHeadline($summary) {
+  if (-not @($summary).Count) { return (Get-Text 'ProbNone') }
+  (@($summary | Sort-Object @{ Expression = { $_.Devices.Count }; Descending = $true }, @{ Expression = 'Count'; Descending = $true } | Select-Object -First 3 | ForEach-Object {
+    Get-Text 'ProbHeadline' (Get-Text "Prob_$($_.Kind)") $(if ($_.Where) { " ($(Get-WhereLabel $_.Where))" } else { '' }) $_.Count $_.Devices.Count
+  }) -join "   $([char]0x00B7)   ")
+}
+
 function Get-LastFolder {
   try { if (Test-Path -LiteralPath $script:SettingsFile) { return [string](Get-Content -LiteralPath $script:SettingsFile -Raw | ConvertFrom-Json).Folder } } catch { }
   $null
@@ -1094,7 +1170,8 @@ $tabs.Dock = 'Fill'
 $tabDevices = New-Object System.Windows.Forms.TabPage (Get-Text 'TabDevices')
 $tabCommon = New-Object System.Windows.Forms.TabPage (Get-Text 'TabCommon')
 $tabKeys = New-Object System.Windows.Forms.TabPage (Get-Text 'TabKeys')
-$tabs.TabPages.AddRange(@($tabDevices, $tabCommon, $tabKeys))
+$tabProblems = New-Object System.Windows.Forms.TabPage (Get-Text 'TabProblems')
+$tabs.TabPages.AddRange(@($tabDevices, $tabCommon, $tabKeys, $tabProblems))
 
 # ---------------- Devices tab ----------------
 $topPanel = New-Object System.Windows.Forms.Panel
@@ -1208,6 +1285,26 @@ $lblKeys = New-Object System.Windows.Forms.Label
 $lblKeys.Text = Get-Text 'NoteKeys'
 Set-ButtonRow $keysPanel @($btnSaveKeys, $btnReloadKeys) $lblKeys 7
 $tabKeys.Controls.Add($txtKeys); $tabKeys.Controls.Add($keysPanel)
+
+# ---------------- Problems tab ----------------
+$probTop = New-Object System.Windows.Forms.Panel; $probTop.Dock = 'Top'; $probTop.Height = 66
+$lblPeriod = New-Object System.Windows.Forms.Label; $lblPeriod.Text = Get-Text 'ProbPeriod'; $lblPeriod.AutoSize = $true; $lblPeriod.Location = New-Object System.Drawing.Point(8, 10)
+$cmbPeriod = New-Object System.Windows.Forms.ComboBox; $cmbPeriod.DropDownStyle = 'DropDownList'; $cmbPeriod.Width = 160
+[void]$cmbPeriod.Items.AddRange(@((Get-Text 'ProbToday'), (Get-Text 'Prob24h'), (Get-Text 'Prob7d'), (Get-Text 'Prob30d'))); $cmbPeriod.SelectedIndex = 1
+$cmbPeriod.Location = New-Object System.Drawing.Point((16 + (Get-TextWidth $lblPeriod.Text)), 6)
+$btnProbRefresh = New-Button 'BtnRefresh' 120 26; $btnProbRefresh.Location = New-Object System.Drawing.Point(($cmbPeriod.Right + 10), 5)
+$lblHeadline = New-Object System.Windows.Forms.Label; $lblHeadline.AutoSize = $false; $lblHeadline.Location = New-Object System.Drawing.Point(8, 38); $lblHeadline.Height = 24
+$lblHeadline.Anchor = 'Top, Left, Right'; $lblHeadline.Width = 1200; $lblHeadline.Font = New-Object System.Drawing.Font($fontBase, [System.Drawing.FontStyle]::Bold)
+$probTop.Controls.AddRange(@($lblPeriod, $cmbPeriod, $btnProbRefresh, $lblHeadline))
+$probSplit = New-Object System.Windows.Forms.SplitContainer; $probSplit.Dock = 'Fill'; $probSplit.Orientation = 'Horizontal'
+$probList = New-Object System.Windows.Forms.ListView
+$probList.Dock = 'Fill'; $probList.View = 'Details'; $probList.FullRowSelect = $true; $probList.MultiSelect = $false; $probList.HideSelection = $false; $probList.GridLines = $true
+foreach ($c in @(@('ColProblem', 330), @('ColWhere', 180), @('ColTimes', 60), @('ColDevicesN', 230), @('ColUsers', 200), @('ColFirstTime', 100), @('ColLastTime', 100))) {
+  [void]$probList.Columns.Add((Get-Text $c[0]), (Get-FitWidth $c[1] (Get-Text $c[0]) -pad 14)) }
+$probText = New-TextView
+$probSplit.Panel1.Controls.Add($probList); $probSplit.Panel2.Controls.Add($probText)
+$lblProbNote = New-Object System.Windows.Forms.Label; $lblProbNote.Dock = 'Bottom'; $lblProbNote.Height = 36; $lblProbNote.Text = Get-Text 'ProbNote'; $lblProbNote.Padding = New-Object System.Windows.Forms.Padding(6, 4, 6, 0)
+$tabProblems.Controls.Add($probSplit); $tabProblems.Controls.Add($probTop); $tabProblems.Controls.Add($lblProbNote)
 
 $form.Controls.Add($tabs); $form.Controls.Add($bar)
 
@@ -1517,6 +1614,27 @@ $btnPerm.add_Click({
   } catch { $bad = $true; $lines = @($_.Exception.Message) } finally { $form.Cursor = 'Default' }
   Show-Message (Get-Text 'PermTitle') ($lines -join "`r`n") $(if ($bad) { 'Warning' } else { 'Information' })
 })
+function Update-ProblemView {
+  $since = switch ($cmbPeriod.SelectedIndex) { 0 { (Get-Date).Date } 1 { (Get-Date).AddHours(-24) } 2 { (Get-Date).AddDays(-7) } default { (Get-Date).AddDays(-30) } }
+  $form.Cursor = 'WaitCursor'
+  try { $sum = Get-ProblemSummary (Get-ProblemEvents $since) } finally { $form.Cursor = 'Default' }
+  $lblHeadline.Text = Get-ProblemHeadline $sum
+  $probList.BeginUpdate(); $probList.Items.Clear(); $probText.Text = ''
+  foreach ($p in $sum) {
+    $it = New-Object System.Windows.Forms.ListViewItem (Get-Text "Prob_$($p.Kind)")
+    foreach ($v in @((Get-WhereLabel $p.Where), "$($p.Count)", "$($p.Devices.Count): $($p.Devices -join ', ')", ($p.Users -join ', '), $p.First.ToString('dd/MM HH:mm'), $p.Last.ToString('dd/MM HH:mm'))) { [void]$it.SubItems.Add($v) }
+    if ($p.Wide) { $it.BackColor = [System.Drawing.Color]::FromArgb(255, 225, 190) }
+    $it.Tag = $p; [void]$probList.Items.Add($it)
+  }
+  $probList.EndUpdate()
+}
+$probList.add_SelectedIndexChanged({
+  if ($probList.SelectedItems.Count -ne 1) { return }
+  $probText.Text = (@($probList.SelectedItems[0].Tag.Events | ForEach-Object { '{0:dd/MM HH:mm:ss}  {1,-14} {2}' -f $_.Time, $_.Device, $_.Text }) -join "`r`n")
+})
+$cmbPeriod.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
+$btnProbRefresh.add_Click({ Update-ProblemView })
+$tabs.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
 $btnSaveDev.add_Click({ Save-Device })
 $btnReloadDev.add_Click({ Update-DeviceGrid })
 $btnClearDev.add_Click({ Clear-Device })

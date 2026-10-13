@@ -113,6 +113,17 @@ A device accepts PNG files only, up to 2 MB, a logo up to 400 x 240 pixels and a
 (anything else is refused once with an event, and the previous picture stays), and shows them within 5
 minutes. The status file says where each picture comes from: `BRANDING=logo=common splash=image` (`image`,
 `common` or `device`).
+## Problems across the fleet
+
+Every device sends its event log to `status<hostname>-events.log`. The **Problems** tab of the Windows manager
+reads them all together for a period (today, 24 hours, 7 or 30 days) and groups what went wrong: sign-in attempts
+that failed (by the broker really contacted), desktops that did not start, sign-ins refused, sessions dropped (by
+cause: network lost, FreeRDP stuck, error code), sessions taken over, UDP blocked, failed updates, rejected settings.
+Each line says how many times, on which devices and for which users, first and last time; a line is orange when the
+same problem hit 3 or more devices, which points at a server or the network rather than at a device. The line at
+the top sums up the problems that touched most devices; selecting a line shows its events. A device keeps the last
+2000 lines of its log, which is weeks for a normal device.
+
 ## SSH keys
 
 With `SSH=on`, the `otradmin` account accepts only the keys in `/etc/openthinrdp/authorized_keys`: from the image

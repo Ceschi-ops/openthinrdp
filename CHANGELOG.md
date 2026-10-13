@@ -3,6 +3,12 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **Manager: Problems tab.** The event logs of all devices read together for a period and grouped: failed sign-in
+  attempts by broker, dropped sessions by cause, refused sign-ins, sessions taken over, failed updates. The same
+  problem on 3 or more devices is highlighted ([management.md](docs/management.md#problems-across-the-fleet)).
+
 ## 0.1.6 (2026-10-13)
 
 - **Session taken over from another device.** Windows 11 ends the session of the device left behind with code 1, the
