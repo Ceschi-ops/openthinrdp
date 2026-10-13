@@ -5,6 +5,13 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **Session taken over from another device.** Windows 11 ends the session of the device left behind with code 1, the
+  same as a VM shutdown (measured directly on the VM and through the broker), never with 5. The device now checks
+  whether the VM still answers: if it does, it shows "Session opened elsewhere" with Resume here, instead of the
+  shutdown page that switched it off.
+- **Startup progress.** The progress screen showed each step one step late (it read one line per wake-up), so it
+  stayed on "Connecting to the broker" while the broker was starting the VM. Every step now shows at once, and after
+  5 s on the broker it says the virtual machine is being started.
 - **Kerberos behind a broker alias.** With `RDP_AUTH=negotiate` the device connects to one of the brokers behind
   a round-robin name by that broker's own name: the Kerberos ticket was otherwise asked for whichever broker the
   Kerberos library looked up, and the other one refused it. NTLM-only (`RDP_AUTH=ntlm`) is no longer needed there,

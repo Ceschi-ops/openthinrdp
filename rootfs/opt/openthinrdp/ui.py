@@ -241,16 +241,21 @@ if MODE == 'message':
                 st['shown'] += max(0.05, (cap - st['shown']) * 0.012)
             bar.set_fraction(min(st['shown'], 100.0) / 100.0); return True
         GLib.timeout_add(100, creep)
+        # Every line that has arrived, not one per wake-up: a percent and its text come together, and a buffered
+        # second line would wait for the next write, so the text stayed one step behind (and stuck while waiting).
+        pending = {'b': ''}
         def on_input(src, cond):
-            line = sys.stdin.readline()
-            if not line:
+            try: data = os.read(sys.stdin.fileno(), 65536).decode('utf-8', 'replace')
+            except BlockingIOError: return True
+            if not data:
                 leave(0); return False
-            line = line.strip()
-            if line.startswith('#'):
-                tx.set_text(line[1:].strip())
-            else:
+            lines = (pending['b'] + data).split('\n'); pending['b'] = lines.pop()
+            for line in (l.strip() for l in lines):
+                if line.startswith('#'):
+                    tx.set_text(line[1:].strip())
+                    continue
                 try: v = max(0.0, min(100.0, float(line)))
-                except ValueError: return True
+                except ValueError: continue
                 st['target'] = v; st['shown'] = max(st['shown'], v)
                 if v >= 100:
                     bar.set_fraction(1.0); GLib.timeout_add(250, lambda: leave(0) or False); return False

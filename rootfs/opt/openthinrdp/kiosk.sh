@@ -427,7 +427,8 @@ diag_dialog(){
 
 # --- session ------------------------------------------------------------------------------------
 # xfreerdp3 exit codes (measured with FreeRDP 3.31-3.33): 12 = Disconnect or Sign out from the Start menu,
-# 1 = VM shut down or restarted, or disconnected by an administrator, 147 = network lost, 5 = session taken
+# 1 = VM shut down or restarted, disconnected by an administrator, or (Windows 11) session taken over from another
+# device: vm_alive tells them apart, 147 = network lost, 5 = session taken
 # over from another device (inside a session the exit code is the ERRINFO code).
 # Only DELIBERATE endings lead to the shutdown page; everything else reconnects on its own.
 reason(){ case "$1" in
@@ -435,6 +436,11 @@ reason(){ case "$1" in
   3) echo "idle timeout" ;; 5) echo "session opened from another device" ;;
   11|12) echo "user disconnect or sign out" ;; 137) echo "killed (watchdog or kill -9)" ;; 147) echo "network lost" ;; *) echo "error $1" ;; esac; }
 deliberate(){ case "$1" in 0|1|2|3|11|12) return 0 ;; *) return 1 ;; esac; }
+# The VM of the session (the watchdog writes its address while connected) still accepts RDP, twice 5 s apart: it is
+# not shutting down or restarting.
+vm_alive(){ local a; a=$(cat /tmp/kiosk.vm 2>/dev/null); [ -n "$a" ] || return 1
+  sleep 3; timeout 3 bash -c "exec 3<>/dev/tcp/$a/3389" 2>/dev/null || return 1
+  sleep 5; timeout 3 bash -c "exec 3<>/dev/tcp/$a/3389" 2>/dev/null; }
 # Is the user already connected from ANOTHER thin client? Based on the thin clients' own reports
 # (report.sh writes $OTR_LIB/sessions-elsewhere: user|hostname|IP, only reports sent in the last 10 minutes),
 # NOT on the Windows sessions: a disconnected session stays on the VM and would warn at every return.
@@ -495,7 +501,7 @@ session(){
       ui message --icon=warn --heading="$(plain "$L_E_NET")" --text="$(plain "$(printf "$L_P_NONET" "$att" "$max")")" --timeout=5
       continue
     fi
-    : > /tmp/kiosk.log
+    : > /tmp/kiosk.log; rm -f /tmp/kiosk.vm
     st=$(date +%s)
     B=$(pick_broker $att "$BRHA")
     ( connect "$U" "$P" "$B"; echo $? > /tmp/kiosk.rc ) &
@@ -510,13 +516,15 @@ session(){
       # redirected to the virtual machine (a connection to another address), the desktop window on screen. With the
       # window the screen closes (100); a closed screen must not end this loop (watchdog): writes ignore SIGPIPE.
       trap '' PIPE
-      local s1=0 s2=0 s3=0 n=0 seen=0 lost=0 tcponly=0 fp ips first=""
+      local s1=0 s2=0 s3=0 n=0 s1n=0 s1w="" seen=0 lost=0 tcponly=0 fp ips first=""
       while kill -0 $xp 2>/dev/null; do
         fp=$(pgrep -P $xp -x xfreerdp3 | head -1)
         if [ -n "$fp" ] && [ $s3 -eq 0 ]; then
           ips=$(ss -tnpH state established 2>/dev/null | grep "pid=$fp," | awk '{print $4}' | sed 's/:[0-9]*$//' | sort -u)
           [ -z "$first" ] && first=$(echo "$ips" | head -1)
-          if [ $s1 -eq 0 ] && [ -n "$ips" ]; then echo "30"; echo "# $L_P_AUTH"; s1=1; fi
+          if [ $s1 -eq 0 ] && [ -n "$ips" ]; then echo "30"; echo "# $L_P_AUTH"; s1=1; s1n=$n; fi
+          # still on the broker after 5 s: it is preparing the virtual machine, usually starting it
+          if [ $s1 -eq 1 ] && [ $s2 -eq 0 ] && [ -z "$s1w" ] && [ $((n - s1n)) -ge 12 ]; then echo "45"; echo "# $L_P_VMSTART"; s1w=1; fi
           if [ $s2 -eq 0 ] && [ -n "$first" ] && echo "$ips" | grep -qvx "$first"; then echo "65"; echo "# $L_P_STARTING"; s2=1; fi
           if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then pointer_show; echo "# $L_P_READY"; echo "100"; s3=1; fi
         fi 2>/dev/null
@@ -528,6 +536,8 @@ session(){
         [ $((n % 12)) -eq 0 ] || continue
         fp=$(pgrep -P $xp -x xfreerdp3 | head -1); [ -n "$fp" ] || continue
         if ss -tnpH state established 2>/dev/null | grep -q "pid=$fp,"; then seen=1; lost=0
+          # the server it is connected to now, after the broker's redirect the VM (vm_alive)
+          ss -tnpH state established 2>/dev/null | grep "pid=$fp," | awk '{print $4}' | sed 's/:[0-9]*$//' | tail -1 > /tmp/kiosk.vm
           # TRANSPORT=udp: connected for 30 s without a UDP socket = UDP blocked, or FreeRDP fell back to TCP
           # after a UDP failure. The connection ends and counts as a failed attempt: the next one tries UDP.
           if [ $udponly = 1 ]; then
@@ -582,6 +592,12 @@ session(){
       # (A user disconnect or sign out from Windows ends with 12.)
       if [ "$ec" = 1 ] && [ "$3" = reconnect ] && [ "$d" -lt 120 ] && [ $(( $(date +%s) - ${LAST_EC1:-0} )) -gt 300 ]; then
         LAST_EC1=$(date +%s); ev "session of $U closed by the server $(duration $d) after the automatic reconnection (code 1): reconnecting once more"; return 3
+      fi
+      # Windows 11 also sends 1, never 5, when another device takes the session over, directly on the VM or through
+      # the broker (measured 13/10/2026). A VM that still answers did not shut down: the session was taken over or
+      # disconnected on the server. Same page as code 5: no reconnection, Resume here on request.
+      if [ "$ec" = 1 ] && vm_alive; then
+        ev "session of $U disconnected after $(duration $d) while its VM still runs (code 1): taken over by another device or disconnected on the server, no reconnection"; return 4
       fi
       if deliberate "$ec"; then ev "session of $U ended after $(duration $d) ($(reason "$ec"), code $ec)"; return 0; fi
       ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting"; return 3
