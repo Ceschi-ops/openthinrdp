@@ -31,6 +31,8 @@ L_P_VMSTART="Il broker prepara il desktop: se il computer virtuale era spento, s
 L_P_STARTING="Reindirizzamento e avvio del desktop..."
 L_P_READY="Pronto"
 L_P_RETRY="nuovo tentativo..."
+L_P_VMWAIT_T="In attesa di Windows"
+L_P_VMWAIT="In attesa da %s min"
 L_P_NONET="Controllare il cavo di rete.\nNuovo tentativo tra 5 secondi (%s di %s)"
 
 # errori

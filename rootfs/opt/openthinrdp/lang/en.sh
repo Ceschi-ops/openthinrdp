@@ -33,6 +33,8 @@ L_P_VMSTART="The broker is preparing the desktop: if the virtual machine was off
 L_P_STARTING="Redirecting and starting the desktop..."
 L_P_READY="Ready"
 L_P_RETRY="trying again..."
+L_P_VMWAIT_T="Waiting for Windows"
+L_P_VMWAIT="Waiting for %s min"
 L_P_NONET="Check the network cable.\nNew attempt in 5 seconds (%s of %s)"
 
 # errors

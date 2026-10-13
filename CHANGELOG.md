@@ -12,6 +12,11 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   class filter did not include storage, so FreeRDP took a stick plugged in mid-session as a whole USB device and
   Windows got a raw disk without a drive letter instead of the shared drive. Devices listed in `USB_REDIRECT` still
   go whole.
+- **Waiting for Windows instead of failing.** When the broker answers but the virtual machine refuses the desktop
+  (it is restarting or installing a Windows update), the device no longer spends its attempts and ends on "desktop
+  not available", nor reconnects every few seconds to sessions that Windows drops after ~22 s while it finishes the
+  update. It shows *Waiting for Windows* with the minutes elapsed and a Cancel button, tries again every 20 s, and
+  connects as soon as the desktop is ready (up to 20 minutes). One event when the wait starts, one every 5 minutes.
 - **Dropped sessions keep their log.** The FreeRDP log of a dropped session stays as `/tmp/kiosk.log.prev` (the
   reconnection starts a new one at once) and the DROPPED event ends with its last error, so the cause can be read
   afterwards, also in the manager's Problems tab.

@@ -484,11 +484,27 @@ duration(){ [ "$1" -lt 120 ] && echo "$1 s" || echo "$(( $1 / 60 )) min"; }
 pick_broker(){ local n=$1 ha=$2; set -- $(cfg BROKER_FALLBACK)
   if [ $n -le 2 ] || [ $# -eq 0 ]; then echo "$ha"; else local k=$(( (n - 3) % $# + 1 )); echo "${!k}"; fi; }
 
+# The broker answers but the virtual machine refuses the desktop: it is restarting or installing an update. One
+# wait of 20 s on a screen with Cancel, then the caller tries again; the attempts do not count meanwhile. Uses the
+# locals of session (U, vmwait, vmlog). Returns 1 when the user cancels or after 20 minutes of waiting in total.
+vm_wait(){ local now m rc
+  now=$(date +%s)
+  if [ $vmwait -eq 0 ]; then vmwait=$now; vmlog=$now; txt=$L_P_VMWAIT_T
+    ev "desktop of $U not ready: the broker answers, the virtual machine does not (restarting or updating): waiting up to 20 min"; fi
+  m=$(( (now - vmwait) / 60 ))
+  [ $(( now - vmwait )) -ge 1200 ] && { ev "desktop of $U still not ready after $m min: giving up"; return 1; }
+  [ $(( now - vmlog )) -ge 300 ] && { vmlog=$now; ev "desktop of $U: still waiting for the virtual machine ($m min)"; }
+  ui message --icon=busy --heading="$(plain "$L_P_VMWAIT_T")" --text="$(plain "$(printf "$L_P_VMWAIT" "$m")")" \
+     --timeout=20 --button="$L_CANCEL:1" --primary=1 --default=1
+  rc=$?
+  [ $rc = 1 ] && { ev "waiting for the desktop of $U cancelled by the user after $m min"; return 1; }
+  return 0; }
+
 # session USER PASSWORD [reconnect]. Returns 0 = ended deliberately, 1 = credentials refused,
 # 2 = desktop not available after the attempts, 3 = session DROPPED (the caller reconnects without asking),
 # 4 = session taken over from another device (warn, never reconnect: the two devices would fight)
 session(){
-  local U="$1" P="$2" att=0 max=8 txt="$L_P_CONNECTING" B BRHA st d ec thr xp wp udponly=0 noudp=0
+  local U="$1" P="$2" att=0 max=8 txt="$L_P_CONNECTING" B BRHA st d ec thr xp wp udponly=0 noudp=0 vmfails=0 vmwait=0 vmlog=0
   BRHA=$(cfg BROKER)
   [ "$3" = reconnect ] && { max=40; txt="$L_P_RECONNECTING"; }
   LAST_ERR=""; LAST_EC=""
@@ -590,6 +606,16 @@ session(){
     # Exception: code 1 below 20 s stays an attempt (seen once while re-entering a session: with the shutdown
     # page the countdown would have switched the device off)
     if [ "$d" -ge "$thr" ] && ! { [ "$ec" = 1 ] && [ "$d" -lt 20 ]; }; then
+      # A VM that is still booting or finishing an update accepts the session and drops it after ~22 s with the
+      # desktop never activated (ERRCONNECT_ACTIVATION_TIMEOUT; VM-MARIA 13/10/2026 after a feature update, 7 times
+      # in a row). The first one is retried at once, from the second on it is the wait for Windows; during the wait
+      # any early drop is part of it.
+      if [ "$d" -lt 90 ] && ! deliberate "$ec" && { [ $vmwait -gt 0 ] || grep -q 'ERRCONNECT_ACTIVATION_TIMEOUT' /tmp/kiosk.log; }; then
+        vmfails=$((vmfails+1))
+        if [ $vmwait -gt 0 ] || [ $vmfails -ge 2 ]; then vm_wait && { att=$((att-1)); continue; }; break; fi
+        ev "session of $U dropped after $(duration $d) before the desktop was ready (code $ec): trying again$(last_error)"
+        sleep 2; continue
+      fi
       # Code 1 ("disconnection initiated by an administrative tool on the server") means: an administrator
       # disconnected the session, or the VM is shutting down or restarting. Both must end on the shutdown page,
       # never reconnect (the administrator would see the user come straight back, the VM would be started again).
@@ -609,6 +635,14 @@ session(){
       ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting$(last_error)"; return 3
     fi
     LAST_EC=$ec; LAST_ERR=$(err_class "$ec")
+    # the broker answered and the VM refused twice in a row: it is restarting or updating, wait for it instead of
+    # spending the attempts (VM-MARIA 13/10/2026: 16 attempts and "desktop not available" during a Windows update)
+    if [ "$LAST_ERR" = vm ]; then vmfails=$((vmfails+1)); else vmfails=0; fi
+    if [ $vmwait -gt 0 ] || [ $vmfails -ge 2 ]; then
+      [ $vmwait -eq 0 ] && ev "attempt $att for $U on $B failed after ${d}s (code $ec, $LAST_ERR): $(grep -m1 -E '\[ERROR\]' /tmp/kiosk.log | sed 's/.*\] - //' | cut -c1-150)"
+      vm_wait && { att=$((att-1)); continue; }
+      break
+    fi
     ev "attempt $att for $U on $B failed after ${d}s (code $ec, $LAST_ERR): $(grep -m1 -E '\[ERROR\]' /tmp/kiosk.log | sed 's/.*\] - //' | cut -c1-150)"
     txt="$(err_title $LAST_ERR), $L_P_RETRY"
     sleep 5
