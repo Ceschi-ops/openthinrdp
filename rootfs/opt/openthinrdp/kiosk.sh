@@ -436,6 +436,8 @@ reason(){ case "$1" in
   3) echo "idle timeout" ;; 5) echo "session opened from another device" ;;
   11|12) echo "user disconnect or sign out" ;; 137) echo "killed (watchdog or kill -9)" ;; 147) echo "network lost" ;; *) echo "error $1" ;; esac; }
 deliberate(){ case "$1" in 0|1|2|3|11|12) return 0 ;; *) return 1 ;; esac; }
+# the last error FreeRDP logged in this session, for the event of a drop (" - text", or nothing)
+last_error(){ local l; l=$(grep -a '\[ERROR\]' /tmp/kiosk.log 2>/dev/null | tail -1 | sed 's/.*\] - //' | tr -d '\r' | cut -c1-160); [ -n "$l" ] && echo " - $l"; }
 # The VM of the session (the watchdog writes its address while connected) still accepts RDP, twice 5 s apart: it is
 # not shutting down or restarting.
 vm_alive(){ local a; a=$(cat /tmp/kiosk.vm 2>/dev/null); [ -n "$a" ] || return 1
@@ -501,7 +503,8 @@ session(){
       ui message --icon=warn --heading="$(plain "$L_E_NET")" --text="$(plain "$(printf "$L_P_NONET" "$att" "$max")")" --timeout=5
       continue
     fi
-    : > /tmp/kiosk.log; rm -f /tmp/kiosk.vm
+    # the log of the previous attempt or session stays as kiosk.log.prev: after a drop the next attempt starts at once
+    [ -s /tmp/kiosk.log ] && mv -f /tmp/kiosk.log /tmp/kiosk.log.prev; : > /tmp/kiosk.log; rm -f /tmp/kiosk.vm
     st=$(date +%s)
     B=$(pick_broker $att "$BRHA")
     ( connect "$U" "$P" "$B"; echo $? > /tmp/kiosk.rc ) &
@@ -600,7 +603,7 @@ session(){
         ev "session of $U disconnected after $(duration $d) while its VM still runs (code 1): taken over by another device or disconnected on the server, no reconnection"; return 4
       fi
       if deliberate "$ec"; then ev "session of $U ended after $(duration $d) ($(reason "$ec"), code $ec)"; return 0; fi
-      ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting"; return 3
+      ev "session of $U DROPPED after $(duration $d) ($(reason "$ec"), code $ec): reconnecting$(last_error)"; return 3
     fi
     LAST_EC=$ec; LAST_ERR=$(err_class "$ec")
     ev "attempt $att for $U on $B failed after ${d}s (code $ec, $LAST_ERR): $(grep -m1 -E '\[ERROR\]' /tmp/kiosk.log | sed 's/.*\] - //' | cut -c1-150)"
