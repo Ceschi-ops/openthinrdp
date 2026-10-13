@@ -31,6 +31,19 @@ otr_splash(){ if [ -f "$OTR_LIB/branding/splash.png" ]; then echo "$OTR_LIB/bran
 # event log: one line per event, English, sent to the management folder by report.sh
 ev(){ echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$OTR_EVENTS" 2>/dev/null; }
 
+# The name to connect to with Kerberos. The ticket is for TERMSRV/<server name>, and a name shared by several servers
+# (a round-robin alias for the brokers) or an IP address is nobody's: the Kerberos library then looks the address up
+# by itself and may pick another broker than the one connected to, which cannot open the ticket (KRB_ERROR,
+# SEC_E_INTERNAL_ERROR). So the device picks one of the addresses and uses that server's own name, when its address
+# leads back to it; otherwise the name stays as it is.
+krb_host(){
+  local ip n
+  ip=$(getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | sort -u | shuf -n 1)
+  [ -n "$ip" ] || { echo "$1"; return; }
+  n=$(getent hosts "$ip" 2>/dev/null | awk '{print $2; exit}')
+  if [[ $n == *.* ]] && getent ahostsv4 "$n" 2>/dev/null | awk '{print $1}' | grep -qx "$ip"; then echo "$n"; else echo "$1"; fi
+}
+
 # interface language: English first, so a string missing from a translation stays readable
 otr_lang(){
   . "$OTR/lang/en.sh"

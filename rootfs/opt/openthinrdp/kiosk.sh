@@ -229,7 +229,10 @@ HASUDP=0; xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && HAS
 # connect USER PASSWORD BROKER: one xfreerdp3 run; its exit code is the result
 connect(){
   usb_reclaim; reset_cam; sleep 1
-  local -a o=(/v:"$3" /u:"$1" /p:"$2") extra
+  local srv=$3
+  # Kerberos (negotiate) needs the server's own name, not a shared alias or an address: see krb_host
+  if [ "$(cfg RDP_AUTH)" != ntlm ]; then srv=$(krb_host "$3"); [ "$srv" != "$3" ] && ev "broker $3: connecting to $srv (Kerberos)"; fi
+  local -a o=(/v:"$srv" /u:"$1" /p:"$2") extra
   local v i=1 dev usb mic
   v=$(cfg DOMAIN); [ -n "$v" ] && o+=(/d:"$v")
   v=$(cfg LOAD_BALANCE_INFO); [ -n "$v" ] && o+=(/load-balance-info:"$v")

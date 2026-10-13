@@ -237,5 +237,14 @@ ok "share: a release copied by the manager (project key) is accepted" 'grep -q "
 ok "UPDATE_FROM share needs a management folder" '! check x "$(printf "UPDATE_FROM=share\nMGMT_SHARE=\n")"'
 ok "UPDATE_GITHUB must be owner/repository" '! check x "UPDATE_GITHUB=not a repo"'
 
+# --- Kerberos: a server's own name instead of an alias shared by two brokers, or an address
+printf '%s\n' '10.9.9.1 broker1.example.test broker1' '10.9.9.2 broker2.example.test broker2' \
+  '10.9.9.1 rdbroker.example.test' '10.9.9.2 rdbroker.example.test' >> /etc/hosts
+ok "Kerberos: shared alias becomes one broker's own name" '[[ $(krb_host rdbroker.example.test) =~ ^broker[12]\.example\.test$ ]]'
+ok "Kerberos: both brokers get picked" 'for i in $(seq 1 40); do krb_host rdbroker.example.test; done | sort -u | [ $(wc -l) = 2 ]'
+ok "Kerberos: an address becomes its server's name" '[ "$(krb_host 10.9.9.2)" = broker2.example.test ]'
+ok "Kerberos: an address with no name stays" '[ "$(krb_host 10.9.9.9)" = 10.9.9.9 ]'
+ok "Kerberos: an unknown name stays" '[ "$(krb_host nowhere.example.test)" = nowhere.example.test ]'
+
 echo "passed $PASS, failed $FAIL"
 [ $FAIL = 0 ]
