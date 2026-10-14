@@ -1254,9 +1254,10 @@ $btnSaveDev = New-Button 'BtnSaveExceptions' 130 27
 $btnReloadDev = New-Button 'BtnUndo' 130 27
 $btnClearDev = New-Button 'BtnRemoveExceptions' 160 27
 $btnBrandDev = New-Button 'BtnBranding' 150 27
+$btnRemoteDev = New-Button 'BtnRemoteScreen' 150 27
 $lblDev = New-Object System.Windows.Forms.Label
 $lblDev.Text = Get-Text 'NoteDevice' (Get-Text 'ColUseException')
-Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev, $btnBrandDev) $lblDev 7
+Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev, $btnBrandDev, $btnRemoteDev) $lblDev 7
 $tabDevSettings.Controls.Add($gridDev); $tabDevSettings.Controls.Add($devPanel)
 $split.Panel2.Controls.Add($detail)
 $tabDevices.Controls.Add($split); $tabDevices.Controls.Add($topPanel)
@@ -1633,6 +1634,56 @@ $probList.add_SelectedIndexChanged({
   $probText.Text = (@($probList.SelectedItems[0].Tag.Events | ForEach-Object { '{0:dd/MM HH:mm:ss}  {1,-14} {2}' -f $_.Time, $_.Device, $_.Text }) -join "`r`n")
 })
 $cmbPeriod.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
+# ---------------- remote screen ----------------
+# The screen of the device in the default browser: over SSH (the administrators' key, as otradmin) the device starts
+# x11vnc and the noVNC viewer on 127.0.0.1 with a one-time password (remote-screen.sh); an SSH tunnel brings them to
+# a free local port. Nothing is installed on this PC: the ssh.exe of Windows 10/11 and the browser. The device shows a
+# notice while it lasts and stops by itself after 2 hours; closing the window here ends it.
+function Invoke-DeviceSsh([string]$ip, [string]$command) {
+  $out = & ssh.exe -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "otradmin@$ip" $command 2>&1
+  @{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
+}
+function Start-RemoteScreen($d) {
+  $name = $d.Name; $ip = ([string]$d.S['IP']) -replace '/.*$', ''
+  if (-not (Get-Command ssh.exe -ErrorAction SilentlyContinue)) { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoSshExe'); return }
+  if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoIp'); return }
+  if ($d.S['CFG_SSH'] -ne 'on') { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoSsh'); return }
+  $form.Cursor = 'WaitCursor'; $barText.Text = Get-Text 'RemoteStarting' $name; [System.Windows.Forms.Application]::DoEvents()
+  try {
+    $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start'
+    $pw = if ($r.Text -match '(?m)^PASSWORD=(\S+)') { $Matches[1] } else { '' }
+    if (-not $pw) {
+      $why = if ($r.Text -match '(?m)^ERROR=(.+)$') { $Matches[1] } else { $r.Text.Trim() }
+      Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteFailed' $why); return
+    }
+    # a free local port, then the tunnel to the viewer on the device (127.0.0.1:6080 there)
+    $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l.Start(); $port = $l.LocalEndpoint.Port; $l.Stop()
+    $tunnel = Start-Process ssh.exe -WindowStyle Hidden -PassThru -ArgumentList @('-N', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+      '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-L', "${port}:127.0.0.1:6080", "otradmin@$ip")
+    $ok = $false
+    for ($i = 0; $i -lt 40 -and -not $tunnel.HasExited; $i++) {
+      try { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $port); $c.Close(); $ok = $true; break } catch { Start-Sleep -Milliseconds 250 }
+    }
+    if (-not $ok) {
+      if (-not $tunnel.HasExited) { $tunnel.Kill() }
+      [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop')
+      Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteFailed' (Get-Text 'ErrRemoteTunnel')); return
+    }
+    Start-Process "http://127.0.0.1:$port/vnc_lite.html?password=$pw&scale=true"
+    Add-ChangeLog (Get-Text 'LogRemoteScreen' $name)
+  } finally { $form.Cursor = 'Default'; $barText.Text = '' }
+  # while this window is open the remote screen stays on; closing it ends it on the device too
+  $w = New-Object System.Windows.Forms.Form
+  $w.Text = Get-Text 'RemoteTitle' $name; $w.Font = $fontBase; $w.StartPosition = 'CenterParent'; $w.FormBorderStyle = 'FixedDialog'
+  $w.MinimizeBox = $false; $w.MaximizeBox = $false; $w.ClientSize = New-Object System.Drawing.Size(460, 130)
+  $t = New-Object System.Windows.Forms.Label; $t.Text = Get-Text 'RemoteRunning' $name; $t.SetBounds(14, 12, 432, 70)
+  $b = New-Button 'BtnRemoteEnd' 140 28; $b.Location = New-Object System.Drawing.Point((460 - $b.Width - 14), 90)
+  $b.add_Click({ $w.Close() }); $w.AcceptButton = $b; $w.Controls.AddRange(@($t, $b))
+  [void]$w.ShowDialog($form)
+  if (-not $tunnel.HasExited) { $tunnel.Kill() }
+  [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop')
+}
+
 $btnProbRefresh.add_Click({ Update-ProblemView })
 $tabs.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
 $btnSaveDev.add_Click({ Save-Device })
@@ -1641,6 +1692,7 @@ $btnClearDev.add_Click({ Clear-Device })
 $btnSaveCom.add_Click({ Save-Common })
 $btnReloadCom.add_Click({ Update-CommonGrid })
 $btnBrandDev.add_Click({ if ($script:Selected) { Show-BrandingDialog $script:Selected } })
+$btnRemoteDev.add_Click({ if ($script:Selected) { Start-RemoteScreen $script:Selected } })
 $btnBrandCom.add_Click({ Show-BrandingDialog $null })
 $btnSaveKeys.add_Click({ Save-Keys })
 $btnReloadKeys.add_Click({ Update-KeysView })

@@ -152,6 +152,17 @@
 
   # ---- logo and background picture ----
   BtnBranding            = 'Logo and background...'
+  BtnRemoteScreen        = 'Remote screen...'
+  BtnRemoteEnd           = 'End'
+  RemoteTitle            = 'Remote screen: {0}'
+  RemoteStarting         = 'Remote screen of {0}: starting...'
+  RemoteRunning          = "The screen of {0} is open in your browser. The device shows ""Remote assistance active"" and records the session in its events.`r`n`r`nClose this window to end it (it ends by itself after 2 hours)."
+  ErrRemoteNoSshExe      = 'ssh.exe was not found. Install the "OpenSSH Client" optional feature of Windows (Settings > Apps > Optional features).'
+  ErrRemoteNoIp          = 'The device has not reported an address yet.'
+  ErrRemoteNoSsh         = 'SSH is off on this device. Turn on SSH (common or device settings) and put your public key in the SSH keys tab: the remote screen goes through SSH only.'
+  ErrRemoteFailed        = "The remote screen did not start:`r`n`r`n{0}`r`n`r`nCheck that SSH is on, that your key is in the SSH keys tab and in your user folder (.ssh), and that the device has the latest version."
+  ErrRemoteTunnel        = 'the SSH tunnel to the device could not be opened'
+  LogRemoteScreen        = 'remote screen of {0}'
   BrandTitleCommon       = 'Logo and background: every device'
   BrandTitleDevice       = 'Logo and background: {0}'
   BrandNoteCommon        = 'Every device takes them within 5 minutes, unless it has its own (Devices tab). The logo shows in the dialogs, the background picture behind the sign-in form. The boot screen always keeps the picture of the image (OpenThinRDP, or yours if you build your own). Any picture is scaled down to fit and saved as PNG in config\branding\.'

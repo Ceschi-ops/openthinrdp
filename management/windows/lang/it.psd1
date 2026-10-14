@@ -145,6 +145,17 @@
 
   # ---- logo e immagine di sfondo ----
   BtnBranding            = 'Logo e sfondo...'
+  BtnRemoteScreen        = 'Schermo remoto...'
+  BtnRemoteEnd           = 'Termina'
+  RemoteTitle            = 'Schermo remoto: {0}'
+  RemoteStarting         = 'Schermo remoto di {0}: avvio...'
+  RemoteRunning          = "Lo schermo di {0} è aperto nel browser. Il dispositivo mostra ""Assistenza remota attiva"" e registra la sessione nei suoi eventi.`r`n`r`nChiudere questa finestra per terminarla (termina da sola dopo 2 ore)."
+  ErrRemoteNoSshExe      = 'ssh.exe non trovato. Installare la funzionalità facoltativa "Client OpenSSH" di Windows (Impostazioni > App > Funzionalità facoltative).'
+  ErrRemoteNoIp          = 'Il dispositivo non ha ancora comunicato un indirizzo.'
+  ErrRemoteNoSsh         = 'SSH è spento su questo dispositivo. Accendere SSH (impostazioni comuni o del dispositivo) e mettere la propria chiave pubblica nella scheda Chiavi SSH: lo schermo remoto passa solo da SSH.'
+  ErrRemoteFailed        = "Lo schermo remoto non è partito:`r`n`r`n{0}`r`n`r`nControllare che SSH sia acceso, che la propria chiave sia nella scheda Chiavi SSH e nella propria cartella utente (.ssh), e che il dispositivo abbia l'ultima versione."
+  ErrRemoteTunnel        = 'non è stato possibile aprire il tunnel SSH verso il dispositivo'
+  LogRemoteScreen        = 'schermo remoto di {0}'
   BrandTitleCommon       = 'Logo e sfondo: tutte le postazioni'
   BrandTitleDevice       = 'Logo e sfondo: {0}'
   BrandNoteCommon        = 'Ogni postazione li prende entro 5 minuti, se non ne ha di propri (scheda Postazioni). Il logo compare nelle finestre, l''immagine di sfondo dietro il modulo di accesso. La schermata di avvio tiene sempre l''immagine del sistema (OpenThinRDP, o la vostra se costruite la vostra immagine). Qualsiasi immagine viene rimpicciolita se serve e salvata come PNG in config\branding\.'
