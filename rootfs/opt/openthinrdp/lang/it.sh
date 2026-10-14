@@ -33,6 +33,13 @@ L_P_READY="Pronto"
 L_P_RETRY="nuovo tentativo..."
 L_P_VMWAIT_T="In attesa di Windows"
 L_P_VMWAIT="In attesa da %s min"
+L_UPD_CHECK_T="Controllo aggiornamenti"
+L_UPD_CHECK="Ricerca della versione più recente di OpenThinRDP…"
+L_UPD_OFFER_T="Nuova versione disponibile"
+L_UPD_OFFER="Questa postazione ha la versione %s. È disponibile la versione %s: scaricarla adesso oppure usare quella attuale? Senza una scelta entro 30 secondi viene scaricata la nuova."
+L_UPD_GET="Scarica e usa la %s"
+L_UPD_KEEP="Usa la %s"
+L_UPD_INSTALL="Installazione della nuova versione: la schermata riparte da sola appena finito."
 L_P_NONET="Controllare il cavo di rete.\nNuovo tentativo tra 5 secondi (%s di %s)"
 
 # errori

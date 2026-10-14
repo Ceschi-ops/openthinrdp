@@ -78,7 +78,9 @@ ARM, PC senza UEFI.
    su una chiavetta con qualsiasi programma che scriva immagini (Rufus in modalità DD, balenaEtcher, `dd`).
 2. Avviate il PC dalla chiavetta. Il menu fa partire da solo il **sistema live** dopo 10 secondi: gira dalla
    chiavetta e **non scrive mai sul disco**.
-3. Si apre la configurazione: impostate il broker (o il nome di un PC Windows) e il dominio, salvate, accedete.
+3. Con la rete, se su GitHub c'è una versione più nuova di quella della ISO chiede se scaricarla o usare quella
+   della ISO (senza risposta in 30 secondi scarica la nuova): la ISO non serve riscaricarla a ogni versione. Poi si
+   apre la configurazione: impostate il broker (o il nome di un PC Windows) e il dominio, salvate, accedete.
 4. Vi piace? Riavviate e scegliete **Install**: mostra il disco che sta per cancellare e chiede conferma prima
    di scrivere qualsiasi cosa (confermate per proseguire), poi circa tre minuti. Installa sul **primo disco interno**, mai
    su un disco USB (nemmeno la chiavetta). Per le installazioni in serie, *Unattended install* salta la domanda.

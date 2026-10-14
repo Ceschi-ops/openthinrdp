@@ -17,6 +17,8 @@ PROJECT_KEY=$OTR/keys/openthinrdp-release.asc
 SITE_KEY=$OTR_ETC/update-key.asc
 W=$OTR_LIB/update
 ST=$W/status
+# a device still on the version of its image asks before installing (kiosk.sh first_update): "<new> <current>"
+OFFER=/run/openthinrdp-update-offer
 mkdir -p $W; chmod 700 $W
 
 if [ "$1" = install ]; then
@@ -85,7 +87,8 @@ case "$1" in
     BASE=${OTR_UPDATE_BASE_URL:-https://github.com/$REPO/releases/latest/download}
     # at most every 3 hours once GitHub answered (report.sh runs every 5 minutes: without network, e.g. right
     # after boot, it simply tries again at the next run)
-    [ -f $W/github-checked ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 10800 ] && exit 0 ;;
+    # (an open offer is not held back: the answer from the device, or the 10 minutes, are waited for)
+    [ -f $W/github-checked ] && [ ! -f $OFFER ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 10800 ] && exit 0 ;;
   *) echo "usage: $0 check <mounted folder> | check-github | install <version>"; exit 2 ;;
 esac
 [ -s "${KEYS[0]}" ] || [ -s "${KEYS[1]:-}" ] || { echo "updates disabled: no signing key" > $ST; exit 0; }
@@ -94,6 +97,8 @@ rm -f $W/LATEST.txt $W/LATEST.txt.sig
 get LATEST.txt $W/LATEST.txt; rc=$?
 # GitHub answered (also "no release yet"): next question in 3 hours. No answer: at the next run
 [ $SRC = github ] && { [ $rc = 0 ] || [ $rc = 3 ]; } && touch $W/github-checked
+# the kiosk waits for this at the first start (an answer, whatever it is)
+{ [ $rc = 0 ] || [ $rc = 3 ]; } && touch /run/openthinrdp-update-checked
 if [ $rc != 0 ]; then
   echo "no update found ($SRC$([ $SRC = github ] && echo " $REPO$([ $rc = 1 ] && echo ', not reachable')"), $(date '+%d/%m %H:%M'))" > $ST; exit 0; fi
 get LATEST.txt.sig $W/LATEST.txt.sig || : > $W/LATEST.txt.sig
@@ -108,20 +113,33 @@ H=$(sed -n 's/^sha256=//p' $W/LATEST.txt | tr -d '\r' | head -1)
 { [[ $V =~ ^[0-9A-Za-z._-]+$ ]] && [[ $F =~ ^[0-9A-Za-z._-]+\.tar\.gz$ ]] && [[ $H =~ ^[0-9a-f]{64}$ ]]; } || { echo "IGNORED: LATEST.txt not valid" > $ST; exit 0; }
 # the version installed: the last update, or the image itself when no update was ever installed
 CUR=$(cat "$OTR_LIB/update-version" 2>/dev/null || cat "$OTR/VERSION" 2>/dev/null)
-[ "$V" = "$CUR" ] && { echo "up to date: $V ($SRC, $(date '+%d/%m %H:%M'))" > $ST; exit 0; }
+[ "$V" = "$CUR" ] && { rm -f $OFFER; echo "up to date: $V ($SRC, $(date '+%d/%m %H:%M'))" > $ST; exit 0; }
 if [ -n "$CUR" ] && [ "$(printf '%s\n%s\n' "$CUR" "$V" | sort -V | tail -1)" = "$CUR" ]; then
-  echo "up to date: $CUR ($SRC has $V, older: ignored)" > $ST; exit 0; fi
+  rm -f $OFFER; echo "up to date: $CUR ($SRC has $V, older: ignored)" > $ST; exit 0; fi
 N=$(cat "$W/attempts-$V" 2>/dev/null || echo 0)
 [ "$N" -ge 3 ] && { echo "ERROR $V: 3 failed attempts, not retrying (log $OTR_LOG/update-$V.log)" > $ST; exit 0; }
 # at least 10 minutes between attempts: every event line starts report.sh, and without this pause the 3
 # attempts burned out in seconds (e.g. on a freshly installed device with apt busy)
 if [ "$N" -ge 1 ] && [ $(( $(date +%s) - $(stat -c %Y "$W/attempts-$V" 2>/dev/null || echo 0) )) -lt 600 ]; then exit 0; fi
-get "$F" "$W/$F.part" || { rm -f "$W/$F.part"; echo "ERROR $V: download of $F failed ($SRC)" > $ST; exit 0; }
-if [ "$(sha256sum < "$W/$F.part" | cut -c1-64)" != "$H" ]; then
-  rm -f "$W/$F.part"; echo "ERROR $V: package hash differs from LATEST.txt (incomplete copy?)" > $ST; exit 0; fi
-mv -f "$W/$F.part" "$W/$F"
+# already here and whole (downloaded while waiting for the choice on the device): not again
+if [ ! -f "$W/$F" ] || [ "$(sha256sum < "$W/$F" | cut -c1-64)" != "$H" ]; then
+  get "$F" "$W/$F.part" || { rm -f "$W/$F.part"; echo "ERROR $V: download of $F failed ($SRC)" > $ST; exit 0; }
+  if [ "$(sha256sum < "$W/$F.part" | cut -c1-64)" != "$H" ]; then
+    rm -f "$W/$F.part"; echo "ERROR $V: package hash differs from LATEST.txt (incomplete copy?)" > $ST; exit 0; fi
+  mv -f "$W/$F.part" "$W/$F"
+fi
 rm -rf "$W/pkg-$V"; mkdir -p "$W/pkg-$V"
 tar -xzf "$W/$F" -C "$W/pkg-$V" || { echo "ERROR $V: package cannot be extracted" > $ST; exit 0; }
+# A device still on the version of its image (live system, or installed and never updated) asks first: the kiosk
+# shows "download this version or use the image's" before the sign-in (kiosk.sh first_update). The answer lasts
+# until the next start; nobody answering (no screen, unattended install) = installed after 10 minutes.
+if [ ! -f "$OTR_LIB/update-version" ] && [ ! -f /tmp/openthinrdp-update-accepted ]; then
+  [ -f /tmp/openthinrdp-update-declined ] && { echo "kept $CUR by choice on the device ($V available, $SRC)" > $ST; exit 0; }
+  [ -f $OFFER ] || { printf '%s %s\n' "$V" "$CUR" > $OFFER; chmod 644 $OFFER; }
+  if [ $(( $(date +%s) - $(stat -c %Y $OFFER) )) -lt 600 ]; then
+    echo "found $V ($SRC): waiting for the choice on the device" > $ST; exit 0; fi
+fi
+rm -f $OFFER
 echo $((N + 1)) > "$W/attempts-$V"
 echo "found $V ($SRC): install started" > $ST
 systemd-run --unit=openthinrdp-update --collect --no-block --property=Nice=10 "$OTR/auto-update.sh" install "$V" >/dev/null 2>&1

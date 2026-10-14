@@ -719,6 +719,45 @@ ui(){ local m=$1; shift; python3 "$OTR/ui.py" "$m" --title="$TITLE" --lang="$(cf
 # plain text for ui.py: no Pango tags
 plain(){ printf '%s' "$1" | sed 's/<[^>]*>//g'; }
 
+# --- started from an image: the latest version first ---------------------------------------------
+# A device still on the version of the image it started from (live system, or installed and never updated) hears
+# from the update source before anything opens: with a newer version it asks whether to download it or to use the
+# image's (no answer in 30 s = the newer one, so unattended installs end up current). auto-update.sh, started by
+# report.sh at the "kiosk started" event, prepares the package and waits for the answer; the install restarts
+# this kiosk. The ISO does not need rebuilding for every release.
+first_update(){
+  local i o v cur rc
+  [ -f "$OTR_LIB/update-version" ] || [ "$(cfg UPDATE_FROM)" = off ] && return 0
+  [ -f /tmp/openthinrdp-update-declined ] || [ -f /tmp/openthinrdp-update-accepted ] && return 0
+  . "$OTR/lib/netif.sh"
+  # a network within 20 s, otherwise the usual update in the background later
+  for i in $(seq 1 40); do ip -4 -o addr show dev "$(main_nic)" 2>/dev/null | grep -q inet && break; sleep 0.5; done
+  ip -4 -o addr show dev "$(main_nic)" 2>/dev/null | grep -q inet || return 0
+  # the answer of the update source: 45 s at most
+  if [ ! -f /run/openthinrdp-update-offer ] && [ ! -f /run/openthinrdp-update-checked ]; then
+    { echo "15"; echo "# $L_UPD_CHECK"
+      for i in $(seq 1 90); do [ -f /run/openthinrdp-update-offer ] || [ -f /run/openthinrdp-update-checked ] && break; sleep 0.5; done
+      echo "100"; } | ui message --progress --icon=busy --heading="$(plain "$L_UPD_CHECK_T")" --text="$(plain "$L_UPD_CHECK")"
+  fi
+  o=$(cat /run/openthinrdp-update-offer 2>/dev/null); [ -n "$o" ] || return 0
+  v=${o%% *}; cur=${o#* }
+  # Enter = the newer version; 70 = 30 s without an answer, also the newer one
+  ui message --icon=update --heading="$(plain "$L_UPD_OFFER_T")" --text="$(plain "$(printf "$L_UPD_OFFER" "$cur" "$v")")" \
+     --timeout=30 --button="$(printf "$L_UPD_GET" "$v"):1" --button="$(printf "$L_UPD_KEEP" "$cur"):2" --primary=1 --default=1
+  rc=$?
+  if [ $rc = 2 ]; then
+    : > /tmp/openthinrdp-update-declined; ev "software update $v declined on the device: running $cur, the image's"; return 0
+  fi
+  # the event starts report.sh, which installs it; the install restarts this kiosk with the new version
+  : > /tmp/openthinrdp-update-accepted; ev "software update $v chosen on the device"
+  { echo "10"; echo "# $(printf "$L_UPD_GET" "$v")"
+    for i in $(seq 1 120); do systemctl is-active -q openthinrdp-update.service && break; sleep 0.5; done
+    echo "100"; } | ui message --progress --icon=update --heading="$(plain "$L_UPDATE_RUNNING")" --text="$(plain "$(printf "$L_UPD_GET" "$v")")"
+  ui message --update --icon=update --heading="$(plain "$L_UPDATE_RUNNING")" --text="$(plain "$L_UPD_INSTALL") (%p%)"
+  wait_update
+}
+first_update
+
 # --- main loop ----------------------------------------------------------------------------------
 # first start: no broker yet -> the settings dialog opens by itself (it is the setup of a new device).
 # A new device takes its name from the MAC address in the boot service, which runs alongside: wait for it (20 s
