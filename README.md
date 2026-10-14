@@ -65,9 +65,24 @@ numbers: [docs/udp.md](docs/udp.md#on-a-lossy-line).
 - You have **x86-64 PCs or thin clients with UEFI** (Secure Boot works) and want to keep them useful without a
   licence per device.
 - You want to **try RDP over UDP** on real clients, or help bring it into FreeRDP.
+- You need **screens that only show a web page**: hall TVs, dashboards, info points, production boards. The same
+  system, no sign-in, the page chosen centrally ([see below](#screens-that-only-show-a-web-page)), so one image
+  covers the whole fleet.
 
 Not for you (yet): Citrix, VMware/Omnissa Horizon and other protocols (OpenThinRDP does RDP only), ARM devices,
 PCs without UEFI.
+
+## Requirements
+
+| | Minimum |
+|---|---|
+| Device | any 64-bit x86 PC or thin client with **UEFI** (Secure Boot supported, not required): old office PCs are fine |
+| Memory | 2 GB of RAM |
+| Storage | 8 GB to install it (eMMC, SSD or disk); nothing to try it live from a USB stick |
+| Network | cable, Wi-Fi (WPA2 personal) or a USB Ethernet adapter |
+| Windows side | an RD Connection Broker (RDS session hosts or a Hyper-V VDI collection), or any Windows PC or server that accepts Remote Desktop (Pro, Enterprise, Server) |
+
+Tested hardware and firmware settings: [docs/hardware.md](docs/hardware.md).
 
 ## Try it in five minutes
 
@@ -82,8 +97,7 @@ PCs without UEFI.
    anything (answer *Yes* to go on), then about three minutes. It installs on the **first internal disk**, never
    a USB disk (not even the installation stick). For rollouts, *Unattended install* skips the question.
 
-Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installation. Tested hardware:
-[docs/hardware.md](docs/hardware.md).
+What the device needs: [Requirements](#requirements).
 
 ## What it does
 
@@ -123,7 +137,8 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
   account.
 - **Several monitors** become one remote desktop spanning all of them (`MULTIMON`).
 - **Power schedule and Wake-on-LAN**, screen always on, monitors switched on late handled.
-- **Web button**: a web app, free browsing, or a full screen kiosk page, with Chromium.
+- **Web button**: a web app, free browsing, or a full screen kiosk page, with Chromium
+  ([screens that only show a web page](#screens-that-only-show-a-web-page)).
 - English and Italian interface; more languages are one file each.
 
 <p align="center">
@@ -136,6 +151,26 @@ Needs a 64-bit x86 PC with UEFI, 2 GB of RAM and 8 GB of disk for the installati
 <img src="docs/screenshots/end-of-session.png" alt="End of session with a countdown" width="32%">
 <img src="docs/screenshots/update.png" alt="Software update in progress" width="32%">
 </p>
+
+## Screens that only show a web page
+
+The same image runs the screens that never need a Windows desktop: a TV in the hall, a dashboard in the
+office, an info point, a board in production. With `WEB_BUTTON=kiosk` and `KIOSK_URL`:
+
+- At power on the page opens **full screen in Chromium**: no sign-in, no desktop, no menus, no address bar.
+- The page is set **centrally**, for every screen (`config\common.conf`), a group or a single one
+  (`config\<hostname>.conf`) in the management folder. Change it and each screen picks it up within a few
+  minutes and reopens the page, without a restart.
+- It **reloads itself** every `KIOSK_RELOAD_MIN` minutes when nobody is touching it, so a page that went to an
+  error after a network glitch comes back by itself.
+- The **power schedule** switches the screens on and off (`POWER_ON_TIME`, `POWER_OFF_TIME`, `POWER_ON_DAYS`),
+  on cable or Wi-Fi; status and events of every screen are in the management folder like any other device.
+- Cookies and saved sign-ins stay across restarts. For dashboards behind a login, a link with an access token
+  (offered by most dashboard tools) avoids signing in on the screen at all.
+- Someone at the screen can still reach the sign-in form: it shows for 5 seconds before the page, and
+  Ctrl+Shift+W closes the page. The settings can be locked with a PIN.
+
+Settings: [docs/configuration.md](docs/configuration.md#web-button-and-kiosk-page).
 
 ## Why it is built this way
 
