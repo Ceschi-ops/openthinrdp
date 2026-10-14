@@ -68,9 +68,24 @@ Per arrivarci è servita una correzione al trasporto UDP di FreeRDP, che abbiamo
 - Avete **PC o thin client x86-64 con UEFI** (Secure Boot funziona) e volete tenerli in servizio senza una licenza
   per postazione.
 - Volete **provare RDP in UDP** su client veri, o aiutarlo a entrare in FreeRDP.
+- Vi servono **schermi che mostrano solo una pagina web**: TV nella hall, dashboard, punti informativi, tabelloni
+  di produzione. Lo stesso sistema, senza accesso, con la pagina decisa centralmente
+  ([vedi sotto](#schermi-che-mostrano-solo-una-pagina-web)): una sola immagine per tutto il parco macchine.
 
 Non (ancora) per voi: Citrix, VMware/Omnissa Horizon e altri protocolli (OpenThinRDP fa solo RDP), dispositivi
 ARM, PC senza UEFI.
+
+## Requisiti
+
+| | Minimo |
+|---|---|
+| Dispositivo | qualsiasi PC o thin client x86 a 64 bit con **UEFI** (Secure Boot supportato, non obbligatorio): vanno bene anche i vecchi PC d'ufficio |
+| Memoria | 2 GB di RAM |
+| Spazio | 8 GB per installarlo (eMMC, SSD o disco); nessuno per provarlo in live da una chiavetta |
+| Rete | cavo, Wi-Fi (WPA2 personale) o un adattatore Ethernet USB |
+| Lato Windows | un broker RDS (host di sessione o raccolta VDI su Hyper-V), oppure qualsiasi PC o server Windows che accetti il Desktop remoto (Pro, Enterprise, Server) |
+
+Hardware provato e impostazioni del firmware: [docs/hardware.md](docs/hardware.md).
 
 ## Provarlo in cinque minuti
 
@@ -85,8 +100,7 @@ ARM, PC senza UEFI.
    di scrivere qualsiasi cosa (confermate per proseguire), poi circa tre minuti. Installa sul **primo disco interno**, mai
    su un disco USB (nemmeno la chiavetta). Per le installazioni in serie, *Unattended install* salta la domanda.
 
-Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazione. Hardware provato:
-[docs/hardware.md](docs/hardware.md).
+Cosa serve al dispositivo: [Requisiti](#requisiti).
 
 ## Cosa fa
 
@@ -126,7 +140,8 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
   account senza password.
 - **Più monitor** diventano un unico desktop remoto su tutti (`MULTIMON`).
 - **Orari di accensione e spegnimento e Wake-on-LAN**, schermo sempre acceso, monitor accesi in ritardo gestiti.
-- **Pulsante web**: un'applicazione web, navigazione libera o una pagina kiosk a schermo intero, con Chromium.
+- **Pulsante web**: un'applicazione web, navigazione libera o una pagina kiosk a schermo intero, con Chromium
+  ([schermi che mostrano solo una pagina web](#schermi-che-mostrano-solo-una-pagina-web)).
 - Interfaccia in italiano e inglese; altre lingue sono un file ciascuna.
 
 <p align="center">
@@ -139,6 +154,27 @@ Serve un PC x86 a 64 bit con UEFI, 2 GB di RAM e 8 GB di disco per l'installazio
 <img src="docs/screenshots/end-of-session.png" alt="Fine sessione con conto alla rovescia" width="32%">
 <img src="docs/screenshots/update.png" alt="Aggiornamento in corso" width="32%">
 </p>
+
+## Schermi che mostrano solo una pagina web
+
+La stessa immagine fa funzionare gli schermi che non hanno mai bisogno di un desktop Windows: una TV nella hall,
+una dashboard in ufficio, un punto informativo, un tabellone in produzione. Con `WEB_BUTTON=kiosk` e `KIOSK_URL`:
+
+- All'accensione la pagina si apre **a schermo intero in Chromium**: nessun accesso, nessun desktop, nessun menu,
+  nessuna barra degli indirizzi.
+- La pagina si decide **centralmente**, per tutti gli schermi (`config\common.conf`), per un gruppo o per uno solo
+  (`config\<hostname>.conf`) nella cartella di gestione. Cambiandola, ogni schermo la prende entro pochi minuti e
+  riapre la pagina, senza riavvio.
+- **Si ricarica da sola** ogni `KIOSK_RELOAD_MIN` minuti quando nessuno la sta toccando, così una pagina finita in
+  errore dopo un problema di rete torna da sola.
+- L'**orario di accensione** accende e spegne gli schermi (`POWER_ON_TIME`, `POWER_OFF_TIME`, `POWER_ON_DAYS`), via
+  cavo o Wi-Fi; stato ed eventi di ogni schermo sono nella cartella di gestione come per ogni altro dispositivo.
+- Cookie e accessi salvati restano anche dopo i riavvii. Per le dashboard con login, un link con gettone di accesso
+  (lo offre la maggior parte degli strumenti per dashboard) evita del tutto di accedere dallo schermo.
+- Chi è davanti allo schermo può comunque arrivare al modulo di accesso: compare per 5 secondi prima della pagina,
+  e Ctrl+Shift+W chiude la pagina. Le impostazioni si possono bloccare con un PIN.
+
+Impostazioni: [docs/configuration.md](docs/configuration.md#web-button-and-kiosk-page).
 
 ## Perché è fatto così
 
