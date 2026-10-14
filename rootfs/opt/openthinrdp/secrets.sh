@@ -22,4 +22,6 @@ if [ -n "$lost" ]; then
   for n in $lost; do mv -f "$OTR_SEALED/$n.cred" "$OTR_SEALED/$n.cred.unreadable"; done
   ev "secrets NOT readable from the TPM:$lost (TPM cleared or replaced, or the disk moved to another device): set them again"
 fi
+# sshd starts after this service: it must already know where the host keys are (in memory when in the TPM)
+secret_sshd_hostkeys
 exit 0

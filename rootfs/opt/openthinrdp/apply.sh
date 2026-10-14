@@ -133,9 +133,9 @@ if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
     fi
   fi
 fi
-HK=""; for k in ed25519 ecdsa rsa; do secret_sealed ssh_host_${k}_key && HK="${HK}HostKey $(secret_path ssh_host_${k}_key)\n"; done
-printf "${HK}PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers otradmin\n" "$OTR_ETC/authorized_keys" > $S.new
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers otradmin\n' "$OTR_ETC/authorized_keys" > $S.new
 SC=0; cmp -s $S.new $S || { mv -f $S.new $S; SC=1; }; rm -f $S.new
+secret_sshd_hostkeys && SC=1
 if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
   systemctl enable --now --no-block ssh >/dev/null 2>&1; [ $SC = 1 ] && systemctl try-reload-or-restart ssh >/dev/null 2>&1
 else systemctl disable --now --no-block ssh >/dev/null 2>&1; fi

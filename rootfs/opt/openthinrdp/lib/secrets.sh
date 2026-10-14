@@ -52,6 +52,18 @@ secret_store(){
   install -d "$(dirname "$plain")"; chmod 600 "$f"; mv -f "$f" "$plain"; rm -f "$OTR_SEALED/$n.cred"
 }
 
+# secret_sshd_hostkeys: sshd reads the host keys kept in the TPM from memory, through a drop-in that must be in place
+# before ssh starts (secrets.sh at boot, apply.sh when it creates new keys). 0 = the drop-in changed
+secret_sshd_hostkeys(){
+  local f=/etc/ssh/sshd_config.d/00-openthinrdp-hostkeys.conf k l=""
+  for k in ed25519 ecdsa rsa; do secret_sealed ssh_host_${k}_key && l="${l}HostKey $(secret_path ssh_host_${k}_key)\n"; done
+  if [ -z "$l" ]; then [ -e "$f" ] || return 1; rm -f "$f"; return 0; fi
+  mkdir -p "$(dirname "$f")"
+  printf "# OpenThinRDP (lib/secrets.sh): the host keys are kept in the TPM and read from memory\n$l" > "$f.new"
+  if cmp -s "$f.new" "$f"; then rm -f "$f.new"; return 1; fi
+  mv -f "$f.new" "$f"
+}
+
 # secret_mode: what the status file reports
 secret_mode(){
   local n

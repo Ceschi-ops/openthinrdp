@@ -269,6 +269,10 @@ rm -rf /run/openthinrdp
 ok "secrets: at the next start out of the TPM again" '$OTR/secrets.sh && grep -qx password=Secret1 /run/openthinrdp/secrets/smb.cred'
 printf 'username=svc\npassword=Secret2\n' > /tmp/new.cred; secret_store smb.cred /tmp/new.cred
 ok "secrets: a new value goes into the TPM, never to the plain file" '[ ! -e /tmp/new.cred ] && [ ! -e $OTR_ETC/smb.cred ] && grep -qx password=Secret2 "$(secret_path smb.cred)"'
+mkdir -p /etc/ssh/sshd_config.d; printf 'fake host key\n' > /tmp/hk; secret_store ssh_host_ed25519_key /tmp/hk
+ok "secrets: sshd is pointed at the host key in memory before it starts" '$OTR/secrets.sh && grep -qx "HostKey /run/openthinrdp/secrets/ssh_host_ed25519_key" /etc/ssh/sshd_config.d/00-openthinrdp-hostkeys.conf && [ -s /run/openthinrdp/secrets/ssh_host_ed25519_key ]'
+rm -f $OTR_SEALED/ssh_host_ed25519_key.cred
+ok "secrets: no host key in the TPM, no drop-in" '$OTR/secrets.sh && [ ! -e /etc/ssh/sshd_config.d/00-openthinrdp-hostkeys.conf ]'
 rm -f /tmp/faketpm; rm -rf /run/openthinrdp; : > $OTR_EVENTS
 ok "secrets: a TPM that does not give them back (cleared, replaced) is reported once" '$OTR/secrets.sh && [ -f $OTR_SEALED/smb.cred.cred.unreadable ] && [ ! -f $OTR_SEALED/smb.cred.cred ] && grep -q "NOT readable from the TPM: smb.cred" $OTR_EVENTS && $OTR/secrets.sh && [ "$(grep -c "NOT readable" $OTR_EVENTS)" = 1 ]'
 rm -rf $OTR_SEALED /run/openthinrdp /usr/local/bin/systemd-analyze /usr/local/bin/systemd-creds
