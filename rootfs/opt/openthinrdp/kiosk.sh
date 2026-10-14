@@ -271,6 +271,10 @@ connect(){
   card=$(usb_sound_card p "$usb") && snd=/sound:sys:alsa,dev:plughw:CARD="$card"
   [ $HASCAM = 1 ] && o+=(/dvc:rdpecam)
   read -ra extra <<< "$(cfg RDP_EXTRA)"
+  # the USB devices passed whole wait for the desktop (usb-hold.sh): a device that hangs while Windows starts it
+  # must not hold up the session's display. The progress loop releases them 15 s after the window is up.
+  local held; held=$(echo "$usb" | sed -n 's/.*,id:\([^,]*\).*/\1/p' | tr '#' ' ')
+  [ -n "$held" ] && sudo -n "$OTR/usb-hold.sh" hold $held >/dev/null 2>&1
   xfreerdp3 "${o[@]}" /gdi:hw /bpp:32 /dynamic-resolution /f /smartcard /drive:hotplug,'*' \
     "$snd" /clipboard "${extra[@]}" > /tmp/kiosk.log 2>&1
 }
@@ -553,7 +557,8 @@ session(){
           # still on the broker after 5 s: it is preparing the virtual machine, usually starting it
           if [ $s1 -eq 1 ] && [ $s2 -eq 0 ] && [ -z "$s1w" ] && [ $((n - s1n)) -ge 12 ]; then echo "45"; echo "# $L_P_VMSTART"; s1w=1; fi
           if [ $s2 -eq 0 ] && [ -n "$first" ] && echo "$ips" | grep -qvx "$first"; then echo "65"; echo "# $L_P_STARTING"; s2=1; fi
-          if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then pointer_show; echo "# $L_P_READY"; echo "100"; s3=1; fi
+          if xdotool search --onlyvisible --pid "$fp" >/dev/null 2>&1; then pointer_show; echo "# $L_P_READY"; echo "100"; s3=1
+            ( sleep 15; sudo -n "$OTR/usb-hold.sh" release >/dev/null 2>&1 ) & echo $! > /tmp/kiosk.usbrel; fi
         fi 2>/dev/null
         sleep 0.4; n=$((n + 1))
         # Watchdog, every ~5 s: FreeRDP alive but without any TCP connection for 60 s = stuck. Seen with USB
@@ -582,6 +587,9 @@ session(){
           --title="$TITLE" --text="$L_P_TITLE" 2>/dev/null; fi
     wait $xp 2>/dev/null
     kill $wp 2>/dev/null
+    # ended before the USB devices came back: back now (a pending release must not hit the next connection)
+    kill "$(cat /tmp/kiosk.usbrel 2>/dev/null)" 2>/dev/null; rm -f /tmp/kiosk.usbrel
+    [ -s /run/openthinrdp-usb-held ] && sudo -n "$OTR/usb-hold.sh" release >/dev/null 2>&1
     pointer_idle_hide
     d=$(( $(date +%s) - st )); ec=$(cat /tmp/kiosk.rc 2>/dev/null)
     SESS_SECS=$d

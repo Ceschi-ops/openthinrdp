@@ -3,6 +3,17 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **A USB device that hangs no longer ends the session** ([#10](https://github.com/OpenThinRdp/openthinrdp/issues/10)).
+  Windows started the devices passed whole together with the display of the session; a USB stick that hung at
+  start held Plug and Play for 60 s and Windows closed the session ("display driver not ready", reported to
+  FreeRDP as [#13719](https://github.com/FreeRDP/FreeRDP/issues/13719)), and at the second time the kiosk took it
+  for a session taken over and switched the device off. The devices passed whole now arrive 15 s after the
+  desktop: their hub port is off while the session starts (`usb-hold.sh`), then on again, so for Windows they are
+  plugged in with the session running and a device that hangs fails on its own. If anything goes wrong the ports
+  come back on by themselves after 2 minutes.
+
 ## 0.1.8 (2026-10-14)
 
 - **A USB network adapter works as soon as it is plugged in** ([#8](https://github.com/OpenThinRdp/openthinrdp/issues/8)).
