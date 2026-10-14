@@ -75,7 +75,9 @@ PCs without UEFI.
    to a USB stick with any raw image writer (Rufus in DD mode, balenaEtcher, `dd`).
 2. Boot the PC from the stick. The menu starts the **live system** by itself after 10 seconds: it runs from the
    stick and **never writes to the disk**.
-3. The settings dialog opens: set the broker (or the name of a Windows PC) and the domain, save, sign in.
+3. With a network, when GitHub has a newer version than the ISO it asks whether to download it or to use the
+   ISO's (no answer in 30 seconds: the newer one), so the ISO does not need downloading again for every release.
+   Then the settings dialog opens: set the broker (or the name of a Windows PC) and the domain, save, sign in.
 4. Like it? Restart and choose **Install**: it shows the disk it is going to erase and asks before writing
    anything (answer *Yes* to go on), then about three minutes. It installs on the **first internal disk**, never
    a USB disk (not even the installation stick). For rollouts, *Unattended install* skips the question.

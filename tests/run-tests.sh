@@ -223,7 +223,14 @@ ok "github: the site key is not enough" 'grep -q "^IGNORED: invalid signature" $
 release 0.0.9 p@example.invalid /tmp/otr-release; gh
 ok "github: older than the image (no update installed yet) is ignored" 'grep -q "older: ignored" $U/status'
 release 0.2.0 p@example.invalid /tmp/otr-release; gh
-ok "github: a release signed by the project key is taken" 'grep -q "^found 0.2.0 (github)" $U/status && [ -f $U/pkg-0.2.0/install.sh ]'
+# still on the version of the image (no update-version): prepared, then the choice on the device first
+ok "first start: a newer release is offered, not installed" 'grep -q "^found 0.2.0 (github): waiting for the choice" $U/status && [ "$(cat /run/openthinrdp-update-offer)" = "0.2.0 0.1.0" ] && [ -f $U/pkg-0.2.0/install.sh ] && [ ! -f $U/attempts-0.2.0 ] && [ -f /run/openthinrdp-update-checked ]'
+touch /tmp/openthinrdp-update-declined; $OTR/auto-update.sh check-github
+ok "first start: declined on the device, the image's version stays" 'grep -q "^kept 0.1.0 by choice" $U/status && [ ! -f $U/attempts-0.2.0 ]'
+rm -f /tmp/openthinrdp-update-declined; touch -d "-11 min" /run/openthinrdp-update-offer; $OTR/auto-update.sh check-github
+ok "first start: nobody answers in 10 minutes, installed" 'grep -q "^found 0.2.0 (github): install started" $U/status && [ ! -f /run/openthinrdp-update-offer ]'
+rm -f $U/attempts-0.2.0; touch /tmp/openthinrdp-update-accepted; gh
+ok "github: a release signed by the project key is taken" 'grep -q "^found 0.2.0 (github): install started" $U/status && [ -f $U/pkg-0.2.0/install.sh ]'
 echo x > $U/status; $OTR/auto-update.sh check-github
 ok "github: asked again only after 3 hours" '[ "$(cat $U/status)" = x ]'
 rm -rf /tmp/otr-release; gh

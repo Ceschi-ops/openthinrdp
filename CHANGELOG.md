@@ -5,6 +5,12 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **Started from the ISO, the latest version first** ([#12](https://github.com/OpenThinRdp/openthinrdp/issues/12)).
+  A device still on the version of its image (live system, or installed and never updated) checks for updates
+  before the kiosk opens and, when there is a newer version, asks *Download and use 0.1.x* or *Use 0.1.y* (no
+  answer in 30 s: the newer one, so unattended installs end up current). It used to update in the background a few
+  seconds after the kiosk had opened, and restart it. The ISO is no longer rebuilt for every release: a release
+  is the signed update package plus the ISO already published, a new ISO only when the base system changes.
 - **A USB device that hangs no longer ends the session** ([#10](https://github.com/OpenThinRdp/openthinrdp/issues/10)).
   Windows started the devices passed whole together with the display of the session; a USB stick that hung at
   start held Plug and Play for 60 s and Windows closed the session ("display driver not ready", reported to
