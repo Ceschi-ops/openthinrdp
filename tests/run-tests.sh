@@ -265,8 +265,8 @@ ok "secrets: without a TPM the plain file stays" '$OTR/secrets.sh && [ -s $OTR_E
 touch /tmp/faketpm; : > $OTR_EVENTS
 ok "secrets: with a TPM the plain file moves into it" '$OTR/secrets.sh && [ ! -e $OTR_ETC/smb.cred ] && [ -s $OTR_SEALED/smb.cred.cred ] && ! grep -q Secret1 $OTR_SEALED/smb.cred.cred && grep -q "secrets moved into the TPM: smb.cred" $OTR_EVENTS'
 ok "secrets: read back from memory" '[ "$(secret_path smb.cred)" = /run/openthinrdp/secrets/smb.cred ] && grep -qx password=Secret1 "$(secret_path smb.cred)" && [ "$(stat -c %a /run/openthinrdp/secrets/smb.cred)" = 600 ] && [ "$(secret_mode)" = tpm ]'
-rm -rf /run/openthinrdp
-ok "secrets: at the next start out of the TPM again" '$OTR/secrets.sh && grep -qx password=Secret1 /run/openthinrdp/secrets/smb.cred'
+rm -rf /run/openthinrdp; printf 'username=x\npassword=stray\n' > $OTR_ETC/smb.cred
+ok "secrets: at the next start out of the TPM again, a stray plain copy removed" '$OTR/secrets.sh && grep -qx password=Secret1 /run/openthinrdp/secrets/smb.cred && [ ! -e $OTR_ETC/smb.cred ]'
 printf 'username=svc\npassword=Secret2\n' > /tmp/new.cred; secret_store smb.cred /tmp/new.cred
 ok "secrets: a new value goes into the TPM, never to the plain file" '[ ! -e /tmp/new.cred ] && [ ! -e $OTR_ETC/smb.cred ] && grep -qx password=Secret2 "$(secret_path smb.cred)"'
 mkdir -p /etc/ssh/sshd_config.d; printf 'fake host key\n' > /tmp/hk; secret_store ssh_host_ed25519_key /tmp/hk

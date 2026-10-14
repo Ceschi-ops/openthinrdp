@@ -10,7 +10,9 @@ moved=""; lost=""
 for n in "${!OTR_SECRET_FILES[@]}"; do
   p=${OTR_SECRET_FILES[$n]}
   if secret_sealed "$n"; then
-    secret_unseal "$n" || lost="$lost $n"
+    # a plain copy next to the one in the TPM (e.g. host keys created again by an openssh-server upgrade) is never
+    # used: removed, so no secret stays readable on the disk
+    if secret_unseal "$n"; then [ -e "$p" ] && rm -f "$p"; else lost="$lost $n"; fi
   elif [ $TPM = 1 ] && [ -s "$p" ]; then
     t=$(mktemp); cp -p "$p" "$t" && secret_store "$n" "$t" && secret_sealed "$n" && moved="$moved $n"; rm -f "$t"
   fi
