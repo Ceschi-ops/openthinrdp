@@ -6,7 +6,7 @@
 #           Stops by itself after 2 hours. While it is on, the screen says so and the event log records it.
 #   stop    off
 #   status  on or off
-#   run     what the unit runs
+#   run     what the unit runs; cleanup  what systemd runs after it
 . /opt/openthinrdp/lib/common.sh
 otr_lang
 U=otr-remote-screen
@@ -23,18 +23,20 @@ case "$1" in
     PW=$(tr -dc 'A-HJ-NP-Za-km-z2-9' < /dev/urandom | head -c 8)
     rm -rf "$RD"; install -d -m 700 -o "$OTR_KIOSK_USER" "$RD"
     runuser -u "$OTR_KIOSK_USER" -- x11vnc -storepasswd "$PW" "$PF" >/dev/null 2>&1 || { echo "ERROR=password"; exit 6; }
-    systemd-run --unit=$U --collect -p RuntimeMaxSec=7200 "$0" run >/dev/null 2>&1
+    # systemd cleans up after the unit whatever ends it (stop, the 2 hours, a crash): notice off, password gone, event
+    systemd-run --unit=$U --collect -p RuntimeMaxSec=7200 -p ExecStopPost="$0 cleanup" "$0" run >/dev/null 2>&1
     for i in $(seq 1 40); do
       ss -ltnH 2>/dev/null | grep -q '127.0.0.1:6080 ' && ss -ltnH | grep -q '127.0.0.1:5900 ' && break; sleep 0.25
     done
     ss -ltnH | grep -q '127.0.0.1:6080 ' || { echo "ERROR=did not start (journalctl -u $U)"; systemctl stop $U.service >/dev/null 2>&1; exit 7; }
     echo "PORT=6080"; echo "PASSWORD=$PW" ;;
   stop) systemctl stop $U.service >/dev/null 2>&1; echo "STOPPED" ;;
+  cleanup) rm -f "$ON"; rm -rf "$RD"; ev "remote screen: stopped" ;;
   status) if systemctl is-active -q $U.service; then echo on; else echo off; fi ;;
   run)
     touch "$ON"
     ev "remote screen: started by an administrator over SSH (stops by itself after 2 hours)"
-    stop_all(){ trap - TERM INT EXIT; rm -f "$ON"; rm -rf "$RD"; kill $(jobs -p) 2>/dev/null; ev "remote screen: stopped"; exit 0; }
+    stop_all(){ trap - TERM INT EXIT; kill $(jobs -p) 2>/dev/null; exit 0; }     # cleanup: ExecStopPost
     trap stop_all TERM INT EXIT
     runuser -u "$OTR_KIOSK_USER" -- env DISPLAY=:0 python3 "$OTR/ui.py" toast --text="$L_REMOTE_SCREEN_ON" --while-file="$ON" >/dev/null 2>&1 &
     # as the kiosk account that owns the X session (as root the X server refuses its shared memory: BadAccess on
