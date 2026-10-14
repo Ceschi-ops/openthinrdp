@@ -364,6 +364,8 @@
   Help_UPDATE_GITHUB        = 'Da dove arrivano le release (proprietario/repository). Da cambiare solo per un proprio fork.'
   Label_SSH                 = 'SSH'
   Help_SSH                  = 'Amministrazione remota: accesso come otradmin solo con le chiavi della scheda Chiavi SSH.'
+  Label_REMOTE_SCREEN       = 'Schermo remoto'
+  Help_REMOTE_SCREEN        = 'on = il pulsante Schermo remoto può mostrare e usare lo schermo del dispositivo (via SSH, con un avviso sul dispositivo); off = mai. Serve SSH = on.'
   Label_WEB_BUTTON          = 'Pulsante web'
   Help_WEB_BUTTON           = "none = nessun pulsante; app = indirizzo web in una finestra app, solo i siti ammessi; browser = navigazione libera, indirizzo web come pagina iniziale; kiosk = pagina kiosk a schermo intero all'accensione (5 s per fermarla dal form di accesso)."
   Label_WEB_LABEL           = 'Etichetta del pulsante web'

@@ -372,6 +372,8 @@
   Help_UPDATE_GITHUB        = 'Where the releases come from (owner/repository). Change it only for your own fork.'
   Label_SSH                 = 'SSH'
   Help_SSH                  = 'Remote administration: login as otradmin only with the keys of the SSH keys tab.'
+  Label_REMOTE_SCREEN       = 'Remote screen'
+  Help_REMOTE_SCREEN        = 'on = the Remote screen button can show and use the screen of the device (over SSH, with a notice on the device); off = never. Needs SSH = on.'
   Label_WEB_BUTTON          = 'Web button'
   Help_WEB_BUTTON           = 'none = no button; app = web address as an app window, only allowed sites; browser = free browsing, web address as home page; kiosk = kiosk page full screen at power on (5 s to stop it from the login form).'
   Label_WEB_LABEL           = 'Web button label'

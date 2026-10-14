@@ -3,6 +3,18 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **Remote screen from the manager** ([#19](https://github.com/OpenThinRdp/openthinrdp/issues/19)). *Device settings >
+  Remote screen...* shows the screen of a device in your browser and lets you use it: to help a user, or to sign in
+  once to a dashboard on a screen with no keyboard. Over SSH only (administrators' key, one-time password, x11vnc and
+  the viewer on 127.0.0.1 as the account that owns the screen), nothing to install on the PC (Windows' `ssh.exe` and
+  the browser). The device shows *Remote assistance active* while it lasts and records it in its events; it ends with
+  the manager's window or after 2 hours. `REMOTE_SCREEN=off` turns it off. The update installs `x11vnc` (11 MB, needs
+  the Debian mirror once); the viewer, noVNC 1.7.0, is included unmodified, with a standard-library WebSocket bridge
+  instead of websockify (about 50 MB of dependencies).
+- README: the manager gets a section of its own, with the remote screen.
+
 ## 0.1.9 (2026-10-14)
 
 - **Started from the ISO, the latest version first** ([#12](https://github.com/OpenThinRdp/openthinrdp/issues/12)).

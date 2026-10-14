@@ -28,6 +28,12 @@ keyboard is untrusted and that the management folder is readable by the devices 
   (root, 600); neither is ever reported or printed back (`save-config.sh --print` shows only their hash). The
   settings PIN hash is never written to the status files.
 
+- **Remote screen only through SSH.** x11vnc and the viewer's WebSocket bridge listen on 127.0.0.1 only, run as the
+  account that owns the screen (not root), start only when an administrator asks over SSH (`otradmin`, key login)
+  and need a one-time password. While the remote screen is on, the device says so on its screen and its event log
+  records start and end; it stops by itself after 2 hours. `REMOTE_SCREEN=off` turns it off
+  ([management.md](management.md#remote-screen)).
+
 ## Known limits
 
 - `smb.cred` is on every device: a stolen device gives its holder that account. Give it write access to

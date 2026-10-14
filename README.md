@@ -18,8 +18,9 @@ for Windows Remote Desktop, RDS and VDI: FreeRDP with the UDP transport that ups
 
 OpenThinRDP turns small PCs and old thin clients into kiosks that boot straight into a sign-in form and connect
 to Windows: through an RD Connection Broker to the user's desktop or VM, or straight to a session host or to any
-Windows PC with Remote Desktop turned on. They are managed from a shared folder: status of every device, central
-settings, logo, signed updates. No agent, no management server, no cloud, no licence per device.
+Windows PC with Remote Desktop turned on. They are managed from a shared folder with a small Windows manager: status
+of every device, central settings, logo, signed updates, and the screen of any device in your browser. No agent,
+no management server, no cloud, no licence per device.
 
 It grew out of a real migration away from a commercial thin client OS, on a fleet of Dell OptiPlex 3000 Thin
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
@@ -121,10 +122,8 @@ What the device needs: [Requirements](#requirements).
   touch screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
   Touch screens work as touch in Windows. With `USB_MODE=disks` USB sticks stay on the thin client and appear in
   Windows as drives.
-- **Managed from a shared folder (SMB).** Each device writes its status and event log there; a Windows manager
-  (English and Italian, no installation) shows them, edits the settings for all devices or one, the SSH keys,
-  logo and background picture (for all devices or one), and brings GitHub releases into the folder. Settings that come
-  from the folder win over local changes.
+- **Managed from a shared folder (SMB) with a Windows manager**, no server: the whole fleet in one window, settings
+  for all devices or one, and the **remote screen** of any device ([the manager](#the-manager-the-whole-fleet-from-one-window)).
 - **Signed updates** that never interrupt a session: from GitHub releases (checked every 3 hours, installed in
   the background, applied when the session is over), or from your folder when you decide.
   Debian security updates install by themselves.
@@ -142,15 +141,37 @@ What the device needs: [Requirements](#requirements).
 - English and Italian interface; more languages are one file each.
 
 <p align="center">
-<img src="docs/screenshots/manager-devices.png" alt="Manager: devices" width="49%">
-<img src="docs/screenshots/manager-common.png" alt="Manager: settings for all devices" width="49%">
-</p>
-
-<p align="center">
 <img src="docs/screenshots/connecting.png" alt="Desktop start with the real steps" width="32%">
 <img src="docs/screenshots/end-of-session.png" alt="End of session with a countdown" width="32%">
 <img src="docs/screenshots/update.png" alt="Software update in progress" width="32%">
 </p>
+
+## The manager: the whole fleet from one window
+
+`OpenThinRDP-Manager` is one PowerShell script for Windows 10/11 (English and Italian, nothing to install) that works
+on the shared folder the devices report to. No server, no agent, no database: what you see is the files in the folder.
+
+<p align="center">
+<img src="docs/screenshots/manager-devices.png" alt="Manager: every device, its settings and the Remote screen button" width="49%">
+<img src="docs/screenshots/remote-screen.png" alt="Remote screen of a device in the browser, with the notice on the device" width="49%">
+</p>
+
+- **Every device at a glance**: state (a problem in colour), software and FreeRDP version, address, user and session,
+  UDP or TCP in use, Wi-Fi signal, last report, the device's own status and event log.
+- **Settings for all devices or one**: the common settings, and exceptions for a single device, checked before they
+  are saved (a device rejects a whole configuration with a wrong value, the manager stops it first).
+- **Remote screen**: one click shows the screen of a device in your browser and lets you use it, to help a user
+  ("what does it say?") or to sign in once to a dashboard on a hall screen. It goes through SSH only, with the
+  administrators' key and a one-time password: nothing new listens on the network, and nothing is installed on your
+  PC (the `ssh.exe` that comes with Windows and your browser). The device shows *Remote assistance active* while it
+  lasts and records it in its events; it ends when you close the window, or by itself after 2 hours, and
+  `REMOTE_SCREEN=off` turns it off ([details](docs/management.md#remote-screen)).
+- **Problems across the fleet**: the event logs of every device read together and grouped, so "six devices could not
+  reach the broker this morning" is one line instead of six logs.
+- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
+  GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
+
+Every change is written to a change log in the folder. Guide: [docs/management.md](docs/management.md).
 
 ## Screens that only show a web page
 
@@ -264,6 +285,7 @@ Security problems: please report them privately, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache License 2.0, see [LICENSE](LICENSE). OpenThinRDP uses FreeRDP (Apache 2.0) and Debian packages under
+Apache License 2.0, see [LICENSE](LICENSE). OpenThinRDP uses FreeRDP (Apache 2.0), the noVNC viewer for the remote
+screen (included unmodified, MPL 2.0 and BSD, [rootfs/opt/openthinrdp/novnc](rootfs/opt/openthinrdp/novnc)) and Debian packages under
 their own licenses. Windows and Remote Desktop are trademarks of Microsoft; this project is not affiliated with
 Microsoft or with any vendor named above.
