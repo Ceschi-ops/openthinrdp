@@ -56,6 +56,8 @@ prog 75
 chmod -R u=rwX,go=rX rootfs
 cp -a --no-preserve=ownership rootfs/. /
 chmod 755 $OTR/*.sh; chmod 0440 /etc/sudoers.d/openthinrdp
+# files of older versions that were renamed or dropped
+rm -f /etc/udev/rules.d/60-openthinrdp-link-up.rules   # 0.1.8: 90-openthinrdp-net.rules
 # /etc/skel only reaches new accounts: the kiosk account gets its Openbox settings here
 install -D -m644 -o kiosk -g kiosk rootfs/etc/skel/.config/openbox/rc.xml /home/kiosk/.config/openbox/rc.xml
 [ -f VERSION ] && cp VERSION $OTR/VERSION

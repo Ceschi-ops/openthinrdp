@@ -1,0 +1,8 @@
+# Wired adapters up as soon as they appear (cable negotiation starts earlier), and a new adapter (e.g. USB, or a
+# Wi-Fi adapter whose driver loads late) gets its configuration at once.
+# After 80-net-setup-link.rules, matching NAME: an adapter whose driver loads after the initramfs (every USB
+# adapter) is still "eth0" in its "add" event and gets its final name (enx...) there, so KERNEL=="en*" never
+# matched it and a USB adapter stayed without an address until the settings were saved.
+# KillMode=process: the unit ends with apply.sh, the ifup it started in the background has to stay.
+ACTION=="add", SUBSYSTEM=="net", NAME=="en*", RUN+="/usr/sbin/ip link set $name up"
+ACTION=="add", SUBSYSTEM=="net", NAME=="en*|wl*", RUN+="/usr/bin/systemd-run --no-block --collect -p KillMode=process --unit=openthinrdp-apply-$name /opt/openthinrdp/apply.sh hotplug"

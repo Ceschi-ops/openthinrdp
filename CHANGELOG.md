@@ -3,8 +3,20 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.8 (2026-10-14)
 
+- **A USB network adapter works as soon as it is plugged in** ([#8](https://github.com/OpenThinRdp/openthinrdp/issues/8)).
+  It used to stay without an address until the settings were saved: the udev rule matched the adapter's name
+  before udev renamed it (`eth0`/`usb0`, then `enx…`), so it never matched a USB adapter; at boot an adapter
+  appearing while the settings were being applied was configured by nobody; and the address request started in
+  the background was killed with the udev job. Plugged in with the device running or present at boot, it now gets
+  its address within seconds, without touching the adapter in use. A Wi-Fi adapter whose driver loads late is
+  picked up the same way.
+- **Wi-Fi survives kernel updates** ([#7](https://github.com/OpenThinRdp/openthinrdp/issues/7)). The initramfs
+  built for the device included the Wi-Fi driver without the part it loads later (Intel: `iwlwifi` without
+  `iwlmvm`), so after the next kernel update a device on Wi-Fi came up with no Wi-Fi adapter at all and no network.
+  Only wired and graphics drivers go in now; devices set up by older versions get the Wi-Fi drivers taken out at
+  the next boot (the boot after that has the adapter back).
 - The DROPPED event names why FreeRDP ended the session (its last connection error), not the channels that
   fail while the connection closes behind it (it named a smart card channel after the UDP tunnel broke down).
 

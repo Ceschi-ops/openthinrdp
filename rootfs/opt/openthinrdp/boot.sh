@@ -55,15 +55,27 @@ if [ -f /etc/default/grub ] && [ -d /boot/grub ]; then
     update-grub 2>/dev/null && touch "$OTR_LIB/.grub-silent"
   fi
   # initramfs with the drivers of THIS machine only (on a thin client 137 MB -> 18 MB, a few seconds less of
-  # boot from eMMC). It has to happen on the device, not in the image. The graphics and network drivers in
-  # use go in explicitly so the splash and an early network keep working.
+  # boot from eMMC). It has to happen on the device, not in the image. The graphics and wired network drivers in
+  # use go in explicitly so the splash and an early network keep working. Never a Wi-Fi driver: nothing uses it
+  # before the disk, and loaded there it misses the half it asks for later (iwlwifi without iwlmvm), so after a
+  # kernel update the device had no Wi-Fi adapter at all.
+  wifi_mod(){ modinfo -F depends "$1" 2>/dev/null | tr ',' '\n' | grep -qx -E 'cfg80211|mac80211'; }
   if [ ! -f "$OTR_LIB/.initramfs-dep" ]; then
     sed -i 's/^MODULES=.*/MODULES=dep/' /etc/initramfs-tools/initramfs.conf
     for d in /sys/class/drm/card[0-9]/device/driver /sys/class/net/*/device/driver; do
       m=$(basename "$(readlink -f "$d")" 2>/dev/null); [ -n "$m" ] && modinfo "$m" >/dev/null 2>&1 || continue
+      wifi_mod "$m" && continue
       grep -qx "$m" /etc/initramfs-tools/modules || echo "$m" >> /etc/initramfs-tools/modules
     done
-    flock -w 900 /run/openthinrdp-initramfs.lock update-initramfs -u >/dev/null 2>&1 && touch "$OTR_LIB/.initramfs-dep"
+    flock -w 900 /run/openthinrdp-initramfs.lock update-initramfs -u >/dev/null 2>&1 && touch "$OTR_LIB/.initramfs-dep" "$OTR_LIB/.initramfs-nowifi"
+  fi
+  # devices set up before 0.1.8: take the Wi-Fi drivers out again (the next boot has the adapter back)
+  if [ ! -f "$OTR_LIB/.initramfs-nowifi" ]; then
+    W=$(grep -vE '^\s*(#|$)' /etc/initramfs-tools/modules 2>/dev/null | while read -r m; do wifi_mod "$m" && echo "$m"; done)
+    for m in $W; do sed -i "/^$m\$/d" /etc/initramfs-tools/modules; done
+    if [ -z "$W" ] || flock -w 900 /run/openthinrdp-initramfs.lock update-initramfs -u >/dev/null 2>&1; then
+      touch "$OTR_LIB/.initramfs-nowifi"; [ -n "$W" ] && ev "Wi-Fi driver taken out of the initramfs: $W"
+    fi
   fi
 fi
 exit 0
