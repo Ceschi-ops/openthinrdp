@@ -126,7 +126,9 @@ S=/etc/ssh/sshd_config.d/openthinrdp.conf
 if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
   # the image is built without host keys (every device must have its own): created on first use, and kept in the
   # TPM when there is one (lib/secrets.sh; sshd then reads them from memory)
-  if ! ls /etc/ssh/ssh_host_*_key "$OTR_SEALED"/ssh_host_*_key.cred >/dev/null 2>&1; then
+  # (two separate checks: one ls on both fails as soon as either is missing, and new keys replaced the ones just
+  # moved into the TPM, seen on the QEMU bench)
+  if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1 && ! ls "$OTR_SEALED"/ssh_host_*_key.cred >/dev/null 2>&1; then
     ssh-keygen -A >/dev/null 2>&1
     if secret_tpm; then
       for k in ed25519 ecdsa rsa; do [ -s /etc/ssh/ssh_host_${k}_key ] && { t=$(mktemp); cp /etc/ssh/ssh_host_${k}_key "$t"; secret_store ssh_host_${k}_key "$t"; }; done
