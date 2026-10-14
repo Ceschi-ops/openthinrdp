@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.9 (2026-10-14)
 
 - **Started from the ISO, the latest version first** ([#12](https://github.com/OpenThinRdp/openthinrdp/issues/12)).
   A device still on the version of its image (live system, or installed and never updated) checks for updates
