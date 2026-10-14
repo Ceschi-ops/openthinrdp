@@ -86,7 +86,7 @@ fi
 prog 88
 # 5) services, rules and settings applied again
 systemctl daemon-reload
-systemctl enable openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer openthinrdp-report.path openthinrdp-schedule.timer >/dev/null 2>&1
+systemctl enable openthinrdp-secrets.service openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer openthinrdp-report.path openthinrdp-schedule.timer >/dev/null 2>&1
 systemctl start openthinrdp-report.timer openthinrdp-report.path openthinrdp-schedule.timer >/dev/null 2>&1
 udevadm control --reload; udevadm trigger --subsystem-match=input --action=change
 $OTR/security-updates.sh >/dev/null

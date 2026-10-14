@@ -253,6 +253,26 @@ ok "Kerberos: an address becomes its server's name" '[ "$(krb_host 10.9.9.2)" = 
 ok "Kerberos: an address with no name stays" '[ "$(krb_host 10.9.9.9)" = 10.9.9.9 ]'
 ok "Kerberos: an unknown name stays" '[ "$(krb_host nowhere.example.test)" = nowhere.example.test ]'
 
+# --- secrets in the TPM (lib/secrets.sh, secrets.sh). A fake TPM: systemd-creds "seals" with base64 while
+# /tmp/faketpm exists; systemd-analyze has-tpm2 answers like a full TPM then, like "partial" (16) otherwise
+mkdir -p /usr/local/bin
+printf '#!/bin/bash\n[ "$1" = has-tpm2 ] || exit 1\n[ -f /tmp/faketpm ] && exit 0 || exit 16\n' > /usr/local/bin/systemd-analyze
+printf '#!/bin/bash\nin="${@: -2:1}"; out="${@: -1}"; [ -f /tmp/faketpm ] || exit 1\ncase "$1" in\n  encrypt) { echo SEALED; base64 -w0 "$in"; } > "$out" ;;\n  decrypt) [ "$(head -1 "$in")" = SEALED ] || exit 1; tail -n +2 "$in" | base64 -d > "$out" ;;\n  *) exit 1 ;;\nesac\n' > /usr/local/bin/systemd-creds
+chmod 755 /usr/local/bin/systemd-analyze /usr/local/bin/systemd-creds
+. $OTR/lib/secrets.sh
+rm -rf $OTR_SEALED /run/openthinrdp; printf 'username=svc\npassword=Secret1\n' > $OTR_ETC/smb.cred; chmod 600 $OTR_ETC/smb.cred
+ok "secrets: without a TPM the plain file stays" '$OTR/secrets.sh && [ -s $OTR_ETC/smb.cred ] && [ "$(secret_path smb.cred)" = $OTR_ETC/smb.cred ] && [ "$(secret_mode)" = "file (no TPM)" ]'
+touch /tmp/faketpm; : > $OTR_EVENTS
+ok "secrets: with a TPM the plain file moves into it" '$OTR/secrets.sh && [ ! -e $OTR_ETC/smb.cred ] && [ -s $OTR_SEALED/smb.cred.cred ] && ! grep -q Secret1 $OTR_SEALED/smb.cred.cred && grep -q "secrets moved into the TPM: smb.cred" $OTR_EVENTS'
+ok "secrets: read back from memory" '[ "$(secret_path smb.cred)" = /run/openthinrdp/secrets/smb.cred ] && grep -qx password=Secret1 "$(secret_path smb.cred)" && [ "$(stat -c %a /run/openthinrdp/secrets/smb.cred)" = 600 ] && [ "$(secret_mode)" = tpm ]'
+rm -rf /run/openthinrdp
+ok "secrets: at the next start out of the TPM again" '$OTR/secrets.sh && grep -qx password=Secret1 /run/openthinrdp/secrets/smb.cred'
+printf 'username=svc\npassword=Secret2\n' > /tmp/new.cred; secret_store smb.cred /tmp/new.cred
+ok "secrets: a new value goes into the TPM, never to the plain file" '[ ! -e /tmp/new.cred ] && [ ! -e $OTR_ETC/smb.cred ] && grep -qx password=Secret2 "$(secret_path smb.cred)"'
+rm -f /tmp/faketpm; rm -rf /run/openthinrdp; : > $OTR_EVENTS
+ok "secrets: a TPM that does not give them back (cleared, replaced) is reported once" '$OTR/secrets.sh && [ -f $OTR_SEALED/smb.cred.cred.unreadable ] && [ ! -f $OTR_SEALED/smb.cred.cred ] && grep -q "NOT readable from the TPM: smb.cred" $OTR_EVENTS && $OTR/secrets.sh && [ "$(grep -c "NOT readable" $OTR_EVENTS)" = 1 ]'
+rm -rf $OTR_SEALED /run/openthinrdp /usr/local/bin/systemd-analyze /usr/local/bin/systemd-creds
+
 # --- USB devices held until the desktop is up (usb-hold.sh runs as root through sudo from the kiosk)
 ok "usb-hold: only VID:PID ids are accepted" '! $OTR/usb-hold.sh hold "abcd:1234" "1-1;reboot" 2>/dev/null && ! $OTR/usb-hold.sh hold ../x 2>/dev/null'
 ok "usb-hold: a held entry that is not a hub port is never written" 'mkdir -p /tmp/x-port1; echo 1 > /tmp/x-port1/disable; printf "%s\n" /sys/devices/../../tmp/x-port1 /tmp/x-port1 > /run/openthinrdp-usb-held; $OTR/usb-hold.sh release && [ "$(cat /tmp/x-port1/disable)" = 1 ] && [ ! -e /run/openthinrdp-usb-held ]'

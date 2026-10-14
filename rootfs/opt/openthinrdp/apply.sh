@@ -9,6 +9,7 @@
 #             running (a USB adapter shows up a few seconds late) or later (plugged in) gets its configuration.
 . /opt/openthinrdp/lib/common.sh
 . "$OTR/lib/netif.sh"
+. "$OTR/lib/secrets.sh"
 if [ "$1" = hotplug ]; then
   for _ in $(seq 180); do
     [ "$(systemctl show -p ActiveState --value openthinrdp-boot.service)" != activating ] &&
@@ -23,7 +24,7 @@ exec 9>/run/openthinrdp-apply.lock; flock 9
 ALLIF=$(wired_nics); IF=$(main_nic); MODE=$(cfg NETMODE)
 DOM=$(cfg DOMAIN | tr 'A-Z' 'a-z'); [[ $DOM == *.* ]] || DOM=""
 # Wi-Fi only when enabled, with an adapter and a saved key (written by save-config.sh)
-WCF=/etc/wpa_supplicant/openthinrdp-wifi.conf; WL=""
+WCF=$(secret_path wifi.conf); WL=""   # in memory when kept in the TPM (lib/secrets.sh)
 if [ "$(cfg WIFI)" = on ] && [ -s "$WCF" ] && command -v wpa_supplicant >/dev/null; then WL=$(wifi_nics | head -1); fi
 [ "$IF" = "$(wifi_nics | head -1)" ] && [ "$MODE" = static ] && IF=$(wired_nics | head -1)   # static only on a cable
 
@@ -122,11 +123,20 @@ rm -f "$NEWR"
 
 # --- SSH: only key login, keys in /etc/openthinrdp/authorized_keys (management folder or image), no root
 S=/etc/ssh/sshd_config.d/openthinrdp.conf
-printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers otradmin\n' "$OTR_ETC/authorized_keys" > $S.new
+if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
+  # the image is built without host keys (every device must have its own): created on first use, and kept in the
+  # TPM when there is one (lib/secrets.sh; sshd then reads them from memory)
+  if ! ls /etc/ssh/ssh_host_*_key "$OTR_SEALED"/ssh_host_*_key.cred >/dev/null 2>&1; then
+    ssh-keygen -A >/dev/null 2>&1
+    if secret_tpm; then
+      for k in ed25519 ecdsa rsa; do [ -s /etc/ssh/ssh_host_${k}_key ] && { t=$(mktemp); cp /etc/ssh/ssh_host_${k}_key "$t"; secret_store ssh_host_${k}_key "$t"; }; done
+    fi
+  fi
+fi
+HK=""; for k in ed25519 ecdsa rsa; do secret_sealed ssh_host_${k}_key && HK="${HK}HostKey $(secret_path ssh_host_${k}_key)\n"; done
+printf "${HK}PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAuthorizedKeysFile %s\nAllowUsers otradmin\n" "$OTR_ETC/authorized_keys" > $S.new
 SC=0; cmp -s $S.new $S || { mv -f $S.new $S; SC=1; }; rm -f $S.new
 if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
-  # the image is built without host keys (every device must have its own): created on first use
-  ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1 || ssh-keygen -A >/dev/null 2>&1
   systemctl enable --now --no-block ssh >/dev/null 2>&1; [ $SC = 1 ] && systemctl try-reload-or-restart ssh >/dev/null 2>&1
 else systemctl disable --now --no-block ssh >/dev/null 2>&1; fi
 
