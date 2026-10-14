@@ -246,5 +246,10 @@ ok "Kerberos: an address becomes its server's name" '[ "$(krb_host 10.9.9.2)" = 
 ok "Kerberos: an address with no name stays" '[ "$(krb_host 10.9.9.9)" = 10.9.9.9 ]'
 ok "Kerberos: an unknown name stays" '[ "$(krb_host nowhere.example.test)" = nowhere.example.test ]'
 
+# --- USB devices held until the desktop is up (usb-hold.sh runs as root through sudo from the kiosk)
+ok "usb-hold: only VID:PID ids are accepted" '! $OTR/usb-hold.sh hold "abcd:1234" "1-1;reboot" 2>/dev/null && ! $OTR/usb-hold.sh hold ../x 2>/dev/null'
+ok "usb-hold: a held name that is not a USB device is never written" 'echo "../../../tmp/x" > /run/openthinrdp-usb-held; $OTR/usb-hold.sh release && [ ! -e /tmp/x ] && [ ! -e /run/openthinrdp-usb-held ]'
+ok "usb-hold: the kiosk may run it through sudo" 'grep -q "/opt/openthinrdp/usb-hold.sh" /etc/sudoers.d/openthinrdp'
+
 echo "passed $PASS, failed $FAIL"
 [ $FAIL = 0 ]
