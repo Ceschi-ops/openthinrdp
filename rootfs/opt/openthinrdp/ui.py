@@ -172,7 +172,8 @@ if MODE == 'toast':
     kind = 'warn' if A.while_file else 'update'
     box.pack_start(icon(kind, 28, COLORS[kind], 1.0), False, False, 0)
     col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-    tl = label(A.text, 'text', wrap=True, xalign=0, chars=34); col.pack_start(tl, False, False, 0)
+    # one line for the remote screen notice: a wrapped label in a popup is given room for lines it does not use
+    tl = label(A.text, 'text', wrap=not A.while_file, xalign=0, chars=34); col.pack_start(tl, False, False, 0)
     bar = Gtk.ProgressBar(); bar.set_size_request(260, -1)
     if not A.while_file: col.pack_start(bar, False, False, 0)
     box.pack_start(col, True, True, 0); win.add(box)
