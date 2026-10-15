@@ -335,7 +335,7 @@
   Label_SHUTDOWN_SECS       = 'Shutdown (s)'
   Help_SHUTDOWN_SECS        = 'Seconds before switching off after the user disconnects (0 = never, max 3600).'
   Label_USB_MODE            = 'USB mode'
-  Help_USB_MODE             = 'all = every USB device except keyboards, mice, touch screens, hubs, network adapters and smart card readers goes to Windows whole; disks = USB sticks as network drives, smart cards through /smartcard.'
+  Help_USB_MODE             = 'all = every USB device except keyboards, mice, touch screens, hubs, network adapters and smart card readers goes to Windows whole; disks = USB sticks as network drives, smart cards through /smartcard; auto = a device that is only storage (stick, card reader, disk) as a drive, a device with storage and something else (an instrument, a key with its own driver) whole. Plugged in during a session, auto works as disks.'
   Label_USB_REDIRECT        = 'USB devices passed whole'
   Help_USB_REDIRECT         = 'VID:PID, space separated (e.g. 1eaf:0009): always passed whole, also in disks mode.'
   Label_NETMODE             = 'Network'

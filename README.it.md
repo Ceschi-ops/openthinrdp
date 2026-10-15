@@ -126,7 +126,8 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
   li vedono entrambi (un microfono passato come dispositivo USB resta fuori dalla sessione remota). Tastiere,
   mouse, touch, hub e schede di rete restano locali; i lettori di smart card passano dal canale smart card.
   I touch screen funzionano come touch in Windows. Con `USB_MODE=disks` le chiavette USB restano sul thin client e
-  compaiono in Windows come unità.
+  compaiono in Windows come unità; con `USB_MODE=auto` il thin client decide dispositivo per dispositivo: una
+  chiavetta come unità, un dispositivo con memoria e altro (uno strumento, una chiave col suo driver) intero.
 - **Gestione da una cartella condivisa (SMB) con un gestore Windows**, senza server: tutto il parco in una finestra,
   impostazioni per tutte le postazioni o per una, e lo **schermo remoto** di qualsiasi postazione
   ([il gestore](#il-gestore-tutto-il-parco-in-una-finestra)).
