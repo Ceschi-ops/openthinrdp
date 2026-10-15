@@ -23,6 +23,11 @@ piccolo gestore Windows: stato di ogni postazione, configurazione centrale, logo
 di qualsiasi postazione nel browser. Niente agenti, niente server di gestione, niente cloud, nessuna licenza per
 postazione.
 
+> **Non è openthinclient.** OpenThinRDP è un progetto nuovo e indipendente, senza alcun legame con openthinclient: i
+> nomi si somigliano, nient'altro è in comune. openthinclient è un progetto più vecchio in cui le postazioni si avviano
+> da rete (PXE) dal suo server di gestione; OpenThinRDP si installa su ogni postazione o gira live da una chiavetta
+> USB, non ha bisogno di un server ed è costruito attorno a RDP con il trasporto UDP di FreeRDP.
+
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
 
@@ -126,7 +131,8 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
   li vedono entrambi (un microfono passato come dispositivo USB resta fuori dalla sessione remota). Tastiere,
   mouse, touch, hub e schede di rete restano locali; i lettori di smart card passano dal canale smart card.
   I touch screen funzionano come touch in Windows. Con `USB_MODE=disks` le chiavette USB restano sul thin client e
-  compaiono in Windows come unità.
+  compaiono in Windows come unità; con `USB_MODE=auto` il thin client decide dispositivo per dispositivo: una
+  chiavetta come unità, un dispositivo con memoria e altro (uno strumento, una chiave col suo driver) intero.
 - **Gestione da una cartella condivisa (SMB) con un gestore Windows**, senza server: tutto il parco in una finestra,
   impostazioni per tutte le postazioni o per una, e lo **schermo remoto** di qualsiasi postazione
   ([il gestore](#il-gestore-tutto-il-parco-in-una-finestra)).
@@ -162,11 +168,13 @@ che si vede sono i file della cartella.
 <img src="docs/screenshots/remote-screen.png" alt="Schermo remoto di una postazione nel browser, con l'avviso sulla postazione" width="49%">
 </p>
 
-- **Ogni postazione a colpo d'occhio**: stato (un problema è colorato), versione del software e di FreeRDP,
-  indirizzo, utente e sessione, UDP o TCP in uso, segnale Wi-Fi, ultimo rapporto, stato ed eventi della postazione.
-- **Impostazioni per tutte le postazioni o per una**: quelle comuni ed eccezioni per una sola postazione, controllate
-  prima di salvarle (una postazione rifiuta tutta la configurazione se c'è un valore sbagliato: il gestore lo ferma
-  prima).
+- **Ogni postazione a colpo d'occhio**: un elenco con lo stato di ogni postazione come pallino colorato, chi è
+  collegato, la versione e l'ultimo invio, con una casella di ricerca; la postazione scelta mostra l'indirizzo, un
+  riepilogo leggibile (rete, software, FreeRDP, UDP o TCP in uso, Wi-Fi, segreti) e il suo registro eventi.
+- **Impostazioni per tutte le postazioni o per una**: per ogni impostazione il valore in uso sulla postazione, da dove
+  arriva (la postazione stessa, le impostazioni comuni o un'eccezione per quella postazione) e, in arancione, un valore
+  nuovo ancora in arrivo; la spiegazione dell'impostazione scelta per intero sotto l'elenco. Controllate prima di
+  salvarle (una postazione rifiuta tutta la configurazione se c'è un valore sbagliato: il gestore lo ferma prima).
 - **Schermo remoto**: con un clic lo schermo di una postazione si apre nel browser e si può usare, per aiutare un
   utente ("cosa c'è scritto?") o per accedere una volta a una dashboard su uno schermo della hall. Passa solo da SSH,
   con la chiave degli amministratori e una password monouso: niente di nuovo in ascolto sulla rete e niente da
@@ -175,7 +183,8 @@ che si vede sono i file della cartella.
   spegne ([dettagli](docs/management.md#remote-screen)).
 - **Problemi di tutto il parco**: i registri eventi di tutte le postazioni letti insieme e raggruppati, così "sei
   postazioni stamattina non raggiungevano il broker" è una riga invece di sei registri.
-- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
+- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori (un pulsante aggiunge la
+  chiave del PC da cui si lavora, e la crea se manca); **release** di GitHub
   copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
 
 Ogni modifica finisce in un registro delle modifiche nella cartella. Guida: [docs/management.md](docs/management.md).

@@ -56,7 +56,7 @@ V[SHUTDOWN_SECS]=$(get SHUTDOWN_SECS)
 { [[ ${V[SHUTDOWN_SECS]} =~ ^[0-9]{1,4}$ ]] && [ $((10#${V[SHUTDOWN_SECS]})) -le 3600 ]; } || err "$V_SHUTDOWN"
 
 # --- USB
-case "$(low "$(get USB_MODE)")" in disks|dischi) V[USB_MODE]=disks ;; *) V[USB_MODE]=all ;; esac
+case "$(low "$(get USB_MODE)")" in disks|dischi) V[USB_MODE]=disks ;; auto) V[USB_MODE]=auto ;; *) V[USB_MODE]=all ;; esac
 V[USB_REDIRECT]=$(get USB_REDIRECT | tr -s ' ,;' ' ' | tr 'A-F' 'a-f' | sed 's/^ //; s/ $//')
 [[ ${V[USB_REDIRECT]} =~ ^([0-9a-f]{4}:[0-9a-f]{4}( [0-9a-f]{4}:[0-9a-f]{4})*)?$ ]] || err "$V_USBLIST"
 

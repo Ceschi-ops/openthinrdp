@@ -22,6 +22,11 @@ Windows PC with Remote Desktop turned on. They are managed from a shared folder 
 of every device, central settings, logo, signed updates, and the screen of any device in your browser. No agent,
 no management server, no cloud, no licence per device.
 
+> **Not openthinclient.** OpenThinRDP is a new, independent project, not affiliated with openthinclient: the names
+> sound alike, nothing else is shared. openthinclient is an older project whose devices boot over the network (PXE)
+> from its management server; OpenThinRDP is installed on each device or runs live from a USB stick, needs no server
+> and is built around RDP with FreeRDP's UDP transport.
+
 It grew out of a real migration away from a commercial thin client OS, on a fleet of Dell OptiPlex 3000 Thin
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
 
@@ -122,7 +127,8 @@ What the device needs: [Requirements](#requirements).
   in the session see both (a microphone passed as a USB device stays outside the remote session). Keyboards, mice,
   touch screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
   Touch screens work as touch in Windows. With `USB_MODE=disks` USB sticks stay on the thin client and appear in
-  Windows as drives.
+  Windows as drives; with `USB_MODE=auto` the thin client decides device by device: a stick as a drive, a device
+  with storage and something else (an instrument, a key with its own driver) whole.
 - **Managed from a shared folder (SMB) with a Windows manager**, no server: the whole fleet in one window, settings
   for all devices or one, and the **remote screen** of any device ([the manager](#the-manager-the-whole-fleet-from-one-window)).
 - **Signed updates** that never interrupt a session: from GitHub releases (checked every 3 hours, installed in
@@ -157,10 +163,13 @@ on the shared folder the devices report to. No server, no agent, no database: wh
 <img src="docs/screenshots/remote-screen.png" alt="Remote screen of a device in the browser, with the notice on the device" width="49%">
 </p>
 
-- **Every device at a glance**: state (a problem in colour), software and FreeRDP version, address, user and session,
-  UDP or TCP in use, Wi-Fi signal, last report, the device's own status and event log.
-- **Settings for all devices or one**: the common settings, and exceptions for a single device, checked before they
-  are saved (a device rejects a whole configuration with a wrong value, the manager stops it first).
+- **Every device at a glance**: a list with the state of each device as a coloured dot, who is signed in, the
+  version and the last report, with a search box; the selected device shows its address, a readable summary
+  (network, software, FreeRDP, UDP or TCP in use, Wi-Fi, secrets) and its event log.
+- **Settings for all devices or one**: for each setting, the value in use on the device, where it comes from (the
+  device itself, the common settings or an exception for that device) and, in orange, a new value still on its way;
+  the help of the selected setting in full under the list. Checked before saving (a device rejects a whole
+  configuration with a wrong value, the manager stops it first).
 - **Remote screen**: one click shows the screen of a device in your browser and lets you use it, to help a user
   ("what does it say?") or to sign in once to a dashboard on a hall screen. It goes through SSH only, with the
   administrators' key and a one-time password: nothing new listens on the network, and nothing is installed on your
@@ -169,7 +178,8 @@ on the shared folder the devices report to. No server, no agent, no database: wh
   `REMOTE_SCREEN=off` turns it off ([details](docs/management.md#remote-screen)).
 - **Problems across the fleet**: the event logs of every device read together and grouped, so "six devices could not
   reach the broker this morning" is one line instead of six logs.
-- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
+- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators (one button adds the
+  key of the PC you are on, creating it if needed); **releases** from
   GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
 
 Every change is written to a change log in the folder. Guide: [docs/management.md](docs/management.md).
