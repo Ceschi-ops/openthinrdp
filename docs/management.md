@@ -133,6 +133,37 @@ With `SSH=on`, the `otradmin` account accepts only the keys in `/etc/openthinrdp
 (`image/site/authorized_keys`) or from `config\authorized_keys`. Removing `config\authorized_keys` after it
 was used revokes those keys and brings back the image ones.
 
+## Remote screen
+
+*Device settings > Remote screen...* shows the screen of the selected device in your browser and lets you use it:
+to see what a user sees, or to sign in once to a web page on a screen with no keyboard (the kiosk page keeps the
+sign-in in its profile).
+
+**What it needs**
+- On the device: `SSH=on`, your public key among the SSH keys, and `REMOTE_SCREEN=on` (the default).
+- On your PC: the OpenSSH client of Windows 10/11 (`ssh.exe`, an optional feature that is usually there) with your
+  private key in your user folder (`%USERPROFILE%\.ssh`), and a browser. Nothing else is installed.
+
+**How it works**
+1. Over SSH, as `otradmin`, the manager asks the device to start the remote screen (`remote-screen.sh start`). The
+   device starts x11vnc on its screen and the noVNC viewer with a small WebSocket bridge (`vncbridge.py`), both on
+   127.0.0.1 only and as the account that owns the screen, not root, with a one-time password.
+2. The manager opens an SSH tunnel from a free port of your PC to the viewer and opens your browser on it with that
+   password. The screen is reached only through the tunnel: nothing new listens on the network.
+3. While it is on, the device shows *Remote assistance active: an administrator can see this screen* in the top
+   right corner, and its event log records the start and the end.
+4. Closing the small window in the manager ends it on the device (`remote-screen.sh stop`); it also ends by itself
+   after 2 hours.
+
+During a remote session the screen is the Windows desktop the user is working on: tell the user, as the notice does.
+`REMOTE_SCREEN=off`, for all devices or one, turns it off. The viewer is noVNC 1.7.0, included unmodified
+(`/opt/openthinrdp/novnc`, MPL 2.0 and BSD licenses).
+
+**When it does not start** the manager shows why: SSH off on the device, no address reported yet, the key not
+accepted (put it in the SSH keys tab and in `%USERPROFILE%\.ssh`), or a device that has not received the version
+with the remote screen yet. A device reinstalled with the same address has a new SSH host key: remove the old one
+with `ssh-keygen -R <address>`.
+
 ## Signed updates
 
 Software updates (kiosk, FreeRDP with UDP, fixes) come from where `UPDATE_FROM` says:

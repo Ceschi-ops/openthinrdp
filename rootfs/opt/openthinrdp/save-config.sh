@@ -124,6 +124,7 @@ case "$(low "$(get UPDATE_FROM)")" in share|cartella|folder) V[UPDATE_FROM]=shar
 [ "${V[UPDATE_FROM]}" = share ] && [ -z "${V[MGMT_SHARE]}" ] && err "$V_UPDATE_SHARE"
 V[UPDATE_GITHUB]=$(get UPDATE_GITHUB); [[ ${V[UPDATE_GITHUB]} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || err "$V_UPDATE_GITHUB"
 V[SSH]=$(onoff "$(get SSH)")
+V[REMOTE_SCREEN]=$(onoff "$(get REMOTE_SCREEN)")
 
 # --- web button and kiosk page
 case "$(low "$(get WEB_BUTTON)")" in app|portale|portal) V[WEB_BUTTON]=app ;; browser|chrome|chromium) V[WEB_BUTTON]=browser ;; kiosk) V[WEB_BUTTON]=kiosk ;; *) V[WEB_BUTTON]=none ;; esac

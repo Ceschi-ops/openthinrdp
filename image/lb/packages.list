@@ -14,6 +14,8 @@ hsetroot
 numlockx
 xprintidle
 xdotool
+# remote screen from the manager (remote-screen.sh): x11vnc only, the viewer and its bridge come with OpenThinRDP
+x11vnc
 # hides the pointer on the kiosk screens while the mouse is still
 unclutter-xfixes
 fonts-dejavu-core

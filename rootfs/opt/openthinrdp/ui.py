@@ -14,6 +14,8 @@
 #                        and ends with code 0 at the end of the input.
 #                        --update: progress of the software update that is installing; ends when it is over.
 #   ui.py toast ...      small notice in the top right corner with the progress of the software update; ends with it.
+#                        --while-file PATH: a plain notice (no bar, warning icon) that stays while PATH exists
+#                        (remote-screen.sh: "Remote assistance active").
 # The admin dialogs (settings, diagnostics, PIN) stay yad windows.
 import argparse, locale, math, os, subprocess, sys, time
 import gi
@@ -31,6 +33,7 @@ for a in ('class', 'title', 'heading', 'text', 'small', 'info', 'note', 'user', 
 ap.add_argument('--button', action='append', default=[])
 ap.add_argument('--progress', action='store_true')
 ap.add_argument('--update', action='store_true')
+ap.add_argument('--while-file', default='')
 A = ap.parse_args(sys.argv[2:] if MODE != 'login' or (len(sys.argv) > 1 and sys.argv[1] == 'login') else sys.argv[1:])
 try:
     locale.setlocale(locale.LC_ALL, "")      # day and month in the language of the system
@@ -166,12 +169,18 @@ if MODE == 'toast':
     win = Gtk.Window(type=Gtk.WindowType.POPUP)
     win.set_wmclass('OtrToast', 'OtrToast')
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14); box.get_style_context().add_class('toast')
-    box.pack_start(icon('update', 28, COLORS['update'], 1.0), False, False, 0)
+    kind = 'warn' if A.while_file else 'update'
+    box.pack_start(icon(kind, 28, COLORS[kind], 1.0), False, False, 0)
     col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-    tl = label(A.text, 'text', wrap=True, xalign=0, chars=34); col.pack_start(tl, False, False, 0)
-    bar = Gtk.ProgressBar(); bar.set_size_request(260, -1); col.pack_start(bar, False, False, 0)
+    # one line for the remote screen notice: a wrapped label in a popup is given room for lines it does not use
+    tl = label(A.text, 'text', wrap=not A.while_file, xalign=0, chars=34); col.pack_start(tl, False, False, 0)
+    bar = Gtk.ProgressBar(); bar.set_size_request(260, -1)
+    if not A.while_file: col.pack_start(bar, False, False, 0)
     box.pack_start(col, True, True, 0); win.add(box)
     def poll():
+        if A.while_file:
+            if not os.path.exists(A.while_file): leave(0); return False
+            return True
         p = update_progress()
         if p is None and not update_running():
             leave(0); return False

@@ -85,6 +85,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
+| `REMOTE_SCREEN` | `on` | `off` = no remote screen from the manager ([management.md](management.md#remote-screen)); it needs `SSH=on` |
 
 ## Web button and kiosk page
 

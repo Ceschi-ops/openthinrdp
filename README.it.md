@@ -18,9 +18,10 @@ per Desktop remoto Windows, RDS e VDI: FreeRDP con il trasporto UDP che la versi
 
 OpenThinRDP trasforma piccoli PC e vecchi thin client in postazioni che si accendono direttamente sul form di
 accesso e si collegano a Windows: tramite il broker RDS al desktop o alla VM dell'utente, oppure direttamente a
-un host di sessione o a qualsiasi PC Windows con Desktop remoto attivo. Si gestiscono da una cartella condivisa:
-stato di ogni postazione, configurazione centrale, logo, aggiornamenti firmati. Niente agenti, niente server di
-gestione, niente cloud, nessuna licenza per postazione.
+un host di sessione o a qualsiasi PC Windows con Desktop remoto attivo. Si gestiscono da una cartella condivisa con un
+piccolo gestore Windows: stato di ogni postazione, configurazione centrale, logo, aggiornamenti firmati, e lo schermo
+di qualsiasi postazione nel browser. Niente agenti, niente server di gestione, niente cloud, nessuna licenza per
+postazione.
 
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
@@ -126,10 +127,9 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
   mouse, touch, hub e schede di rete restano locali; i lettori di smart card passano dal canale smart card.
   I touch screen funzionano come touch in Windows. Con `USB_MODE=disks` le chiavette USB restano sul thin client e
   compaiono in Windows come unità.
-- **Gestione da una cartella condivisa (SMB).** Ogni postazione ci scrive stato e registro eventi; un gestore
-  Windows (italiano e inglese, nessuna installazione) li mostra, modifica la configurazione di tutte o di una
-  postazione, le chiavi SSH, logo e immagine di sfondo (per tutte o per una), e porta nella cartella le release di
-  GitHub. Le impostazioni della cartella vincono sulle modifiche locali.
+- **Gestione da una cartella condivisa (SMB) con un gestore Windows**, senza server: tutto il parco in una finestra,
+  impostazioni per tutte le postazioni o per una, e lo **schermo remoto** di qualsiasi postazione
+  ([il gestore](#il-gestore-tutto-il-parco-in-una-finestra)).
 - **Aggiornamenti firmati** che non interrompono mai una sessione: dalle release di GitHub (controllate ogni 3
   ore, installati in background, applicati quando la sessione finisce), o dalla vostra cartella quando decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.
 - **Configurazione sulla postazione** (anche protetta da PIN): broker o PC, rete (DHCP, statica, Wi-Fi), cartella
@@ -146,15 +146,39 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
 - Interfaccia in italiano e inglese; altre lingue sono un file ciascuna.
 
 <p align="center">
-<img src="docs/screenshots/manager-devices.png" alt="Gestore: postazioni" width="49%">
-<img src="docs/screenshots/manager-common.png" alt="Gestore: impostazioni comuni" width="49%">
-</p>
-
-<p align="center">
 <img src="docs/screenshots/connecting.png" alt="Avvio del desktop con i passi reali" width="32%">
 <img src="docs/screenshots/end-of-session.png" alt="Fine sessione con conto alla rovescia" width="32%">
 <img src="docs/screenshots/update.png" alt="Aggiornamento in corso" width="32%">
 </p>
+
+## Il gestore: tutto il parco in una finestra
+
+`OpenThinRDP-Manager` è un solo script PowerShell per Windows 10/11 (italiano e inglese, niente da installare) che
+lavora sulla cartella condivisa in cui le postazioni scrivono il loro stato. Niente server, agenti o database: quello
+che si vede sono i file della cartella.
+
+<p align="center">
+<img src="docs/screenshots/manager-devices.png" alt="Gestore: ogni postazione, le sue impostazioni e il pulsante Schermo remoto" width="49%">
+<img src="docs/screenshots/remote-screen.png" alt="Schermo remoto di una postazione nel browser, con l'avviso sulla postazione" width="49%">
+</p>
+
+- **Ogni postazione a colpo d'occhio**: stato (un problema è colorato), versione del software e di FreeRDP,
+  indirizzo, utente e sessione, UDP o TCP in uso, segnale Wi-Fi, ultimo rapporto, stato ed eventi della postazione.
+- **Impostazioni per tutte le postazioni o per una**: quelle comuni ed eccezioni per una sola postazione, controllate
+  prima di salvarle (una postazione rifiuta tutta la configurazione se c'è un valore sbagliato: il gestore lo ferma
+  prima).
+- **Schermo remoto**: con un clic lo schermo di una postazione si apre nel browser e si può usare, per aiutare un
+  utente ("cosa c'è scritto?") o per accedere una volta a una dashboard su uno schermo della hall. Passa solo da SSH,
+  con la chiave degli amministratori e una password monouso: niente di nuovo in ascolto sulla rete e niente da
+  installare sul PC (lo `ssh.exe` di Windows e il browser). La postazione mostra *Assistenza remota attiva* finché
+  dura e lo registra nei suoi eventi; finisce chiudendo la finestra, o da sola dopo 2 ore, e `REMOTE_SCREEN=off` la
+  spegne ([dettagli](docs/management.md#remote-screen)).
+- **Problemi di tutto il parco**: i registri eventi di tutte le postazioni letti insieme e raggruppati, così "sei
+  postazioni stamattina non raggiungevano il broker" è una riga invece di sei registri.
+- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
+  copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
+
+Ogni modifica finisce in un registro delle modifiche nella cartella. Guida: [docs/management.md](docs/management.md).
 
 ## Schermi che mostrano solo una pagina web
 
@@ -273,6 +297,7 @@ vedi [SECURITY.md](SECURITY.md). Come contribuire: [CONTRIBUTING.md](CONTRIBUTIN
 
 ## Licenza
 
-Apache License 2.0, vedi [LICENSE](LICENSE). OpenThinRDP usa FreeRDP (Apache 2.0) e pacchetti Debian con le loro
+Apache License 2.0, vedi [LICENSE](LICENSE). OpenThinRDP usa FreeRDP (Apache 2.0), il visore noVNC dello schermo remoto
+(incluso senza modifiche, MPL 2.0 e BSD, [rootfs/opt/openthinrdp/novnc](rootfs/opt/openthinrdp/novnc)) e pacchetti Debian con le loro
 licenze. Windows e Desktop remoto sono marchi di Microsoft; il progetto non è affiliato a Microsoft né ai
 produttori citati.
