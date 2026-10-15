@@ -88,12 +88,15 @@ author fixed the root cause there (the client now skips channel sequence 0 like 
 
 ## The FreeRDP in the image
 
-`image/freerdp/freerdp.conf` names the exact source: commit `179ed68` on branch
-[`openthinrdp-udp-3.32.2-pr`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2-pr) of a FreeRDP fork,
-which is the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the 39 commits of pull request
-#13608, the UDP transport, applied unchanged, and no patches of ours. Two of those commits came from our tests: no
-false "stream is stuck" on lossy lines (see above), and ten SYN attempts instead of four (SYN and SYN+ACK are padded
-to the MTU, the first packets a bad line loses). OpenThinRDP 0.1.7 ships the same FreeRDP as 0.1.6.
+`image/freerdp/freerdp.conf` names the exact source: commit `1529245` on branch
+[`openthinrdp-udp-3.32.2-pr-net`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2-pr-net) of a
+FreeRDP fork, which is the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the 39 commits of pull
+request #13608, the UDP transport, applied unchanged. Two of those commits came from our tests: no false "stream is
+stuck" on lossy lines (see above), and ten SYN attempts instead of four (SYN and SYN+ACK are padded to the MTU, the
+first packets a bad line loses). One commit of ours on top, proposed to FreeRDP as
+[#13748](https://github.com/FreeRDP/FreeRDP/pull/13748): `/network` is applied before the other options. Without it
+`/network:auto`, which the kiosk passes with UDP, turned on the H.264 codecs that `RDP_GFX` turns off, and the server
+encoded the whole desktop with AVC444 (0.1.12).
 
 FreeRDP 3.32.2 already contains the USB fixes found while building OpenThinRDP: #13674 (deadlock between USB hotplug
 and the closing of the USB channel) and #13679 (from our #13677: no hang on disconnect with a USB transfer pending),
