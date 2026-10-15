@@ -3,6 +3,17 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## 0.1.12 (2026-10-15)
+
+- **H.264 was on although `RDP_GFX` turns it off** ([#33](https://github.com/OpenThinRdp/openthinrdp/issues/33)).
+  With UDP the kiosk passes `/network:auto`, and FreeRDP applied it after `/gfx`, turning the H.264 codecs back on:
+  the server encoded the whole desktop with AVC444 and dark text on saturated colours came out smeared (labels of
+  point of sale buttons on magenta and yellow). The FreeRDP build of OpenThinRDP now applies `/network` before the
+  other options ([FreeRDP#13748](https://github.com/FreeRDP/FreeRDP/pull/13748)): the default
+  `progressive,AVC420:off,AVC444:off` gets progressive and ClearCodec again, text pixel exact, over UDP as before.
+  The update installs FreeRDP `1529245ac` (3.32.2 + the UDP transport of #13608 + this fix). A
+  `RDP_EXTRA=/network:lan` set to work around it can be removed once the devices have this version.
+
 ## 0.1.11 (2026-10-15)
 
 - **A clearer manager** ([#23](https://github.com/OpenThinRdp/openthinrdp/issues/23)). Pages on the left (Devices,
