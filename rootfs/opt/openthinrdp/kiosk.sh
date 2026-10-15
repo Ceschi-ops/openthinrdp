@@ -223,10 +223,11 @@ reset_cam(){
   done
 }
 
-# NTLM only: since FreeRDP 3.17 "ntlm,!kerberos" no longer excludes Kerberos, "none,ntlm" does (FreeRDP #11818)
+# NTLM only: since FreeRDP 3.17 "ntlm,!kerberos" no longer excludes Kerberos, "none,ntlm" does (FreeRDP #11818).
+# Kerberos only (RDP_AUTH=kerberos) the same way: the sign-in fails instead of falling back to NTLM
 FRV=$(xfreerdp3 --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-NTLMPKG='ntlm,!kerberos'
-{ [ "${FRV%%.*}" -gt 3 ] || { [ "${FRV%%.*}" -eq 3 ] && [ "$(echo "$FRV" | cut -d. -f2)" -ge 17 ]; }; } 2>/dev/null && NTLMPKG='none,ntlm'
+NTLMPKG='ntlm,!kerberos'; KRBPKG='kerberos,!ntlm'
+{ [ "${FRV%%.*}" -gt 3 ] || { [ "${FRV%%.*}" -eq 3 ] && [ "$(echo "$FRV" | cut -d. -f2)" -ge 17 ]; }; } 2>/dev/null && { NTLMPKG='none,ntlm'; KRBPKG='none,kerberos'; }
 HASUDP=0; xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=ON' && HASUDP=1
 
 # connect USER PASSWORD BROKER: one xfreerdp3 run; its exit code is the result
@@ -239,7 +240,7 @@ connect(){
   local v i=1 dev usb mic
   v=$(cfg DOMAIN); [ -n "$v" ] && o+=(/d:"$v")
   v=$(cfg LOAD_BALANCE_INFO); [ -n "$v" ] && o+=(/load-balance-info:"$v")
-  [ "$(cfg RDP_AUTH)" = ntlm ] && o+=(/auth-pkg-list:"$NTLMPKG")
+  case "$(cfg RDP_AUTH)" in ntlm) o+=(/auth-pkg-list:"$NTLMPKG") ;; kerberos) o+=(/auth-pkg-list:"$KRBPKG") ;; esac
   case "$(cfg RDP_CERT)" in ignore) o+=(/cert:ignore) ;; verify) o+=(/cert:deny) ;; *) o+=(/cert:tofu) ;; esac
   v=$(cfg RDP_GFX); [ -n "$v" ] && o+=(/gfx:"$v")
   # auto and udp: the server measures the line (/network:auto) and lowers frame rate and quality when the
