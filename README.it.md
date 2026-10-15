@@ -177,14 +177,17 @@ che si vede sono i file della cartella.
   salvarle (una postazione rifiuta tutta la configurazione se c'è un valore sbagliato: il gestore lo ferma prima).
 - **Schermo remoto**: con un clic lo schermo di una postazione si apre nel browser e si può usare, per aiutare un
   utente ("cosa c'è scritto?") o per accedere una volta a una dashboard su uno schermo della hall. Passa solo da SSH,
-  con la chiave degli amministratori e una password monouso: niente di nuovo in ascolto sulla rete e niente da
+  con la chiave del gestore e una password monouso: niente di nuovo in ascolto sulla rete e niente da
   installare sul PC (lo `ssh.exe` di Windows e il browser). La postazione mostra *Assistenza remota attiva* finché
   dura e lo registra nei suoi eventi; finisce chiudendo la finestra, o da sola dopo 2 ore, e `REMOTE_SCREEN=off` la
   spegne ([dettagli](docs/management.md#remote-screen)).
 - **Problemi di tutto il parco**: i registri eventi di tutte le postazioni letti insieme e raggruppati, così "sei
   postazioni stamattina non raggiungevano il broker" è una riga invece di sei registri.
-- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori (un pulsante aggiunge la
-  chiave del PC da cui si lavora, e la crea se manca); **release** di GitHub
+- **Una cassaforte con codice di accesso** per le due chiavi che comandano il parco: la chiave SSH che apre gli
+  schermi e la chiave che firma i pacchetti di aggiornamento. Tutti gli amministratori del gestore la aprono con lo
+  stesso codice; senza codice non si apre nessuno schermo e non si firma niente. I pacchetti si firmano nel gestore,
+  così la chiave di firma non sta mai su una macchina di compilazione ([dettagli](docs/management.md#vault)).
+- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
   copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
 
 Ogni modifica finisce in un registro delle modifiche nella cartella. Guida: [docs/management.md](docs/management.md).

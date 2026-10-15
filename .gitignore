@@ -1,4 +1,7 @@
 # your site folder (credentials, keys, logos): never in git
 image/site/
+# the vault of the manager (encrypted keys): it belongs to an installation, never to the repository
+vault.otr
+vault.otr.new
 out/
 *.iso

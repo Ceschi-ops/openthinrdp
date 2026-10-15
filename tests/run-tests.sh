@@ -265,6 +265,11 @@ release 0.3.1 p@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /t
 ok "share: a release copied by the manager (project key) is accepted" 'grep -q "^found 0.3.1 (share)" $U/status'
 ok "UPDATE_FROM share needs a management folder" '! check x "$(printf "UPDATE_FROM=share\nMGMT_SHARE=\n")"'
 ok "UPDATE_GITHUB must be owner/repository" '! check x "UPDATE_GITHUB=not a repo"'
+# make-update.sh without -k: the package and LATEST.txt for the manager to sign (vault), never published unsigned
+rm -rf /tmp/mu; cp -a /src /tmp/mu; rm -rf /tmp/mu/out
+ok "make-update without -k: LATEST.txt to sign in the manager, no signature" '/tmp/mu/management/publish/make-update.sh -v 9.0.1 >/tmp/mu.log 2>&1 && grep -q "NOT signed yet" /tmp/mu.log && grep -qx "version=9.0.1" /tmp/mu/out/update-9.0.1/LATEST.txt && [ -f /tmp/mu/out/update-9.0.1/openthinrdp-update-9.0.1.tar.gz ] && [ ! -e /tmp/mu/out/update-9.0.1/LATEST.txt.sig ]'
+ok "make-update without -k does not publish into a management folder" '! /tmp/mu/management/publish/make-update.sh -v 9.0.2 -o /tmp/mu-share >/dev/null 2>&1 && [ ! -e /tmp/mu-share/updates ]'
+rm -rf /tmp/mu /tmp/mu-share /tmp/mu.log
 
 # --- Kerberos: a server's own name instead of an alias shared by two brokers, or an address
 printf '%s\n' '10.9.9.1 broker1.example.test broker1' '10.9.9.2 broker2.example.test broker2' \

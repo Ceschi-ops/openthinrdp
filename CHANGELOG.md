@@ -3,6 +3,17 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **A vault in the manager for the SSH key and the signing key** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).
+  At the first start the manager asks for an access code and keeps, encrypted with it in `vault.otr` next to the
+  manager, a new SSH key for the remote screen and the key that signs the update packages. Every administrator who
+  starts the same manager opens it with the same code; without the code the settings can still be edited, but no
+  screen opens and nothing is signed. The remote screen offers only the key of the vault, never the keys in the
+  profile of the PC. Update packages are signed in the manager (**Vault > Sign an update**, or
+  `OpenThinRDP-Manager.cmd -Sign <path>\LATEST.txt`), with the same Ed25519 signature `gpg` writes; `make-update.sh`
+  without `-k` builds the package and leaves `LATEST.txt` to be signed there.
+
 ## 0.1.12 (2026-10-15)
 
 - **H.264 was on although `RDP_GFX` turns it off** ([#33](https://github.com/OpenThinRdp/openthinrdp/issues/33)).

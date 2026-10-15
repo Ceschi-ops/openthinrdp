@@ -94,9 +94,9 @@ The Windows manager (`management/windows/OpenThinRDP-Manager.vbs`, or the `.cmd`
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
 Before saving `common.conf` it lists the devices that would reject it.
 
-The window has four pages on the left: **Devices** (the list, and the selected device with its settings, a summary,
-its events and its full report), **Common settings**, **SSH keys** and **Problems**; the actions on the folder
-(refresh, open, release from GitHub, check permissions) are in the bar at the top. In a settings list each row shows
+The window has five pages on the left: **Devices** (the list, and the selected device with its settings, a summary,
+its events and its full report), **Common settings**, **SSH keys**, **Vault** and **Problems**; the actions on the
+folder (refresh, open, release from GitHub, check permissions) and the state of the vault are in the bar at the top. In a settings list each row shows
 the value in use on the device, where it comes from (*the device itself*, *common settings*, *this device* for an
 exception) and *on its way* when a saved value has not reached the device yet (it reads the folder every 5 minutes;
 if it stays, the device has probably rejected the configuration: see its state). The help of the selected setting is
@@ -141,6 +141,40 @@ With `SSH=on`, the `otradmin` account accepts only the keys in `/etc/openthinrdp
 (`image/site/authorized_keys`) or from `config\authorized_keys`. Removing `config\authorized_keys` after it
 was used revokes those keys and brings back the image ones.
 
+## Vault
+
+Two keys give power over the whole fleet: the SSH key that opens the screen of any device, and the OpenPGP key
+that signs the update packages every device installs. The manager keeps both in `vault.otr`, next to
+`OpenThinRDP-Manager.ps1`, encrypted with an **access code**:
+
+- At the first start the manager asks for the code (at least 8 characters) and creates the vault, with a new SSH
+  key inside (`openthinrdp-manager`) that it adds to the **SSH keys** page: Save there, and the devices take it
+  within 5 minutes. At every later start it asks the code again; **Go on without** keeps the manager usable for
+  the settings, without remote screen and signing.
+- Every administrator who starts the same copy of the manager (e.g. from a file share only the administrators can
+  write) opens the same vault with the same code: nothing to copy from PC to PC. **Change the code...** re-encrypts
+  it, and the old code stops working at once.
+- The code is not stored anywhere. Keep it where you keep the other passwords of your servers: if it is lost, the
+  keys are lost with it (a new SSH key is easy; a lost signing key means a key change, see
+  [SECURITY.md](../SECURITY.md)).
+- Encryption: PBKDF2-HMAC-SHA256 with 600000 rounds (about 2 seconds to open, on purpose), AES-256-CBC and
+  HMAC-SHA256 over the whole file (`management/windows/OtrVault.cs`). The secrets stay in memory while the window
+  is open; the SSH key is written for `ssh.exe` only into a folder that just your account and SYSTEM can read
+  (`%LOCALAPPDATA%\OpenThinRDP\vault-keys`), removed when the vault closes.
+
+<img src="screenshots/manager-vault.png" alt="Vault page of the manager: the vault, the SSH key of the manager, the key that signs the updates" width="100%">
+
+On the **Vault** page:
+
+| Block | Actions |
+|---|---|
+| Vault | Open / Close, Change the code |
+| SSH key of the manager | Add to the devices (to the SSH keys page, then Save), Create a new key, Import a private key (e.g. the one used so far: the file stays where it is, delete it yourself) |
+| Key that signs the updates | Sign an update (see [Signed updates](#signed-updates)), Import the key: the file of `gpg --export-secret-keys --armor <key>` from a key without a passphrase. The manager offers to delete that file afterwards. |
+
+The page says whether the signing key is the project key (releases for every installation) or one of yours
+(`update-key.asc` of your image).
+
 ## Remote screen
 
 **Remote screen...**, in the header of the selected device, shows its screen in your browser and lets you use it:
@@ -148,11 +182,12 @@ to see what a user sees, or to sign in once to a web page on a screen with no ke
 sign-in in its profile).
 
 **What it needs**
-- On the device: `SSH=on`, your public key among the SSH keys, and `REMOTE_SCREEN=on` (the default). On the
-  **SSH keys** page, **Add the key of this PC** adds yours (and creates it in `%USERPROFILE%\.ssh` if you have none
-  yet); then Save, and the devices take it within 5 minutes.
-- On your PC: the OpenSSH client of Windows 10/11 (`ssh.exe`, an optional feature that is usually there) with your
-  private key in your user folder (`%USERPROFILE%\.ssh`), and a browser. Nothing else is installed.
+- On the device: `SSH=on`, the key of the manager among the SSH keys, and `REMOTE_SCREEN=on` (the default). On
+  the **SSH keys** page, **Add the key of the manager** adds it (from the [vault](#vault)); then Save, and the
+  devices take it within 5 minutes.
+- On your PC: the OpenSSH client of Windows 10/11 (`ssh.exe`, an optional feature that is usually there), the
+  vault open with the access code, and a browser. Nothing else is installed. Only the key of the vault is offered
+  to the device (`ssh -i ... -o IdentitiesOnly=yes`): keys in your profile (`%USERPROFILE%\.ssh`) are not used.
 
 **How it works**
 1. Over SSH, as `otradmin`, the manager asks the device to start the remote screen (`remote-screen.sh start`). The
@@ -169,8 +204,9 @@ During a remote session the screen is the Windows desktop the user is working on
 `REMOTE_SCREEN=off`, for all devices or one, turns it off. The viewer is noVNC 1.7.0, included unmodified
 (`/opt/openthinrdp/novnc`, MPL 2.0 and BSD licenses).
 
-**When it does not start** the manager shows why: SSH off on the device, no address reported yet, the key not
-accepted (Add the key of this PC on the SSH keys page, then Save), or a device that has not received the version
+**When it does not start** the manager shows why: SSH off on the device, no address reported yet, the vault
+closed or without an SSH key, the key not accepted (Add the key of the manager on the SSH keys page, then Save),
+or a device that has not received the version
 with the remote screen yet. A device reinstalled with the same address has a new SSH host key: remove the old one
 with `ssh-keygen -R <address>`.
 
@@ -198,14 +234,30 @@ files (`LATEST.txt`, `LATEST.txt.sig`, `openthinrdp-update-<version>.tar.gz`) in
 checks the project signature itself, nothing has to be re-signed.
 
 **Your own packages** (changes of yours, or your site files) need your own key, built into your image as
-`/etc/openthinrdp/update-key.asc`. Create it once, on a machine you trust, and keep the private part offline:
+`/etc/openthinrdp/update-key.asc`. Create it once, on a machine you trust, without a passphrase (the vault
+protects it), put it into the [vault](#vault) and remove it from gpg:
 
 ```
 gpg --quick-gen-key "Thin client updates <it@example.com>" ed25519 sign never
 gpg --armor --export it@example.com > image/site/update-key.asc
+gpg --armor --export-secret-keys it@example.com > it-signing.asc     # Vault > Import the key..., then delete it
+gpg --delete-secret-keys it@example.com
 ```
 
-Publish a version (Linux, WSL or Git Bash with Gpg4win; the folder mounted or reachable as a path):
+Build a version without signing it (Linux or WSL), then sign it in the manager:
+
+```
+management/publish/make-update.sh -v 2026.10.1
+OpenThinRDP-Manager.cmd -Sign <path>\out\update-2026.10.1\LATEST.txt
+```
+
+`-Sign` asks only the access code and writes `LATEST.txt.sig` next to `LATEST.txt` (also **Vault > Sign an
+update...**). It checks the format of `LATEST.txt` and, when the package is next to it, its hash; the signature
+is the one `gpg --armor --detach-sign` would write (Ed25519, SHA-512), checked by `sqv` on the devices. Then copy
+the package, `LATEST.txt.sig` and `LATEST.txt`, in this order, into `updates\`.
+
+With the key still in gpg on the build machine, `-k` signs there and `-o` publishes at once (Linux, WSL or Git
+Bash with Gpg4win; the folder mounted or reachable as a path):
 
 ```
 management/publish/make-update.sh -v 2026.10.1 -k it@example.com -o /mnt/thinclients
