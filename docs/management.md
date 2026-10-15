@@ -170,7 +170,7 @@ On the **Vault** page:
 |---|---|
 | Vault | Open / Close, Change the code |
 | SSH key of the manager | Add to the devices (to the SSH keys page, then Save), Create a new key, Import a private key (e.g. the one used so far: the file stays where it is, delete it yourself) |
-| Key that signs the updates | Sign an update (see [Signed updates](#signed-updates)), Import the key: the file of `gpg --export-secret-keys --armor <key>` from a key without a passphrase. The manager offers to delete that file afterwards. |
+| Key that signs the updates | Sign an update (see [Signed updates](#signed-updates)), Send to the devices and Create the site key (see [A fleet on its own key](#a-fleet-on-its-own-key)), Save the public key (`update-key.asc`), Import the key: the file of `gpg --export-secret-keys --armor <key>` from a key without a passphrase; the manager offers to delete that file afterwards. |
 
 The page says whether the signing key is the project key (releases for every installation) or one of yours
 (`update-key.asc` of your image).
@@ -229,9 +229,32 @@ session is over.
 Three failed attempts per version at most. The status file shows the source (`UPDATE_FROM`) and the result.
 
 **A fleet you manage**: set `UPDATE_FROM=share` in `config\common.conf` and `UPDATE_FROM=github` in the
-`config\<hostname>.conf` of one or two pilot devices. When the pilots are fine with a release, copy its three
-files (`LATEST.txt`, `LATEST.txt.sig`, `openthinrdp-update-<version>.tar.gz`) into `updates\`: every device
-checks the project signature itself, nothing has to be re-signed.
+`config\<hostname>.conf` of one or two pilot devices. When the pilots are fine with a release, **Release from
+GitHub...** in the manager copies it into `updates\` (package first, then signature and index): every device checks
+the signature itself.
+
+### A fleet on its own key
+
+With `UPDATE_KEY=any` a device on the folder accepts the project key too: whoever held the project key could get a
+package installed, if they could also write into `updates\`. With `UPDATE_KEY=site` the devices accept only the key
+of your site, which exists only in the [vault](#vault) of your manager: the releases still come from GitHub, but
+nothing reaches the devices unless an administrator with the access code passes it on.
+
+1. **Vault > Create the site key...**: an Ed25519 key made in the manager, kept only in the vault. **Save the public
+   key...** writes its public half, `update-key.asc` (nothing secret: put it into your image too, if you build one).
+2. **Vault > Send to the devices...**: the public half to every device that is on, over SSH with the key of the
+   manager (`site-key.sh` checks it and logs it). It cannot come through the folder: whoever may write there would
+   choose the key. Each device reports it (**Summary > Update signatures**); send it again for the devices that were
+   off.
+3. `UPDATE_FROM=share` and `UPDATE_KEY=site` in `common.conf` (a pilot device first, as an exception).
+4. From then on **Release from GitHub...** checks the project signature, **signs the release again with the site
+   key** and publishes it: the new signature replaces the project one. A release whose project signature cannot be
+   checked in the manager is never signed again.
+
+A device without the site key yet (off during step 2, or reinstalled from the ISO) still accepts the project key, so
+it is never left without updates; it reports `site key: none` until it gets it. If the vault and its code are lost,
+the devices on `UPDATE_KEY=site` install nothing more from the folder: create a new site key, send it over SSH (step
+2: SSH is enough, the folder is not involved), and they accept the new one.
 
 **Your own packages** (changes of yours, or your site files) need your own key, built into your image as
 `/etc/openthinrdp/update-key.asc`. Create it once, on a machine you trust, without a passphrase (the vault

@@ -186,7 +186,9 @@ che si vede sono i file della cartella.
 - **Una cassaforte con codice di accesso** per le due chiavi che comandano il parco: la chiave SSH che apre gli
   schermi e la chiave che firma i pacchetti di aggiornamento. Tutti gli amministratori del gestore la aprono con lo
   stesso codice; senza codice non si apre nessuno schermo e non si firma niente. I pacchetti si firmano nel gestore,
-  così la chiave di firma non sta mai su una macchina di compilazione ([dettagli](docs/management.md#vault)).
+  così la chiave di firma non sta mai su una macchina di compilazione ([dettagli](docs/management.md#vault)). Con
+  `UPDATE_KEY=site` le postazioni accettano solo la chiave del vostro sito: il gestore controlla ogni release di
+  GitHub e la rifirma con quella chiave ([dettagli](docs/management.md#a-fleet-on-its-own-key)).
 - **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
   copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
 

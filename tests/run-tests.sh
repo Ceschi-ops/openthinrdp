@@ -263,8 +263,25 @@ ok "share: the site key is accepted" 'grep -q "^found 0.3.0 (share)" $U/status'
 rm -rf $U/pkg-* $U/attempts-*
 release 0.3.1 p@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
 ok "share: a release copied by the manager (project key) is accepted" 'grep -q "^found 0.3.1 (share)" $U/status'
+# UPDATE_KEY=site: the manager re-signs the releases with the site key, the project key alone is not enough
+rm -rf $U/pkg-* $U/attempts-*; printf 'UPDATE_KEY=site\n' >> $OTR_CONF
+release 0.3.2 p@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
+ok "share, UPDATE_KEY=site: a package signed by the project key only is ignored" 'grep -q "^IGNORED: invalid signature" $U/status && [ ! -d $U/pkg-0.3.2 ]'
+release 0.3.2 s@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
+ok "share, UPDATE_KEY=site: the same release re-signed with the site key is taken" 'grep -q "^found 0.3.2 (share)" $U/status'
+rm -rf $U/pkg-* $U/attempts-*; mv /etc/openthinrdp/update-key.asc /tmp/site-key.asc
+release 0.3.3 p@example.invalid /tmp/share/updates; $OTR/auto-update.sh check /tmp/share
+ok "share, UPDATE_KEY=site on a device without a site key: the project key still counts" 'grep -q "^found 0.3.3 (share)" $U/status'
+mv /tmp/site-key.asc /etc/openthinrdp/update-key.asc; sed -i '/^UPDATE_KEY=/d' $OTR_CONF; rm -rf $U/pkg-* $U/attempts-*
+ok "the device reports the fingerprint of its site key" '[ "$(key_fingerprint /etc/openthinrdp/update-key.asc)" = "$(gpg --with-colons --fingerprint s@example.invalid | awk -F: "/^fpr/{print \$10; exit}")" ] && ! key_fingerprint /nonexistent'
+gpg -q --armor --export x@example.invalid > /tmp/x-pub.asc; cp /etc/openthinrdp/update-key.asc /tmp/s-pub.asc; : > $OTR_EVENTS
+ok "site-key.sh: a public key sent by the manager is installed and logged" '$OTR/site-key.sh install < /tmp/x-pub.asc | grep -q "^OK=" && [ "$($OTR/site-key.sh show)" = "$(key_fingerprint /tmp/x-pub.asc)" ] && grep -q "site key of the updates: $(key_fingerprint /tmp/x-pub.asc)" $OTR_EVENTS'
+ok "site-key.sh: a secret key or anything else is refused, the key in place stays" 'gpg -q --batch --pinentry-mode loopback --passphrase "" --armor --export-secret-keys x@example.invalid > /tmp/x-sec.asc; ! $OTR/site-key.sh install < /tmp/x-sec.asc >/dev/null && ! echo garbage | $OTR/site-key.sh install >/dev/null && [ "$($OTR/site-key.sh show)" = "$(key_fingerprint /tmp/x-pub.asc)" ]'
+$OTR/site-key.sh install < /tmp/s-pub.asc >/dev/null; rm -f /tmp/x-pub.asc /tmp/x-sec.asc /tmp/s-pub.asc
+ok "UPDATE_KEY site or any" '$OTR/save-config.sh "$T" --print >/dev/null 2>&1; printf "UPDATE_KEY=Sito\n" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_KEY=site" && printf "UPDATE_KEY=garbage\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_KEY=any"'
 ok "UPDATE_FROM share needs a management folder" '! check x "$(printf "UPDATE_FROM=share\nMGMT_SHARE=\n")"'
 ok "UPDATE_GITHUB must be owner/repository" '! check x "UPDATE_GITHUB=not a repo"'
+ok "the manager carries the same project key as the devices" 'cmp -s /src/management/windows/openthinrdp-release.asc /src/rootfs/opt/openthinrdp/keys/openthinrdp-release.asc'
 # make-update.sh without -k: the package and LATEST.txt for the manager to sign (vault), never published unsigned
 rm -rf /tmp/mu; cp -a /src /tmp/mu; rm -rf /tmp/mu/out
 ok "make-update without -k: LATEST.txt to sign in the manager, no signature" '/tmp/mu/management/publish/make-update.sh -v 9.0.1 >/tmp/mu.log 2>&1 && grep -q "NOT signed yet" /tmp/mu.log && grep -qx "version=9.0.1" /tmp/mu/out/update-9.0.1/LATEST.txt && [ -f /tmp/mu/out/update-9.0.1/openthinrdp-update-9.0.1.tar.gz ] && [ ! -e /tmp/mu/out/update-9.0.1/LATEST.txt.sig ]'

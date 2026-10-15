@@ -181,7 +181,9 @@ on the shared folder the devices report to. No server, no agent, no database: wh
 - **A vault with an access code** for the two keys that rule the fleet: the SSH key that opens the screens and the
   key that signs the update packages. Every administrator of the manager opens it with the same code; without it
   no screen opens and nothing is signed. Update packages are signed in the manager, so the signing key never sits
-  on a build machine ([details](docs/management.md#vault)).
+  on a build machine ([details](docs/management.md#vault)). With `UPDATE_KEY=site` your devices accept only the key
+  of your site: the manager checks each GitHub release and signs it again with that key
+  ([details](docs/management.md#a-fleet-on-its-own-key)).
 - **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
   GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
 

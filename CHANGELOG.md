@@ -13,6 +13,14 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   profile of the PC. Update packages are signed in the manager (**Vault > Sign an update**, or
   `OpenThinRDP-Manager.cmd -Sign <path>\LATEST.txt`), with the same Ed25519 signature `gpg` writes; `make-update.sh`
   without `-k` builds the package and leaves `LATEST.txt` to be signed there.
+- **A fleet on its own key: `UPDATE_KEY=site`** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).
+  Devices updating from the management folder can accept only the key of the site, which the manager creates in its
+  vault and sends to the devices over SSH (`site-key.sh`). **Release from GitHub** checks the project signature in
+  the manager (no gpg needed any more) and signs the release again with the site key: a stolen project key installs
+  nothing on such a fleet. A device without the site key still accepts the project key, so none is left without
+  updates. Each device reports its site key (`SITE_KEY`, Summary > Update signatures).
+- The manager read its texts with `Import-PowerShellDataFile`, which refuses more than 500 entries: the texts are
+  now read entry by entry, as constants.
 
 ## 0.1.12 (2026-10-15)
 

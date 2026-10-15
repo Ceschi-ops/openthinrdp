@@ -255,11 +255,11 @@ public static class OtrVault {
             return h.Hash;
         }
     }
-    // the hashed part of a v4 binary signature (type 0x00) by key fpr: issuer fingerprint and creation time,
-    // in the order gpg writes them
-    static byte[] HashedPart(byte[] fpr, uint time) {
-        byte[] sub = Cat(new byte[] { 22, 33, 4 }, fpr, new byte[] { 5, 2 }, Be32(time));
-        return Cat(new byte[] { 4, 0x00, 22, 10, (byte)(sub.Length >> 8), (byte)sub.Length }, sub);
+    // the hashed part of a v4 signature of type t by key fpr: issuer fingerprint and creation time first, in the
+    // order gpg writes them, then the subpackets given (already encoded)
+    static byte[] HashedPart(byte t, byte[] fpr, uint time, byte[] more) {
+        byte[] sub = Cat(new byte[] { 22, 33, 4 }, fpr, new byte[] { 5, 2 }, Be32(time), more);
+        return Cat(new byte[] { 4, t, 22, 10, (byte)(sub.Length >> 8), (byte)sub.Length }, sub);
     }
     static byte[] Digest(byte[] data, byte[] hashed) {
         uint n = (uint)hashed.Length;
@@ -267,7 +267,11 @@ public static class OtrVault {
     }
     // Detached signature of data, as "gpg --armor --detach-sign": SHA-512 (what gpg uses with Ed25519), created at time (seconds since 1970)
     public static byte[] SignDetachedBinary(SigningKey k, byte[] data, uint time) {
-        byte[] hashed = HashedPart(k.Fingerprint, time), digest = Digest(data, hashed);
+        return SignaturePacket(k, data, HashedPart(0x00, k.Fingerprint, time, new byte[0]));
+    }
+    // a signature packet over "hashed input, then the hashed part" (RFC 4880 5.2.4), by key k
+    static byte[] SignaturePacket(SigningKey k, byte[] input, byte[] hashed) {
+        byte[] digest = Digest(input, hashed);
         byte[] sig = Ed25519Sign(k.Seed, digest);
         byte[] R = new byte[32], S = new byte[32]; Buffer.BlockCopy(sig, 0, R, 0, 32); Buffer.BlockCopy(sig, 32, S, 0, 32);
         byte[] keyId = new byte[8]; Buffer.BlockCopy(k.Fingerprint, 12, keyId, 0, 8);
@@ -278,6 +282,55 @@ public static class OtrVault {
         return Cat(head, body);
     }
     public static string SignDetached(SigningKey k, byte[] data, uint time) { return Armor(SignDetachedBinary(k, data, time), "SIGNATURE"); }
+
+    // ---- a new key, made here: the site key of an installation, never written anywhere but the vault ----
+    // the public key packet body: version 4, creation time, EdDSA, the OID of Ed25519, the point (0x40 + 32 bytes)
+    static byte[] PublicBody(byte[] pub, uint created) {
+        return Cat(new byte[] { 4 }, Be32(created), new byte[] { 22, (byte)OidEd25519.Length }, OidEd25519, Mpi(Cat(new byte[] { 0x40 }, pub)));
+    }
+    public static SigningKey NewSigningKey(string user, uint created) {
+        SigningKey k = new SigningKey();
+        k.Seed = new byte[32];
+        using (RandomNumberGenerator r = RandomNumberGenerator.Create()) r.GetBytes(k.Seed);
+        k.Public = Ed25519Public(k.Seed); k.Created = created; k.User = user;
+        k.Fingerprint = Fingerprint(PublicBody(k.Public, created));
+        return k;
+    }
+    static byte[] Header(int tag, int len) {
+        // old format packet header, as gpg writes keys: 1 or 2 length bytes
+        return len < 256 ? new byte[] { (byte)(0x80 | (tag << 2)), (byte)len } : new byte[] { (byte)(0x81 | (tag << 2)), (byte)(len >> 8), (byte)len };
+    }
+    // The public half to give to the devices (update-key.asc): the key, its user ID and the self-signature that
+    // binds them (positive certification 0x13: may certify and sign, SHA-512 and SHA-256 preferred). The same key
+    // always gives the same file (Ed25519 is deterministic and the signature carries the creation time of the key).
+    public static string ExportPublic(SigningKey k) {
+        byte[] body = PublicBody(k.Public, k.Created), uid = Encoding.UTF8.GetBytes(k.User ?? "");
+        byte[] more = Cat(new byte[] { 2, 27, 0x03 }, new byte[] { 3, 21, 10, 8 }, new byte[] { 2, 30, 0x01 });
+        byte[] hashed = HashedPart(0x13, k.Fingerprint, k.Created, more);
+        byte[] input = Cat(new byte[] { 0x99, (byte)(body.Length >> 8), (byte)body.Length }, body,
+                           new byte[] { 0xB4 }, Be32((uint)uid.Length), uid);
+        byte[] sig = SignaturePacket(k, input, hashed);
+        return Armor(Cat(Header(6, body.Length), body, Header(13, uid.Length), uid, sig), "PUBLIC KEY BLOCK");
+    }
+    // the Ed25519 public points of the keys in a public key file (primary keys and subkeys), to check signatures
+    public static byte[][] PublicPoints(byte[] file) {
+        System.Collections.Generic.List<byte[]> r = new System.Collections.Generic.List<byte[]>();
+        foreach (Tuple<int, byte[]> p in Packets(Binary(file))) {
+            byte[] b = p.Item2;
+            if ((p.Item1 != 6 && p.Item1 != 14) || b.Length < 7 || b[0] != 4 || b[5] != 22) continue;
+            int i = 6, ol = b[i++]; byte[] oid = new byte[ol]; Buffer.BlockCopy(b, i, oid, 0, ol); i += ol;
+            if (!Same(oid, OidEd25519)) continue;
+            byte[] q = ReadMpi(b, ref i);
+            if (q.Length != 33 || q[0] != 0x40) continue;
+            byte[] pt = new byte[32]; Buffer.BlockCopy(q, 1, pt, 0, 32); r.Add(pt);
+        }
+        return r.ToArray();
+    }
+    // true = data carries a good signature (sig, armored) of one of the keys of the public key file
+    public static bool VerifyWithKeyFile(byte[] keyFile, byte[] data, string sig) {
+        foreach (byte[] pt in PublicPoints(keyFile)) if (VerifyDetached(pt, data, sig)) return true;
+        return false;
+    }
     public static string Armor(byte[] b, string what) {
         StringBuilder s = new StringBuilder();
         s.Append("-----BEGIN PGP ").Append(what).Append("-----\n\n");
@@ -300,7 +353,8 @@ public static class OtrVault {
     public static bool VerifyDetached(byte[] pub, byte[] data, string armored) {
         foreach (Tuple<int, byte[]> p in Packets(Dearmor(armored))) {
             byte[] b = p.Item2;
-            if (p.Item1 != 2 || b.Length < 6 || b[0] != 4 || b[2] != 22) continue;
+            // a signature of a binary document (0x00) only: a key certification is no signature of data
+            if (p.Item1 != 2 || b.Length < 6 || b[0] != 4 || b[1] != 0x00 || b[2] != 22) continue;
             int hl = (b[4] << 8) | b[5], i = 6 + hl;
             byte[] hashed = new byte[i]; Buffer.BlockCopy(b, 0, hashed, 0, i);
             byte[] digest;

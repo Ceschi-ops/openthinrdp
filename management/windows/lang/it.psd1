@@ -83,7 +83,7 @@
   RelNotNewer            = 'La release {0} non è più nuova di quella già in updates\ ({1}): niente da fare.'
   RelBadHash             = 'Il pacchetto {0} non corrisponde all''hash di LATEST.txt (download incompleto?): non è stato copiato niente.'
   RelSigChecked          = 'Firma della chiave del progetto: verificata.'
-  RelSigNotChecked       = 'Firma non verificata qui (gpg o la chiave del progetto non si trovano su questo PC): ogni postazione la verifica prima di installare.'
+  RelSigNotChecked       = 'Firma non controllata qui (openthinrdp-release.asc non è accanto a questo programma): ogni postazione la controlla prima di installare.'
   RelConfirm             = "Copiare la release {0} in updates\ della cartella di gestione?`r`nOra pubblicato: {1}.`r`n{2}`r`n`r`nLe postazioni con UPDATE_FROM = share la installano entro 5 minuti, mai durante una sessione."
   RelDone                = 'Release {0} pubblicata in updates\. Le postazioni la mostrano nella colonna dell''aggiornamento software man mano che la installano.'
   RelCopyFailed          = "Copia in updates\ non riuscita:`r`n{0}"
@@ -489,10 +489,10 @@
   VaultSshNewConfirm     = 'Creare una nuova chiave SSH per il gestore? Resta solo nella cassaforte.'
   VaultSshImported       = "Importata: {0}.`r`n`r`nIl file {1} contiene ancora la chiave senza protezione: cancellatelo quando nessuno lo usa più."
   VaultSignTitle         = 'Chiave che firma gli aggiornamenti'
-  VaultSignNone          = 'Ancora nessuna. Esportatela con gpg (gpg --export-secret-keys --armor <chiave> > chiave.asc, da una chiave senza passphrase) e importate quel file: poi il programma propone di cancellarlo.'
+  VaultSignNone          = 'Ancora nessuna. Create qui la chiave di questo sito, oppure importate una chiave esportata da gpg (gpg --export-secret-keys --armor <chiave> > chiave.asc, da una chiave senza passphrase): poi il programma propone di cancellare quel file.'
   VaultSignSet           = "{0}`r`n{1}, creata il {2}`r`n{3}"
   VaultRole_project      = 'La chiave del progetto: le postazioni che si aggiornano da GitHub installano quello che firma.'
-  VaultRole_own          = 'Una chiave vostra: le postazioni la accettano se è la update-key.asc della loro immagine (UPDATE_FROM=share).'
+  VaultRole_own          = 'La chiave di questo sito: le postazioni la accettano quando hanno la sua parte pubblica (update-key.asc), e con UPDATE_KEY = site solo lei. Release da GitHub rifirma con lei le release.'
   BtnVaultSign           = 'Firma un aggiornamento...'
   BtnVaultSignImport     = 'Importa la chiave...'
   VaultSignImportTitle   = 'Chiave di firma esportata da gpg'
@@ -531,7 +531,32 @@
   SignCheckFailed        = 'La nuova firma non torna: non è stato scritto niente.'
   SignDone               = "Versione {0} firmata con la chiave {1}.`r`n{2}`r`n`r`n{3}"
   SignRole_project       = 'La chiave del progetto: pronta per una release su GitHub.'
-  SignRole_own           = "Una chiave vostra: per le postazioni che la hanno come update-key.asc nell'immagine."
+  SignRole_own           = 'La chiave di questo sito: per le postazioni che la hanno come update-key.asc.'
   SignNoPackage          = 'Il pacchetto non è accanto a LATEST.txt: qui il suo hash non è stato controllato (lo controllano le postazioni).'
   ErrRemoteNoVaultKey    = 'La cassaforte non contiene ancora una chiave SSH: createla o importatela nella pagina Cassaforte, poi aggiungetela alle postazioni.'
+  Label_UPDATE_KEY       = 'Firma degli aggiornamenti'
+  Help_UPDATE_KEY        = 'Per gli aggiornamenti dalla cartella di gestione (Aggiornamenti software = share). any = la chiave del progetto o quella del sito; site = solo la chiave del sito: il gestore rifirma con quella le release di GitHub (pagina Cassaforte), così una chiave del progetto rubata qui non installa niente. Una postazione che non ha ancora la chiave del sito accetta ancora quella del progetto.'
+  SumUpdateKeys          = 'Firma aggiornamenti'
+  SumUpdateKeysValue     = 'da {0}, UPDATE_KEY = {1}, chiave del sito: {2}'
+  SumSiteKeyNone         = 'nessuna'
+  RelResign              = 'Viene rifirmata con la chiave del sito {0}: le postazioni con UPDATE_KEY = site accettano solo questa firma.'
+  RelNoResign            = 'Non rifirmata: nessuna chiave del sito nella cassaforte, o cassaforte chiusa. Le postazioni la prendono con la firma del progetto.'
+  RelNoResignWarn        = 'ATTENZIONE: common.conf ha UPDATE_KEY = site e questa release NON viene rifirmata con la chiave del sito (cassaforte chiusa o senza chiave del sito): quelle postazioni la ignoreranno. Rispondete No e aprite prima la cassaforte.'
+  RelResignUnchecked     = 'La firma del progetto qui non si può controllare (openthinrdp-release.asc non è accanto a questo programma): una release si rifirma con la chiave del sito solo sopra una firma del progetto controllata qui. Non è stato copiato niente.'
+  BtnVaultSignNew        = 'Crea la chiave del sito...'
+  BtnVaultSignExport     = 'Salva la chiave pubblica...'
+  VaultSignNewConfirm    = 'Creare la chiave di questo sito? Viene generata qui e resta solo nella cassaforte. Le postazioni la accettano quando hanno la sua parte pubblica (update-key.asc), portata da un aggiornamento firmato con una chiave che accettano già.'
+  VaultSignNewReplace    = 'La cassaforte contiene già la chiave di firma {0}. Sostituirla con una chiave NUOVA? Le postazioni che accettano solo la vecchia (UPDATE_KEY = site) non installano niente firmato dalla nuova finché non ricevono la sua parte pubblica in un aggiornamento firmato dalla vecchia: fino ad allora tenete la vecchia.'
+  VaultSignNewName       = 'Nome della chiave (lo mostrano gpg e la cassaforte):'
+  VaultSignNewBadName    = 'Nome non valido: al massimo 100 caratteri, su una riga.'
+  VaultSignNewDone       = 'Chiave del sito {0} creata nella cassaforte. Ora salvate la sua parte pubblica (update-key.asc): va alle postazioni in un aggiornamento, e nella vostra immagine se ne costruite una.'
+  VaultSignExportTitle   = 'Parte pubblica della chiave di firma (update-key.asc)'
+  VaultSignExported      = 'Salvata: {0} (chiave {1}). Non contiene segreti: si può copiare ovunque.'
+  BtnVaultSignSend       = 'Invia alle postazioni...'
+  SendKeyNoSsh           = 'SSH è spento su questa postazione'
+  SendKeyOldVersion      = "la postazione ha un OpenThinRDP più vecchio: riceve la chiave dopo l'aggiornamento"
+  SendKeyNothing         = 'Tutte le postazioni accese hanno già la chiave del sito {0}. Postazioni spente senza: {1} (inviatela di nuovo quando sono accese).'
+  SendKeyConfirm         = "Inviare la chiave pubblica del sito {0} a queste postazioni, via SSH con la chiave del gestore?`r`n`r`n{1}`r`n`r`nPostazioni spente ora: {2} (inviatela di nuovo quando sono accese). Dalla cassaforte non esce niente di segreto: solo la parte pubblica."
+  SendKeyRunning         = 'Chiave del sito a {0}...'
+  SendKeyDone            = 'Chiave del sito {0}: le postazioni la dichiarano entro 5 minuti (Riepilogo, Firma aggiornamenti). Postazioni spente: {1}.'
 }
