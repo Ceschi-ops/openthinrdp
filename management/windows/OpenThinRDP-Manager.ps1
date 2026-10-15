@@ -214,7 +214,7 @@ $script:Settings = @(
   (New-Setting 'DOMAIN'              'name'       '')
   (New-Setting 'LOAD_BALANCE_INFO'   'collection' '')
   (New-Setting 'TRANSPORT'           'choice'     'auto' @('auto', 'udp', 'tcp'))
-  (New-Setting 'RDP_AUTH'            'choice'     'negotiate' @('negotiate', 'ntlm'))
+  (New-Setting 'RDP_AUTH'            'choice'     'negotiate' @('negotiate', 'kerberos', 'ntlm'))
   (New-Setting 'RDP_CERT'            'choice'     'tofu' @('tofu', 'ignore', 'verify'))
   (New-Setting 'RDP_GFX'             'gfx'        'progressive,AVC420:off,AVC444:off')
   (New-Setting 'RDP_KEYBOARD'        'rdpkbd'     '')

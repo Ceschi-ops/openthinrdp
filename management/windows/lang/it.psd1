@@ -311,7 +311,7 @@
   Label_TRANSPORT           = 'Trasporto'
   Help_TRANSPORT            = 'auto = UDP, e TCP se UDP è bloccato o non funziona; udp = solo UDP (una connessione senza UDP viene chiusa e ritentata, dopo 3 tentativi un errore); tcp = solo TCP. Vale dalla connessione successiva.'
   Label_RDP_AUTH            = 'Autenticazione'
-  Help_RDP_AUTH             = 'negotiate = Kerberos, e NTLM quando Kerberos non è disponibile (DOMAIN deve essere il nome DNS completo); ntlm = solo NTLM. Dietro un alias del broker la postazione si collega a un broker col suo nome vero, quindi Kerberos funziona anche lì.'
+  Help_RDP_AUTH             = 'negotiate = Kerberos, e NTLM quando Kerberos non è disponibile (DOMAIN deve essere il nome DNS completo); kerberos = solo Kerberos, l''accesso fallisce invece di ripiegare su NTLM; ntlm = solo NTLM. Dietro un alias del broker la postazione si collega a un broker col suo nome vero, quindi Kerberos funziona anche lì.'
   Label_RDP_CERT            = 'Certificato del server'
   Help_RDP_CERT             = 'tofu = fiducia al primo uso; ignore = accetta qualsiasi certificato; verify = deve essere attendibile.'
   Label_RDP_GFX             = 'Pipeline grafica (/gfx)'

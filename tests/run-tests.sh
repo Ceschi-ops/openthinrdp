@@ -94,6 +94,8 @@ printf 'IPADDR=garbage\n' > "$T"
 ok "invalid address cleared in DHCP mode" '$OTR/save-config.sh "$T" --print 2>&1 | grep -qx "IPADDR="'
 tr_of(){ printf 'TRANSPORT=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^TRANSPORT=//p'; }
 ok "transport modes kept, anything else is auto" '[ "$(tr_of UDP)" = udp ] && [ "$(tr_of tcp)" = tcp ] && [ "$(tr_of auto)" = auto ] && [ "$(tr_of garbage)" = auto ]'
+au_of(){ printf 'RDP_AUTH=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^RDP_AUTH=//p'; }
+ok "authentication kerberos and ntlm kept, anything else is negotiate" '[ "$(au_of Kerberos)" = kerberos ] && [ "$(au_of ntlm)" = ntlm ] && [ "$(au_of garbage)" = negotiate ]'
 mm_of(){ printf 'MULTIMON=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^MULTIMON=//p'; }
 ok "MULTIMON auto or off" '[ "$(mm_of off)" = off ] && [ "$(mm_of AUTO)" = auto ] && [ "$(mm_of garbage)" = auto ]'
 ok "secrets printed only as a hash" 'printf "WIFI=on\nWIFI_SSID=Office\nWIFI_PSK=password123\nMGMT_USER=svc\nMGMT_PASSWORD=Secret|1\n" > "$T"; P=$($OTR/save-config.sh "$T" --print 2>&1); ! echo "$P" | grep -q "Secret|1" && ! echo "$P" | grep -q "$(wpa_passphrase Office password123 | sed -n "s/^[[:space:]]*psk=//p")" && echo "$P" | grep -Eq "^MGMT_PASSWORD=[0-9a-f]{64}$"'
