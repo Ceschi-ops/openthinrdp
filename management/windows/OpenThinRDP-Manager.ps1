@@ -37,14 +37,15 @@ using System.Windows.Forms;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 public class OtrColumnSorter : System.Collections.IComparer {
-    public int Column = 1;
+    public int Column = 0;
+    public int NameColumn = 0;   // equal values: by name
     public bool Descending = false;
     public int Compare(object x, object y) {
         ListViewItem a = (ListViewItem)x, b = (ListViewItem)y;
         string sa = Column < a.SubItems.Count ? a.SubItems[Column].Text : "";
         string sb = Column < b.SubItems.Count ? b.SubItems[Column].Text : "";
         int r = Natural(Durations(sa), Durations(sb));
-        if (r == 0 && Column != 1) { return Natural(a.SubItems.Count > 1 ? a.SubItems[1].Text : "", b.SubItems.Count > 1 ? b.SubItems[1].Text : ""); }
+        if (r == 0 && Column != NameColumn) { return Natural(a.SubItems.Count > NameColumn ? a.SubItems[NameColumn].Text : "", b.SubItems.Count > NameColumn ? b.SubItems[NameColumn].Text : ""); }
         return Descending ? -r : r;
     }
     // durations in minutes, so "45 min" sorts before "3 hours": uptime -p ("1 week, 3 days, 5 minutes") in
@@ -445,18 +446,19 @@ function Get-Devices {
     if (-not $s['HOSTNAME']) { continue }
     $when = Get-ReportTime $s; if (-not $when) { $when = $f.LastWriteTime }
     $min = [int]((Get-Date) - $when).TotalMinutes
-    $state = Get-Text 'StateOk'; $color = [System.Drawing.Color]::FromArgb(220, 245, 220)
-    if ($min -gt $script:StaleMinutes) { $state = Get-Text 'StateOffline' (Format-Minutes $min); $color = [System.Drawing.Color]::FromArgb(230, 230, 230) }
-    elseif ($s['FAILED_UNITS'] -and $s['FAILED_UNITS'] -ne 'none') { $state = Get-Text 'StateFailedUnits'; $color = [System.Drawing.Color]::FromArgb(255, 205, 205) }
-    elseif ($s['CENTRAL_CONFIG'] -like 'REJECTED*') { $state = Get-Text 'StateRejected'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
-    elseif ($s['SHARE_UPDATE'] -like 'ERROR*' -or $s['SHARE_UPDATE'] -like 'IGNORED*') { $state = Get-Text 'StateUpdateError'; $color = [System.Drawing.Color]::FromArgb(255, 225, 190) }
-    elseif ($s['REBOOT_REQUIRED'] -eq 'yes') { $state = Get-Text 'StateReboot'; $color = [System.Drawing.Color]::FromArgb(255, 245, 190) }
-    $list += [pscustomobject]@{ Name = $s['HOSTNAME']; File = $f.BaseName; State = $state; OldName = $false; Color = $color; Minutes = $min; When = $when; S = $s }
+    # Kind = the colour of the state: ok, off, error, warn, info
+    $state = Get-Text 'StateOk'; $kind = 'ok'
+    if ($min -gt $script:StaleMinutes) { $state = Get-Text 'StateOffline' (Format-Minutes $min); $kind = 'off' }
+    elseif ($s['FAILED_UNITS'] -and $s['FAILED_UNITS'] -ne 'none') { $state = Get-Text 'StateFailedUnits'; $kind = 'error' }
+    elseif ($s['CENTRAL_CONFIG'] -like 'REJECTED*') { $state = Get-Text 'StateRejected'; $kind = 'warn' }
+    elseif ($s['SHARE_UPDATE'] -like 'ERROR*' -or $s['SHARE_UPDATE'] -like 'IGNORED*') { $state = Get-Text 'StateUpdateError'; $kind = 'warn' }
+    elseif ($s['REBOOT_REQUIRED'] -eq 'yes') { $state = Get-Text 'StateReboot'; $kind = 'info' }
+    $list += [pscustomobject]@{ Name = $s['HOSTNAME']; File = $f.BaseName; State = $state; Kind = $kind; OldName = $false; Minutes = $min; When = $when; S = $s }
   }
   # same MAC under two names = the old name left behind by a rename (normally the device removes it itself)
   foreach ($g in @($list | Where-Object { $_.S['MAC'] } | Group-Object { $_.S['MAC'] } | Where-Object Count -gt 1)) {
     $sorted = @($g.Group | Sort-Object When -Descending)
-    $sorted | Select-Object -Skip 1 | ForEach-Object { $_.State = Get-Text 'StateOldName' $sorted[0].Name; $_.OldName = $true }
+    $sorted | Select-Object -Skip 1 | ForEach-Object { $_.State = Get-Text 'StateOldName' $sorted[0].Name; $_.Kind = 'off'; $_.OldName = $true }
   }
   @($list | Sort-Object Name)
 }
@@ -1059,7 +1061,8 @@ function Get-ProblemSummary($events) {
 }
 # the headline: the problems that touched most devices, in one sentence each
 function Get-ProblemHeadline($summary) {
-  if (-not @($summary).Count) { return (Get-Text 'ProbNone') }
+  # an empty summary comes as $null, and @($null) has one element
+  if (-not @($summary | Where-Object { $_ }).Count) { return (Get-Text 'ProbNone') }
   (@($summary | Sort-Object @{ Expression = { $_.Devices.Count }; Descending = $true }, @{ Expression = 'Count'; Descending = $true } | Select-Object -First 3 | ForEach-Object {
     Get-Text 'ProbHeadline' (Get-Text "Prob_$($_.Kind)") $(if ($_.Where) { " ($(Get-WhereLabel $_.Where))" } else { '' }) $_.Count $_.Devices.Count
   }) -join "   $([char]0x00B7)   ")
@@ -1082,6 +1085,10 @@ if ($FunctionsOnly) { return }
 
 # =============================================================================================
 # Window
+#   left: the pages (Devices, Common settings, SSH keys, Problems); top: the actions on the folder.
+#   Devices: the list on the left, the selected device on the right (header with its actions, then Settings,
+#   Summary, Events and the full report). The settings grids show the help of the selected setting in full
+#   under the grid instead of a column cut after a few words.
 # =============================================================================================
 [System.Windows.Forms.Application]::EnableVisualStyles()
 function Show-Message($title, $text, $icon = 'Warning') { [void][System.Windows.Forms.MessageBox]::Show($text, $title, 'OK', $icon) }
@@ -1108,9 +1115,55 @@ if (-not (Test-Path -LiteralPath $script:StatusDir) -and -not (Test-Path -Litera
 }
 if (-not $env:OTR_MANAGER_SCREENSHOT) { Save-LastFolder $script:Folder }
 
-$fontBase = New-Object System.Drawing.Font('Segoe UI', 9)
-$fontMono = New-Object System.Drawing.Font('Consolas', 9)
-$fontBold = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+# ---------------------------------------------------------------------------------------------
+# Look: fonts, colours (the shell in the default top colour of the devices' sign-in screen), icons
+# ---------------------------------------------------------------------------------------------
+$fontBase = New-Object System.Drawing.Font('Segoe UI', 9.75)
+$fontSmall = New-Object System.Drawing.Font('Segoe UI', 9)
+$fontMono = New-Object System.Drawing.Font('Consolas', 9.75)
+$fontBold = New-Object System.Drawing.Font('Segoe UI', 9.75, [System.Drawing.FontStyle]::Bold)
+$fontSmallBold = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+$fontNav = New-Object System.Drawing.Font('Segoe UI', 10.5)
+$fontApp = New-Object System.Drawing.Font('Segoe UI Semibold', 12.5)
+$fontTitle = New-Object System.Drawing.Font('Segoe UI Semibold', 15)
+$fontPageTitle = New-Object System.Drawing.Font('Segoe UI Semibold', 13)
+
+function New-Color([string]$hex) { [System.Drawing.ColorTranslator]::FromHtml($hex) }
+$script:Theme = @{
+  Shell = New-Color '#1b2733'; ShellHover = New-Color '#25384a'; ShellSelected = New-Color '#2b4156'; ShellText = New-Color '#e8eef4'; ShellMuted = New-Color '#93a4b5'
+  Accent = New-Color '#2563eb'; AccentDark = New-Color '#1d4ed8'; AccentSoft = New-Color '#dbeafe'
+  Page = New-Color '#f3f5f8'; Card = New-Color '#ffffff'; Line = New-Color '#e2e6ec'; Text = New-Color '#1f2937'; Muted = New-Color '#6b7280'; Hover = New-Color '#f1f3f6'
+  Section = New-Color '#eef2f7'; Own = New-Color '#fff7d6'; Managed = New-Color '#eaf1ff'
+}
+# state colours: strong (dot, text) and soft (background of the state label)
+$script:KindColor = @{ ok = New-Color '#16a34a'; off = New-Color '#9ca3af'; error = New-Color '#dc2626'; warn = New-Color '#d97706'; info = New-Color '#2563eb' }
+$script:KindSoft = @{ ok = New-Color '#dcfce7'; off = New-Color '#f1f2f4'; error = New-Color '#fee2e2'; warn = New-Color '#fef3c7'; info = New-Color '#dbeafe' }
+
+# icons from the symbol font of Windows 10/11 (Segoe Fluent Icons on 11, Segoe MDL2 Assets on 10); without
+# either the buttons show their text only
+$script:IconFont = @('Segoe Fluent Icons', 'Segoe MDL2 Assets') | Where-Object { $n = $_; @([System.Drawing.FontFamily]::Families | Where-Object Name -eq $n).Count } | Select-Object -First 1
+$script:Glyph = @{ Refresh = 'E72C'; Folder = 'E838'; Download = 'E896'; Shield = 'EA18'; Devices = 'E977'; Settings = 'E713'; Key = 'E8D7'; Warning = 'E7BA'
+  Screen = 'E7F4'; Picture = 'E91B'; Save = 'E74E'; Undo = 'E7A7'; Delete = 'E74D'; Add = 'E710'; Search = 'E721'; Document = 'E8A5' }
+function New-Glyph([string]$name, $color, [int]$size = 16) {
+  if (-not $script:IconFont -or -not $script:Glyph.ContainsKey($name)) { return $null }
+  $bmp = New-Object System.Drawing.Bitmap($size, $size)
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.TextRenderingHint = 'AntiAliasGridFit'
+  $f = New-Object System.Drawing.Font($script:IconFont, [single]($size * 0.75), [System.Drawing.GraphicsUnit]::Pixel)
+  $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+  $br = New-Object System.Drawing.SolidBrush($color)
+  $g.DrawString([string][char][Convert]::ToInt32($script:Glyph[$name], 16), $f, $br, (New-Object System.Drawing.RectangleF(0, 0, $size, $size)), $sf)
+  $br.Dispose(); $sf.Dispose(); $f.Dispose(); $g.Dispose()
+  $bmp
+}
+# the state dot of the device list; the height of the picture sets the height of the rows
+function New-Dot($color, [int]$w = 16, [int]$h = 26) {
+  $bmp = New-Object System.Drawing.Bitmap($w, $h)
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.SmoothingMode = 'AntiAlias'
+  $br = New-Object System.Drawing.SolidBrush($color); $d = 10
+  $g.FillEllipse($br, [single](($w - $d) / 2), [single](($h - $d) / 2), $d, $d)
+  $br.Dispose(); $g.Dispose()
+  $bmp
+}
 
 # Sizes from the texts, so that longer translations fit: a column is never narrower than its title or
 # than the samples given (labels, placeholders), a button never narrower than its text.
@@ -1119,81 +1172,201 @@ function Get-FitWidth($width, $texts, $font = $fontBase, $pad = 16) {
   foreach ($t in @($texts)) { $width = [Math]::Max($width, (Get-TextWidth $t $font) + $pad) }
   $width
 }
+function Measure-Note($text, $width, $font = $fontBase) {
+  [System.Windows.Forms.TextRenderer]::MeasureText([string]$text, $font, (New-Object System.Drawing.Size([Math]::Max(50, $width), 0)), [System.Windows.Forms.TextFormatFlags]::WordBreak).Height
+}
+# plain buttons of the small dialogs (logo, remote screen)
 function New-Button($textKey, $minWidth, $height) {
   $b = New-Object System.Windows.Forms.Button; $b.Text = Get-Text $textKey; $b.Font = $fontBase
   $b.Size = New-Object System.Drawing.Size((Get-FitWidth $minWidth $b.Text -pad 20), $height)
   $b
 }
-function Measure-Note($text, $width) {
-  [System.Windows.Forms.TextRenderer]::MeasureText([string]$text, $fontBase, (New-Object System.Drawing.Size([Math]::Max(50, $width), 0)), [System.Windows.Forms.TextFormatFlags]::WordBreak).Height
+# flat buttons of the window: primary (the one action of a page), secondary, danger (removes something),
+# toolbar (on the dark top bar)
+function New-ActionButton([string]$textKey, [string]$glyph = '', [string]$style = 'secondary') {
+  $b = New-Object System.Windows.Forms.Button
+  $b.Text = Get-Text $textKey; $b.Font = $fontBase; $b.FlatStyle = 'Flat'; $b.Cursor = 'Hand'; $b.Height = 32; $b.UseVisualStyleBackColor = $false
+  $b.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 0)
+  switch ($style) {
+    'primary' { $b.BackColor = $Theme.Accent; $fg = [System.Drawing.Color]::White; $b.FlatAppearance.BorderColor = $Theme.Accent; $b.FlatAppearance.MouseOverBackColor = $Theme.AccentDark; $b.FlatAppearance.MouseDownBackColor = $Theme.AccentDark }
+    'danger' { $b.BackColor = $Theme.Card; $fg = $script:KindColor.error; $b.FlatAppearance.BorderColor = New-Color '#f3c4c4'; $b.FlatAppearance.MouseOverBackColor = $script:KindSoft.error }
+    'toolbar' { $b.BackColor = $Theme.Shell; $fg = $Theme.ShellText; $b.FlatAppearance.BorderSize = 0; $b.FlatAppearance.MouseOverBackColor = $Theme.ShellHover; $b.FlatAppearance.MouseDownBackColor = $Theme.ShellSelected }
+    default { $b.BackColor = $Theme.Card; $fg = $Theme.Text; $b.FlatAppearance.BorderColor = New-Color '#cfd5dd'; $b.FlatAppearance.MouseOverBackColor = $Theme.Hover }
+  }
+  $b.ForeColor = $fg
+  $img = if ($glyph) { New-Glyph $glyph $fg 16 } else { $null }
+  if ($img) { $b.Image = $img; $b.ImageAlign = 'MiddleLeft'; $b.TextImageRelation = 'ImageBeforeText'; $b.Padding = New-Object System.Windows.Forms.Padding(8, 0, 6, 0) }
+  $b.Width = (Get-TextWidth $b.Text) + $(if ($img) { 50 } else { 30 })
+  $b
 }
-# a row of buttons and a note after them: the note takes the rest of the width and wraps, and the panel
-# grows when the note needs more lines than its usual height holds
-function Set-ButtonRow($panel, $buttons, $note, $top) {
-  $note.AutoSize = $false; $note.Font = $fontBase
-  $x = 8; foreach ($b in $buttons) { $b.Location = New-Object System.Drawing.Point($x, $top); $x = $b.Right + 6 }; $x += 6
-  $panel.Tag = @{ Buttons = $buttons; Note = $note; Top = $top; X = $x; MinHeight = $panel.Height }
-  $panel.Controls.AddRange(@($buttons + $note))
-  $panel.add_Resize({ param($p, $e) Update-ButtonRow $p })
-  # the height is set from the Layout event of the container: it runs before the container arranges its
-  # docked children. A height changed later (e.g. in Resize) is not applied to the neighbours.
-  $panel.add_ParentChanged({ param($p, $e)
-    if ($p.Parent) { $p.Parent.add_Layout({ param($c, $e)
-      foreach ($q in $c.Controls) { if ($q.Tag -is [hashtable] -and $q.Tag.ContainsKey('Note')) { Set-ButtonRowHeight $q $c.DisplayRectangle.Width } } }) } })
-  Update-ButtonRow $panel
+function New-Panel($dock, $back, [int]$height = 0, [int]$width = 0) {
+  $p = New-Object System.Windows.Forms.Panel; $p.Dock = $dock; if ($back) { $p.BackColor = $back }
+  if ($height) { $p.Height = $height }; if ($width) { $p.Width = $width }
+  $p
 }
-function Set-ButtonRowHeight($p, $width) {
-  $t = $p.Tag; $h = Measure-Note $t.Note.Text ($width - $t.X - 8)
-  $need = if ($h -gt $t.Buttons[0].Height) { [Math]::Max($t.MinHeight, $t.Top - 1 + $h + 2 + $t.Top) } else { $t.MinHeight }
-  if ($p.Height -ne $need) { $p.Height = $need }
+function New-Label([string]$text, $font = $fontBase, $color = $null) {
+  $l = New-Object System.Windows.Forms.Label; $l.Text = $text; $l.Font = $font; $l.AutoSize = $true
+  $l.ForeColor = if ($color) { $color } else { $Theme.Text }; $l.BackColor = [System.Drawing.Color]::Transparent
+  $l
 }
-function Update-ButtonRow($p) {
-  $t = $p.Tag; $w = [Math]::Max(100, $p.ClientSize.Width - $t.X - 8)
-  $h = Measure-Note $t.Note.Text $w; $bh = $t.Buttons[0].Height
-  # one line: centred on the buttons, as before; more lines: from the top of the buttons
-  $y = if ($h -le $bh) { $t.Top + [int][Math]::Floor(($bh - $h) / 2) } else { $t.Top - 1 }
-  $t.Note.SetBounds($t.X, $y, $w, [Math]::Max($h + 2, $p.ClientSize.Height - $y))
+# a thin line on one side of a panel
+function Add-Line($p, [string]$side = 'Top') {
+  $p.Tag = @{ Line = $side }
+  $p.add_Paint({ param($s, $e)
+    $pen = New-Object System.Drawing.Pen($Theme.Line)
+    switch ($s.Tag.Line) {
+      'Top' { $e.Graphics.DrawLine($pen, 0, 0, $s.Width, 0) }
+      'Bottom' { $e.Graphics.DrawLine($pen, 0, $s.Height - 1, $s.Width, $s.Height - 1) }
+      'Box' { $e.Graphics.DrawRectangle($pen, 0, 0, $s.Width - 1, $s.Height - 1) }
+    }
+    $pen.Dispose() })
+}
+# search boxes with a grey hint inside (EM_SETCUEBANNER)
+if (-not ('OtrNative' -as [type])) {
+  Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class OtrNative { [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, string l); }'
+}
+function New-SearchBox([string]$cueKey, [int]$width) {
+  $t = New-Object System.Windows.Forms.TextBox; $t.Font = $fontBase; $t.Width = $width; $t.Tag = Get-Text $cueKey
+  $t.add_HandleCreated({ param($s, $e) [void][OtrNative]::SendMessage($s.Handle, 0x1501, [IntPtr]1, [string]$s.Tag) })
+  $t
+}
+# a bar of buttons: left = the actions of the page, right = the one that removes something
+function New-ActionBar($left, $right = @()) {
+  $p = New-Panel 'Bottom' $Theme.Card 56; Add-Line $p 'Top'
+  $p.Padding = New-Object System.Windows.Forms.Padding(12, 12, 12, 10)
+  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.Dock = 'Left'; $fl.AutoSize = $true; $fl.WrapContents = $false; $fl.BackColor = $Theme.Card
+  foreach ($b in $left) { $fl.Controls.Add($b) }
+  $p.Controls.Add($fl)
+  if (@($right).Count) {
+    $fr = New-Object System.Windows.Forms.FlowLayoutPanel; $fr.Dock = 'Right'; $fr.AutoSize = $true; $fr.WrapContents = $false; $fr.FlowDirection = 'RightToLeft'; $fr.BackColor = $Theme.Card
+    foreach ($b in $right) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $fr.Controls.Add($b) }
+    $p.Controls.Add($fr)
+  }
+  $p
+}
+# title and explanation on top of a page; the explanation wraps and the header grows with it
+function New-PageHeader([string]$title, [string]$text) {
+  $p = New-Panel 'Top' $Theme.Page 80
+  $p.Padding = New-Object System.Windows.Forms.Padding(16, 12, 16, 10)
+  $t = New-Label $title $fontPageTitle; $t.AutoSize = $false; $t.Dock = 'Top'; $t.Height = 32
+  $n = New-Label $text $fontBase $Theme.Muted; $n.AutoSize = $false; $n.Dock = 'Fill'
+  $p.Controls.Add($n); $p.Controls.Add($t)
+  $p.Tag = @{ Note = $n }
+  # the height from the Layout event of the page: it runs before the page arranges its docked children
+  $p.add_ParentChanged({ param($q, $e)
+    if ($q.Parent) { $q.Parent.add_Layout({ param($c, $e)
+      foreach ($h in $c.Controls) { if ($h.Tag -is [hashtable] -and $h.Tag.ContainsKey('Note')) {
+        $need = 12 + 32 + (Measure-Note $h.Tag.Note.Text ($c.DisplayRectangle.Width - 32)) + 12
+        if ($h.Height -ne $need) { $h.Height = $need } } } }) } })
+  $p
+}
+# the help of the selected setting, under a settings grid
+function New-HelpPanel([string]$default) {
+  $p = New-Panel 'Bottom' $Theme.Page 104; Add-Line $p 'Top'
+  $p.Padding = New-Object System.Windows.Forms.Padding(14, 8, 14, 6)
+  $t = New-Label '' $fontBold; $t.AutoSize = $false; $t.Dock = 'Top'; $t.Height = 22
+  $b = New-Label $default $fontBase $Theme.Muted; $b.AutoSize = $false; $b.Dock = 'Fill'
+  $p.Controls.Add($b); $p.Controls.Add($t)
+  $p.Tag = @{ Line = 'Top'; Title = $t; Body = $b; Default = $default }
+  $p
+}
+function Show-Help($panel, $s) {
+  if ($s) { $panel.Tag.Title.Text = "$($s.Label)   $([char]0x00B7)   $($s.Key)"; $panel.Tag.Body.Text = $s.Help; $panel.Tag.Body.ForeColor = $Theme.Text }
+  else { $panel.Tag.Title.Text = ''; $panel.Tag.Body.Text = $panel.Tag.Default; $panel.Tag.Body.ForeColor = $Theme.Muted }
 }
 
+# ---------------------------------------------------------------------------------------------
+# The window: dark bar on top (folder actions), pages on the left, status bar
+# ---------------------------------------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = Get-Text 'WindowTitle' $script:Folder
-$form.Size = New-Object System.Drawing.Size(1280, 820)
-$form.MinimumSize = New-Object System.Drawing.Size(1000, 640)
+$form.Size = New-Object System.Drawing.Size(1440, 880)
+$form.MinimumSize = New-Object System.Drawing.Size(1100, 680)
 $form.StartPosition = 'CenterScreen'
-$form.Font = $fontBase
+$form.Font = $fontBase; $form.BackColor = $Theme.Page
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+if ($wa.Width -lt $form.Width -or $wa.Height -lt $form.Height) { $form.WindowState = 'Maximized' }
 
+$root = New-Panel 'Fill' $Theme.Page
 $bar = New-Object System.Windows.Forms.StatusStrip
+$bar.BackColor = $Theme.Card; $bar.SizingGrip = $false; $bar.Font = $fontSmall
 $barText = New-Object System.Windows.Forms.ToolStripStatusLabel
-$barText.Spring = $true; $barText.TextAlign = 'MiddleLeft'
+$barText.Spring = $true; $barText.TextAlign = 'MiddleLeft'; $barText.ForeColor = $Theme.Muted
 [void]$bar.Items.Add($barText)
 
-$tabs = New-Object System.Windows.Forms.TabControl
-$tabs.Dock = 'Fill'
-$tabDevices = New-Object System.Windows.Forms.TabPage (Get-Text 'TabDevices')
-$tabCommon = New-Object System.Windows.Forms.TabPage (Get-Text 'TabCommon')
-$tabKeys = New-Object System.Windows.Forms.TabPage (Get-Text 'TabKeys')
-$tabProblems = New-Object System.Windows.Forms.TabPage (Get-Text 'TabProblems')
-$tabs.TabPages.AddRange(@($tabDevices, $tabCommon, $tabKeys, $tabProblems))
+# top bar: name, folder, actions on the folder
+$header = New-Panel 'Top' $Theme.Shell 56
+$lblApp = New-Label (Get-Text 'AppName') $fontApp $Theme.ShellText; $lblApp.Location = New-Object System.Drawing.Point(18, 15)
+$lblFolder = New-Label $script:Folder $fontSmall $Theme.ShellMuted; $lblFolder.Location = New-Object System.Drawing.Point(($lblApp.Left + (Get-TextWidth $lblApp.Text $fontApp) + 14), 21)
+$tools = New-Object System.Windows.Forms.FlowLayoutPanel; $tools.Dock = 'Right'; $tools.AutoSize = $true; $tools.WrapContents = $false
+$tools.FlowDirection = 'RightToLeft'; $tools.BackColor = $Theme.Shell; $tools.Padding = New-Object System.Windows.Forms.Padding(0, 12, 10, 0)
+$btnPerm = New-ActionButton 'BtnCheckPermissions' 'Shield' 'toolbar'
+$btnRelease = New-ActionButton 'BtnImportRelease' 'Download' 'toolbar'
+$btnOpen = New-ActionButton 'BtnOpenFolder' 'Folder' 'toolbar'
+$btnRefresh = New-ActionButton 'BtnRefresh' 'Refresh' 'toolbar'
+foreach ($b in @($btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
+$tips = New-Object System.Windows.Forms.ToolTip
+$tips.SetToolTip($btnRefresh, (Get-Text 'NoteDevices')); $tips.SetToolTip($lblFolder, $script:Folder)
+$header.Controls.AddRange(@($lblApp, $lblFolder, $tools))
+# a long folder path ends with ... before the actions
+$lblFolder.AutoSize = $false; $lblFolder.AutoEllipsis = $true; $lblFolder.Height = 20
+$header.add_Resize({ param($s, $e) $lblFolder.Width = [Math]::Max(40, $s.ClientSize.Width - $tools.Width - $lblFolder.Left - 16) })
 
-# ---------------- Devices tab ----------------
-$topPanel = New-Object System.Windows.Forms.Panel
-$topPanel.Dock = 'Top'; $topPanel.Height = 38
-$btnRefresh = New-Button 'BtnRefresh' 120 26
-$btnOpen = New-Button 'BtnOpenFolder' 110 26
-$btnRelease = New-Button 'BtnImportRelease' 150 26
-$btnPerm = New-Button 'BtnCheckPermissions' 130 26
-$lblNote = New-Object System.Windows.Forms.Label
-$lblNote.Text = Get-Text 'NoteDevices'
-Set-ButtonRow $topPanel @($btnRefresh, $btnOpen, $btnRelease, $btnPerm) $lblNote 6
+# pages on the left: a dark column, the selected page marked by a line in the accent colour
+$nav = New-Panel 'Left' $Theme.Shell 0 210
+$nav.Padding = New-Object System.Windows.Forms.Padding(0, 10, 0, 0)
+$content = New-Panel 'Fill' $Theme.Page
+$script:Page = 0; $script:NavButtons = @(); $script:Pages = @()
+function New-NavButton([string]$textKey, [string]$glyph, [int]$index) {
+  $b = New-Object System.Windows.Forms.Button
+  $b.Text = '  ' + (Get-Text $textKey); $b.Font = $fontNav; $b.FlatStyle = 'Flat'; $b.FlatAppearance.BorderSize = 0; $b.Cursor = 'Hand'
+  $b.Dock = 'Top'; $b.Height = 46; $b.TextAlign = 'MiddleLeft'; $b.ForeColor = $Theme.ShellText; $b.BackColor = $Theme.Shell; $b.UseVisualStyleBackColor = $false
+  $b.FlatAppearance.MouseOverBackColor = $Theme.ShellHover; $b.FlatAppearance.MouseDownBackColor = $Theme.ShellSelected
+  $b.Padding = New-Object System.Windows.Forms.Padding(18, 0, 0, 0)
+  $img = New-Glyph $glyph $Theme.ShellText 18
+  if ($img) { $b.Image = $img; $b.ImageAlign = 'MiddleLeft'; $b.TextImageRelation = 'ImageBeforeText' }
+  $b.Tag = @{ Index = $index; Count = '' }
+  $b.add_Paint({ param($s, $e)
+    if ($s.Tag.Index -eq $script:Page) { $br = New-Object System.Drawing.SolidBrush($Theme.Accent); $e.Graphics.FillRectangle($br, 0, 8, 4, $s.Height - 16); $br.Dispose() }
+    if ($s.Tag.Count) {
+      $r = New-Object System.Drawing.Rectangle(0, 0, ($s.Width - 16), $s.Height)
+      [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$s.Tag.Count, $fontSmall, $r, $Theme.ShellMuted, [System.Windows.Forms.TextFormatFlags]'Right, VerticalCenter')
+    } })
+  $b.add_Click({ param($s, $e) Select-Page $s.Tag.Index })
+  $b
+}
+$navDevices = New-NavButton 'NavDevices' 'Devices' 0
+$navCommon = New-NavButton 'NavCommon' 'Settings' 1
+$navKeys = New-NavButton 'NavKeys' 'Key' 2
+$navProblems = New-NavButton 'NavProblems' 'Warning' 3
+$script:NavButtons = @($navDevices, $navCommon, $navKeys, $navProblems)
+# Dock Top stacks the last added on top
+foreach ($b in @($navProblems, $navKeys, $navCommon, $navDevices)) { $nav.Controls.Add($b) }
 
+# ---------------- Devices page: list | selected device ----------------
+$pageDevices = New-Panel 'Fill' $Theme.Page
 $split = New-Object System.Windows.Forms.SplitContainer
-$split.Dock = 'Fill'; $split.Orientation = 'Horizontal'
+$split.Dock = 'Fill'; $split.Orientation = 'Vertical'; $split.BackColor = $Theme.Page; $split.SplitterWidth = 10
+$split.Panel1.Padding = New-Object System.Windows.Forms.Padding(12, 12, 0, 12); $split.Panel2.Padding = New-Object System.Windows.Forms.Padding(0, 12, 12, 12)
+$split.FixedPanel = 'Panel1'
 
+# list card: search, counts, the list, a note on how often it changes
+$listCard = New-Panel 'Fill' $Theme.Card; Add-Line $listCard 'Box'; $listCard.Padding = New-Object System.Windows.Forms.Padding(1)
+$listTop = New-Panel 'Top' $Theme.Card 72
+$txtDevSearch = New-SearchBox 'SearchDevices' 200; $txtDevSearch.Location = New-Object System.Drawing.Point(12, 12); $txtDevSearch.Anchor = 'Top, Left, Right'
+$lblDevCount = New-Label '' $fontSmall $Theme.Muted; $lblDevCount.Location = New-Object System.Drawing.Point(12, 46)
+$listTop.Controls.AddRange(@($txtDevSearch, $lblDevCount))
+$listTop.add_Resize({ param($s, $e) $txtDevSearch.Width = [Math]::Max(80, $s.ClientSize.Width - 24) })
+
+$imgDots = New-Object System.Windows.Forms.ImageList; $imgDots.ColorDepth = 'Depth32Bit'; $imgDots.ImageSize = New-Object System.Drawing.Size(16, 26)
+foreach ($k in @('ok', 'off', 'error', 'warn', 'info')) { $imgDots.Images.Add($k, (New-Dot $script:KindColor[$k])) }
 $list = New-Object System.Windows.Forms.ListView
-$list.Dock = 'Fill'; $list.View = 'Details'; $list.FullRowSelect = $true; $list.MultiSelect = $false; $list.HideSelection = $false; $list.GridLines = $true
-foreach ($c in @(@('ColState', 160), @('ColHostname', 110), @('ColSoftware', 95), @('ColWebButton', 125), @('ColIp', 120), @('ColDefaultUser', 105), @('ColSession', 140),
-                 @('ColLastReport', 115), @('ColTransport', 150), @('ColShareUpdate', 200), @('ColWifi', 210), @('ColMac', 125), @('ColUptime', 120), @('ColNetwork', 60),
-                 @('ColFreeRdp', 150), @('ColCentralConfig', 220), @('ColSecurityUpdates', 210))) {
+$list.Dock = 'Fill'; $list.View = 'Details'; $list.FullRowSelect = $true; $list.MultiSelect = $false; $list.HideSelection = $false
+$list.BorderStyle = 'None'; $list.SmallImageList = $imgDots; $list.ShowItemToolTips = $true; $list.Font = $fontBase
+# the last column takes the rest of the width: no horizontal scroll bar for a few pixels
+$list.add_Resize({ param($s, $e) if ($s.Columns.Count -lt 2) { return }; $w = 0; for ($k = 0; $k -lt $s.Columns.Count - 1; $k++) { $w += $s.Columns[$k].Width }
+  $s.Columns[$s.Columns.Count - 1].Width = [Math]::Max(60, $s.ClientSize.Width - $w - 2) })
+foreach ($c in @(@('ColDevice', 105), @('ColState', 110), @('ColUser', 80), @('ColVersion', 52), @('ColLastReport', 64))) {
   # room for the sort arrow too
   $title = Get-Text $c[0]
   [void]$list.Columns.Add($title, (Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14))
@@ -1201,6 +1374,7 @@ foreach ($c in @(@('ColState', 160), @('ColHostname', 110), @('ColSoftware', 95)
 # click on a header = sort by that column, second click = reverse; the arrow shows which.
 # The chosen order stays when the list refreshes by itself.
 $script:Sorter = New-Object OtrColumnSorter
+$script:Sorter.Column = 0; $script:Sorter.NameColumn = 0
 $script:Titles = @($list.Columns | ForEach-Object { $_.Text })
 function Show-SortMark {
   for ($k = 0; $k -lt $list.Columns.Count; $k++) {
@@ -1213,124 +1387,219 @@ $list.add_ColumnClick({ param($s, $e)
   $list.Sort(); Show-SortMark
   if ($list.SelectedItems.Count) { $list.SelectedItems[0].EnsureVisible() } })
 Show-SortMark
-$split.Panel1.Controls.Add($list)
+$lblListNote = New-Label (Get-Text 'NoteDevices') $fontSmall $Theme.Muted; $lblListNote.AutoSize = $false; $lblListNote.Dock = 'Bottom'; $lblListNote.Height = 46
+$lblListNote.Padding = New-Object System.Windows.Forms.Padding(10, 6, 10, 4); $lblListNote.BackColor = $Theme.Card
+$listCard.Controls.Add($list); $listCard.Controls.Add($lblListNote); $listCard.Controls.Add($listTop)
+$split.Panel1.Controls.Add($listCard)
+
+# selected device: header (name, state, address, version, last report, session) with its actions
+$devCard = New-Panel 'Fill' $Theme.Card; Add-Line $devCard 'Box'; $devCard.Padding = New-Object System.Windows.Forms.Padding(1)
+$devHead = New-Panel 'Top' $Theme.Card 92; Add-Line $devHead 'Bottom'
+$lblDevName = New-Label '' $fontTitle; $lblDevName.Location = New-Object System.Drawing.Point(18, 12)
+$lblDevState = New-Label '' $fontSmallBold; $lblDevState.Padding = New-Object System.Windows.Forms.Padding(8, 3, 8, 3); $lblDevState.Visible = $false
+$lblDevInfo = New-Label '' $fontBase $Theme.Muted; $lblDevInfo.Location = New-Object System.Drawing.Point(20, 56)
+$devActions = New-Object System.Windows.Forms.FlowLayoutPanel; $devActions.AutoSize = $true; $devActions.AutoSizeMode = 'GrowAndShrink'; $devActions.WrapContents = $false
+$devActions.FlowDirection = 'RightToLeft'; $devActions.BackColor = $Theme.Card; $devActions.Anchor = 'Top, Right'
+$btnRemoteDev = New-ActionButton 'BtnRemoteScreen' 'Screen' 'primary'
+$btnBrandDev = New-ActionButton 'BtnBranding' 'Picture' 'secondary'
+foreach ($b in @($btnRemoteDev, $btnBrandDev)) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $devActions.Controls.Add($b) }
+$tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen'))
+$devHead.Controls.AddRange(@($lblDevName, $lblDevState, $lblDevInfo, $devActions))
+# the actions in the top right corner, over the first line only: the line under the name keeps the whole width
+$devHead.add_Resize({ param($s, $e) $devActions.Location = New-Object System.Drawing.Point(($s.ClientSize.Width - $devActions.Width - 16), 14) })
 
 $detail = New-Object System.Windows.Forms.TabControl
-$detail.Dock = 'Fill'
-$tabStatus = New-Object System.Windows.Forms.TabPage (Get-Text 'TabStatus')
+$detail.Dock = 'Fill'; $detail.Padding = New-Object System.Drawing.Point(16, 6); $detail.Font = $fontBase
+$tabDevSettings = New-Object System.Windows.Forms.TabPage (Get-Text 'TabSettings')
+$tabSummary = New-Object System.Windows.Forms.TabPage (Get-Text 'TabSummary')
 $tabEvents = New-Object System.Windows.Forms.TabPage (Get-Text 'TabEvents')
-$tabDevSettings = New-Object System.Windows.Forms.TabPage (Get-Text 'TabDeviceSettings')
-$detail.TabPages.AddRange(@($tabDevSettings, $tabStatus, $tabEvents))
-function New-TextView { $t = New-Object System.Windows.Forms.TextBox; $t.Multiline = $true; $t.ReadOnly = $true; $t.ScrollBars = 'Both'; $t.WordWrap = $false; $t.Dock = 'Fill'; $t.Font = $fontMono; $t.BackColor = [System.Drawing.Color]::White; $t }
-$txtStatus = New-TextView; $tabStatus.Controls.Add($txtStatus)
-$txtEvents = New-TextView; $tabEvents.Controls.Add($txtEvents)
+$tabStatus = New-Object System.Windows.Forms.TabPage (Get-Text 'TabReport')
+$detail.TabPages.AddRange(@($tabDevSettings, $tabSummary, $tabEvents, $tabStatus))
+foreach ($t in $detail.TabPages) { $t.BackColor = $Theme.Card }
+function New-TextView { $t = New-Object System.Windows.Forms.TextBox; $t.Multiline = $true; $t.ReadOnly = $true; $t.ScrollBars = 'Both'; $t.WordWrap = $false; $t.Dock = 'Fill'; $t.Font = $fontMono; $t.BackColor = $Theme.Card; $t.BorderStyle = 'None'; $t }
+$txtStatus = New-TextView; $tabStatus.Controls.Add($txtStatus); $tabStatus.Padding = New-Object System.Windows.Forms.Padding(8)
+$txtEvents = New-TextView; $tabEvents.Controls.Add($txtEvents); $tabEvents.Padding = New-Object System.Windows.Forms.Padding(8)
+# summary: what the device reports, in groups, readable
+$lvSummary = New-Object System.Windows.Forms.ListView
+$lvSummary.Dock = 'Fill'; $lvSummary.View = 'Details'; $lvSummary.HeaderStyle = 'None'; $lvSummary.BorderStyle = 'None'; $lvSummary.FullRowSelect = $true
+$lvSummary.ShowGroups = $true; $lvSummary.Font = $fontBase
+[void]$lvSummary.Columns.Add('', 230); [void]$lvSummary.Columns.Add('', 600)
+$lvSummary.add_Resize({ param($s, $e) $s.Columns[1].Width = [Math]::Max(200, $s.ClientSize.Width - $s.Columns[0].Width - 4) })
+$tabSummary.Controls.Add($lvSummary); $tabSummary.Padding = New-Object System.Windows.Forms.Padding(8)
 
 function New-Grid {
   $g = New-Object System.Windows.Forms.DataGridView
-  $g.Dock = 'Fill'; $g.AllowUserToAddRows = $false; $g.AllowUserToDeleteRows = $false; $g.RowHeadersVisible = $false
-  $g.SelectionMode = 'CellSelect'; $g.AutoSizeRowsMode = 'None'; $g.EditMode = 'EditOnEnter'; $g.BackgroundColor = [System.Drawing.Color]::White
+  $g.Dock = 'Fill'; $g.AllowUserToAddRows = $false; $g.AllowUserToDeleteRows = $false; $g.AllowUserToResizeRows = $false; $g.RowHeadersVisible = $false
+  $g.SelectionMode = 'CellSelect'; $g.AutoSizeRowsMode = 'None'; $g.EditMode = 'EditOnEnter'; $g.BackgroundColor = $Theme.Card; $g.BorderStyle = 'None'
+  $g.CellBorderStyle = 'SingleHorizontal'; $g.GridColor = $Theme.Line; $g.EnableHeadersVisualStyles = $false
+  $g.ColumnHeadersBorderStyle = 'None'; $g.ColumnHeadersHeightSizeMode = 'DisableResizing'; $g.ColumnHeadersHeight = 34
+  $hs = $g.ColumnHeadersDefaultCellStyle; $hs.BackColor = $Theme.Card; $hs.ForeColor = $Theme.Muted; $hs.Font = $fontSmallBold; $hs.SelectionBackColor = $Theme.Card; $hs.SelectionForeColor = $Theme.Muted
+  $hs.Padding = New-Object System.Windows.Forms.Padding(6, 0, 0, 0)
+  $ds = $g.DefaultCellStyle; $ds.SelectionBackColor = $Theme.AccentSoft; $ds.SelectionForeColor = $Theme.Text; $ds.ForeColor = $Theme.Text; $ds.Font = $fontBase
+  $ds.Padding = New-Object System.Windows.Forms.Padding(6, 0, 6, 0)
+  $g.RowTemplate.Height = 30
+  # no flicker when scrolling
+  $g.GetType().GetProperty('DoubleBuffered', [Reflection.BindingFlags]'NonPublic, Instance').SetValue($g, $true, $null)
   $g.add_DataError({ param($s, $e) $e.ThrowException = $false })
   $g
 }
 function Add-TextColumn($g, $titleKey, $width, $readOnly, $samples = @(), $boldSamples = @()) {
   $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $col.HeaderText = Get-Text $titleKey; $col.ReadOnly = $readOnly; $col.SortMode = 'NotSortable'
-  if ($width) { $col.Width = Get-FitWidth (Get-FitWidth (Get-FitWidth $width $col.HeaderText) $samples $fontBase 10) $boldSamples $fontBold 12 } else { $col.AutoSizeMode = 'Fill' }
+  if ($width) { $col.Width = Get-FitWidth (Get-FitWidth (Get-FitWidth $width $col.HeaderText $fontSmallBold 20) $samples $fontBase 18) $boldSamples $fontBold 18 } else { $col.AutoSizeMode = 'Fill'; $col.MinimumWidth = 130 }
   [void]$g.Columns.Add($col)
 }
 function Add-CheckColumn($g, $titleKey, $width) {
   $col = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn; $col.HeaderText = Get-Text $titleKey
-  $col.Width = Get-FitWidth $width $col.HeaderText $fontBase 14; [void]$g.Columns.Add($col)
+  $col.Width = Get-FitWidth $width $col.HeaderText $fontSmallBold 18; [void]$g.Columns.Add($col)
+}
+# a search box over a grid: hides the settings that do not match (name, key or help) and the groups left empty
+function Set-GridFilter($g, [string]$text) {
+  $g.CurrentCell = $null
+  $t = [System.Management.Automation.WildcardPattern]::Escape($text.Trim())
+  $section = $null; $any = $false
+  foreach ($r in $g.Rows) {
+    if ($null -eq $r.Tag) { if ($section) { $section.Visible = $any -or -not $t }; $section = $r; $any = $false; continue }
+    $s = $r.Tag
+    $show = (-not $t) -or ($s.Label -like "*$t*") -or ($s.Key -like "*$t*") -or ($s.Help -like "*$t*")
+    $r.Visible = $show; if ($show) { $any = $true }
+  }
+  if ($section) { $section.Visible = $any -or -not $t }
+}
+function New-FilterBar($grid) {
+  $p = New-Panel 'Top' $Theme.Card 48
+  $t = New-SearchBox 'SearchSettings' 280; $t.Location = New-Object System.Drawing.Point(10, 11)
+  $t.Tag = Get-Text 'SearchSettings'
+  $t.add_TextChanged({ param($s, $e) Set-GridFilter $s.Parent.Tag.Grid $s.Text })
+  $p.Controls.Add($t); $p.Tag = @{ Grid = $grid; Box = $t }
+  $p
 }
 # the first column holds the setting names and the group titles (bold)
 $labels = @($script:Settings | ForEach-Object { $_.Label })
 $sections = @($script:Settings | ForEach-Object { $_.Section } | Select-Object -Unique)
-# exceptions grid of the selected device
+
+# settings of the selected device: in use | comes from | value for this device | exception
 $gridDev = New-Grid
-Add-TextColumn $gridDev 'ColSetting' 175 $true $labels $sections; Add-TextColumn $gridDev 'ColOnDevice' 210 $true
-Add-TextColumn $gridDev 'ColFromCommon' 200 $true @((Get-Text 'ValDeviceDecides'), (Get-Text 'ValDeviceOnly'))
-Add-TextColumn $gridDev 'ColException' 230 $false
-Add-CheckColumn $gridDev 'ColUseException' 95
-Add-TextColumn $gridDev 'ColHelp' $null $true
-$devPanel = New-Object System.Windows.Forms.Panel; $devPanel.Dock = 'Bottom'; $devPanel.Height = 40
-$btnSaveDev = New-Button 'BtnSaveExceptions' 130 27
-$btnReloadDev = New-Button 'BtnUndo' 130 27
-$btnClearDev = New-Button 'BtnRemoveExceptions' 160 27
-$btnBrandDev = New-Button 'BtnBranding' 150 27
-$btnRemoteDev = New-Button 'BtnRemoteScreen' 150 27
-$lblDev = New-Object System.Windows.Forms.Label
-$lblDev.Text = Get-Text 'NoteDevice' (Get-Text 'ColUseException')
-Set-ButtonRow $devPanel @($btnSaveDev, $btnReloadDev, $btnClearDev, $btnBrandDev, $btnRemoteDev) $lblDev 7
-$tabDevSettings.Controls.Add($gridDev); $tabDevSettings.Controls.Add($devPanel)
-$split.Panel2.Controls.Add($detail)
-$tabDevices.Controls.Add($split); $tabDevices.Controls.Add($topPanel)
+Add-TextColumn $gridDev 'ColSetting' 150 $true $labels $sections
+Add-TextColumn $gridDev 'ColInUse' 130 $true
+Add-TextColumn $gridDev 'ColSource' 110 $true @((Get-Text 'SrcThis'), (Get-Text 'SrcCommon'), (Get-Text 'SrcDevice'), (Get-Text 'SrcPending'))
+Add-TextColumn $gridDev 'ColThisDevice' $null $false
+Add-CheckColumn $gridDev 'ColExceptionTick' 78
+$helpDev = New-HelpPanel (Get-Text 'HelpDevice' (Get-Text 'ColExceptionTick'))
+$gridDev.Tag = $helpDev
+$btnSaveDev = New-ActionButton 'BtnSave' 'Save' 'primary'
+$btnReloadDev = New-ActionButton 'BtnUndo' 'Undo' 'secondary'
+$btnClearDev = New-ActionButton 'BtnRemoveExceptions' 'Delete' 'danger'
+$lblDirtyDev = New-Label (Get-Text 'Unsaved') $fontSmallBold $script:KindColor.warn; $lblDirtyDev.Margin = New-Object System.Windows.Forms.Padding(6, 8, 0, 0); $lblDirtyDev.Visible = $false
+$barDev = New-ActionBar @($btnSaveDev, $btnReloadDev, $lblDirtyDev) @($btnClearDev)
+$filterDev = New-FilterBar $gridDev
+$tabDevSettings.Controls.Add($gridDev); $tabDevSettings.Controls.Add($filterDev); $tabDevSettings.Controls.Add($helpDev); $tabDevSettings.Controls.Add($barDev)
 
-# ---------------- Common settings tab ----------------
+$devCard.Controls.Add($detail); $devCard.Controls.Add($devHead)
+$split.Panel2.Controls.Add($devCard)
+$pageDevices.Controls.Add($split)
+
+# ---------------- Common settings page ----------------
+$pageCommon = New-Panel 'Fill' $Theme.Page
+$comCard = New-Panel 'Fill' $Theme.Card; Add-Line $comCard 'Box'; $comCard.Padding = New-Object System.Windows.Forms.Padding(1)
+$comWrap = New-Panel 'Fill' $Theme.Page; $comWrap.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 12)
 $gridCom = New-Grid
-Add-TextColumn $gridCom 'ColSetting' 190 $true $labels $sections;Add-TextColumn $gridCom 'ColValueAll' 300 $false
-Add-CheckColumn $gridCom 'ColManagedHere' 100
-Add-TextColumn $gridCom 'ColHelp' $null $true
-$comPanel = New-Object System.Windows.Forms.Panel; $comPanel.Dock = 'Bottom'; $comPanel.Height = 58
-$btnSaveCom = New-Button 'BtnSaveCommon' 140 27
-$btnReloadCom = New-Button 'BtnUndo' 130 27
-$btnBrandCom = New-Button 'BtnBranding' 150 27
-$lblCom = New-Object System.Windows.Forms.Label
-$lblCom.Text = Get-Text 'NoteCommon' (Get-Text 'ColManagedHere') (Get-Text 'TabDevices')
-Set-ButtonRow $comPanel @($btnSaveCom, $btnReloadCom, $btnBrandCom) $lblCom 7
-$tabCommon.Controls.Add($gridCom); $tabCommon.Controls.Add($comPanel)
+Add-TextColumn $gridCom 'ColSetting' 190 $true $labels $sections
+Add-TextColumn $gridCom 'ColValueAll' $null $false
+Add-CheckColumn $gridCom 'ColManagedHere' 110
+$helpCom = New-HelpPanel (Get-Text 'HelpCommon' (Get-Text 'ColManagedHere'))
+$gridCom.Tag = $helpCom
+$btnSaveCom = New-ActionButton 'BtnSave' 'Save' 'primary'
+$btnReloadCom = New-ActionButton 'BtnUndo' 'Undo' 'secondary'
+$btnBrandCom = New-ActionButton 'BtnBranding' 'Picture' 'secondary'
+$lblDirtyCom = New-Label (Get-Text 'Unsaved') $fontSmallBold $script:KindColor.warn; $lblDirtyCom.Margin = New-Object System.Windows.Forms.Padding(6, 8, 0, 0); $lblDirtyCom.Visible = $false
+$barCom = New-ActionBar @($btnSaveCom, $btnReloadCom, $btnBrandCom, $lblDirtyCom)
+$filterCom = New-FilterBar $gridCom
+$comCard.Controls.Add($gridCom); $comCard.Controls.Add($filterCom); $comCard.Controls.Add($helpCom); $comCard.Controls.Add($barCom)
+$comWrap.Controls.Add($comCard)
+$pageCommon.Controls.Add($comWrap); $pageCommon.Controls.Add((New-PageHeader (Get-Text 'NavCommon') (Get-Text 'PageCommonNote' (Get-Text 'ColManagedHere'))))
 
-# ---------------- SSH keys tab ----------------
+# ---------------- SSH keys page ----------------
+$pageKeys = New-Panel 'Fill' $Theme.Page
+$keysWrap = New-Panel 'Fill' $Theme.Page; $keysWrap.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 12)
+$keysCard = New-Panel 'Fill' $Theme.Card; Add-Line $keysCard 'Box'; $keysCard.Padding = New-Object System.Windows.Forms.Padding(1)
 $txtKeys = New-Object System.Windows.Forms.TextBox
-$txtKeys.Multiline = $true; $txtKeys.ScrollBars = 'Both'; $txtKeys.WordWrap = $false; $txtKeys.Dock = 'Fill'; $txtKeys.Font = $fontMono; $txtKeys.AcceptsReturn = $true
-$keysPanel = New-Object System.Windows.Forms.Panel; $keysPanel.Dock = 'Bottom'; $keysPanel.Height = 58
-$btnSaveKeys = New-Button 'BtnSaveKeys' 150 27
-$btnReloadKeys = New-Button 'BtnUndo' 130 27
-$lblKeys = New-Object System.Windows.Forms.Label
-$lblKeys.Text = Get-Text 'NoteKeys'
-Set-ButtonRow $keysPanel @($btnSaveKeys, $btnReloadKeys) $lblKeys 7
-$tabKeys.Controls.Add($txtKeys); $tabKeys.Controls.Add($keysPanel)
+$txtKeys.Multiline = $true; $txtKeys.ScrollBars = 'Both'; $txtKeys.WordWrap = $false; $txtKeys.Dock = 'Fill'; $txtKeys.Font = $fontMono; $txtKeys.AcceptsReturn = $true; $txtKeys.BorderStyle = 'None'
+$keysPad = New-Panel 'Fill' $Theme.Card; $keysPad.Padding = New-Object System.Windows.Forms.Padding(10, 8, 6, 6); $keysPad.Controls.Add($txtKeys)
+$btnSaveKeys = New-ActionButton 'BtnSave' 'Save' 'primary'
+$btnReloadKeys = New-ActionButton 'BtnUndo' 'Undo' 'secondary'
+$btnMyKey = New-ActionButton 'BtnAddMyKey' 'Add' 'secondary'
+$btnKeyFile = New-ActionButton 'BtnAddKeyFile' 'Document' 'secondary'
+$lblDirtyKeys = New-Label (Get-Text 'Unsaved') $fontSmallBold $script:KindColor.warn; $lblDirtyKeys.Margin = New-Object System.Windows.Forms.Padding(6, 8, 0, 0); $lblDirtyKeys.Visible = $false
+$tips.SetToolTip($btnMyKey, (Get-Text 'TipAddMyKey'))
+$barKeys = New-ActionBar @($btnSaveKeys, $btnReloadKeys, $btnMyKey, $btnKeyFile, $lblDirtyKeys)
+$keysCard.Controls.Add($keysPad); $keysCard.Controls.Add($barKeys)
+$keysWrap.Controls.Add($keysCard)
+$pageKeys.Controls.Add($keysWrap); $pageKeys.Controls.Add((New-PageHeader (Get-Text 'PageKeysTitle') (Get-Text 'NoteKeys')))
 
-# ---------------- Problems tab ----------------
-$probTop = New-Object System.Windows.Forms.Panel; $probTop.Dock = 'Top'; $probTop.Height = 66
-$lblPeriod = New-Object System.Windows.Forms.Label; $lblPeriod.Text = Get-Text 'ProbPeriod'; $lblPeriod.AutoSize = $true; $lblPeriod.Location = New-Object System.Drawing.Point(8, 10)
-$cmbPeriod = New-Object System.Windows.Forms.ComboBox; $cmbPeriod.DropDownStyle = 'DropDownList'; $cmbPeriod.Width = 160
+# ---------------- Problems page ----------------
+$pageProblems = New-Panel 'Fill' $Theme.Page
+$probWrap = New-Panel 'Fill' $Theme.Page; $probWrap.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 12)
+$probCard = New-Panel 'Fill' $Theme.Card; Add-Line $probCard 'Box'; $probCard.Padding = New-Object System.Windows.Forms.Padding(1)
+$probTop = New-Panel 'Top' $Theme.Card 82; Add-Line $probTop 'Bottom'
+$lblPeriod = New-Label (Get-Text 'ProbPeriod'); $lblPeriod.Location = New-Object System.Drawing.Point(14, 16)
+$cmbPeriod = New-Object System.Windows.Forms.ComboBox; $cmbPeriod.DropDownStyle = 'DropDownList'; $cmbPeriod.Width = 160; $cmbPeriod.Font = $fontBase
 [void]$cmbPeriod.Items.AddRange(@((Get-Text 'ProbToday'), (Get-Text 'Prob24h'), (Get-Text 'Prob7d'), (Get-Text 'Prob30d'))); $cmbPeriod.SelectedIndex = 1
-$cmbPeriod.Location = New-Object System.Drawing.Point((16 + (Get-TextWidth $lblPeriod.Text)), 6)
-$btnProbRefresh = New-Button 'BtnRefresh' 120 26; $btnProbRefresh.Location = New-Object System.Drawing.Point(($cmbPeriod.Right + 10), 5)
-$lblHeadline = New-Object System.Windows.Forms.Label; $lblHeadline.AutoSize = $false; $lblHeadline.Location = New-Object System.Drawing.Point(8, 38); $lblHeadline.Height = 24
-$lblHeadline.Anchor = 'Top, Left, Right'; $lblHeadline.Width = 1200; $lblHeadline.Font = New-Object System.Drawing.Font($fontBase, [System.Drawing.FontStyle]::Bold)
+$cmbPeriod.Location = New-Object System.Drawing.Point((22 + (Get-TextWidth $lblPeriod.Text)), 12)
+$btnProbRefresh = New-ActionButton 'BtnRefresh' 'Refresh' 'secondary'; $btnProbRefresh.Location = New-Object System.Drawing.Point(($cmbPeriod.Right + 10), 10)
+$lblHeadline = New-Label '' $fontBold; $lblHeadline.AutoSize = $false; $lblHeadline.Location = New-Object System.Drawing.Point(14, 50); $lblHeadline.Height = 24
+$lblHeadline.Anchor = 'Top, Left, Right'; $lblHeadline.Width = 1000
 $probTop.Controls.AddRange(@($lblPeriod, $cmbPeriod, $btnProbRefresh, $lblHeadline))
-$probSplit = New-Object System.Windows.Forms.SplitContainer; $probSplit.Dock = 'Fill'; $probSplit.Orientation = 'Horizontal'
+$probTop.add_Resize({ param($s, $e) $lblHeadline.Width = [Math]::Max(100, $s.ClientSize.Width - 28) })
+$probSplit = New-Object System.Windows.Forms.SplitContainer; $probSplit.Dock = 'Fill'; $probSplit.Orientation = 'Horizontal'; $probSplit.BackColor = $Theme.Line; $probSplit.SplitterWidth = 1
+$probSplit.Panel1.BackColor = $Theme.Card; $probSplit.Panel2.BackColor = $Theme.Card
 $probList = New-Object System.Windows.Forms.ListView
-$probList.Dock = 'Fill'; $probList.View = 'Details'; $probList.FullRowSelect = $true; $probList.MultiSelect = $false; $probList.HideSelection = $false; $probList.GridLines = $true
+$probList.Dock = 'Fill'; $probList.View = 'Details'; $probList.FullRowSelect = $true; $probList.MultiSelect = $false; $probList.HideSelection = $false; $probList.BorderStyle = 'None'
+$probList.SmallImageList = $imgDots; $probList.Font = $fontBase
 foreach ($c in @(@('ColProblem', 330), @('ColWhere', 180), @('ColTimes', 60), @('ColDevicesN', 230), @('ColUsers', 200), @('ColFirstTime', 100), @('ColLastTime', 100))) {
   [void]$probList.Columns.Add((Get-Text $c[0]), (Get-FitWidth $c[1] (Get-Text $c[0]) -pad 14)) }
 $probText = New-TextView
-$probSplit.Panel1.Controls.Add($probList); $probSplit.Panel2.Controls.Add($probText)
-$lblProbNote = New-Object System.Windows.Forms.Label; $lblProbNote.Dock = 'Bottom'; $lblProbNote.Height = 36; $lblProbNote.Text = Get-Text 'ProbNote'; $lblProbNote.Padding = New-Object System.Windows.Forms.Padding(6, 4, 6, 0)
-$tabProblems.Controls.Add($probSplit); $tabProblems.Controls.Add($probTop); $tabProblems.Controls.Add($lblProbNote)
+$probPad = New-Panel 'Fill' $Theme.Card; $probPad.Padding = New-Object System.Windows.Forms.Padding(10, 8, 6, 6); $probPad.Controls.Add($probText)
+$probSplit.Panel1.Controls.Add($probList); $probSplit.Panel2.Controls.Add($probPad)
+$probCard.Controls.Add($probSplit); $probCard.Controls.Add($probTop)
+$probWrap.Controls.Add($probCard)
+$pageProblems.Controls.Add($probWrap); $pageProblems.Controls.Add((New-PageHeader (Get-Text 'NavProblems') (Get-Text 'ProbNote')))
 
-$form.Controls.Add($tabs); $form.Controls.Add($bar)
+$script:Pages = @($pageDevices, $pageCommon, $pageKeys, $pageProblems)
+foreach ($p in $script:Pages) { $p.Visible = $false; $content.Controls.Add($p) }
+# Fill first, then the edges: the last one added takes its side first
+$root.Controls.Add($content); $root.Controls.Add($nav); $root.Controls.Add($header); $root.Controls.Add($bar)
+$form.Controls.Add($root)
 
 # ---------------------------------------------------------------------------------------------
 # Behaviour
 # ---------------------------------------------------------------------------------------------
-$script:Devices = @(); $script:Selected = $null; $script:Loading = $false
+$script:Devices = @(); $script:Selected = $null; $script:Loading = $false; $script:Listing = $false
+
+function Select-Page([int]$i) {
+  $script:Page = $i
+  for ($k = 0; $k -lt $script:Pages.Count; $k++) {
+    $script:Pages[$k].Visible = ($k -eq $i)
+    $b = $script:NavButtons[$k]; $b.BackColor = if ($k -eq $i) { $Theme.ShellSelected } else { $Theme.Shell }; $b.Invalidate()
+  }
+  if ($i -eq 3) { Update-ProblemView }
+}
 
 function Set-Cell($row, $col, $s, $value) {
   if ($s.Type -eq 'choice') {
     $cb = New-Object System.Windows.Forms.DataGridViewComboBoxCell
     foreach ($c in $s.Choices) { [void]$cb.Items.Add($c) }
-    $cb.FlatStyle = 'Flat'; $row.Cells[$col] = $cb
+    $cb.FlatStyle = 'Flat'; $cb.DisplayStyle = 'DropDownButton'; $row.Cells[$col] = $cb
     $cb.Value = if ($null -ne $value -and $value -ne '') { ConvertTo-Canonical $s.Key $value } else { $s.Choices[0] }
   } else { $row.Cells[$col].Value = [string]$value }
 }
 function Get-Cell($row, $col) { $v = $row.Cells[$col].Value; if ($null -eq $v) { '' } else { ([string]$v).Trim() } }
-# the settings are many: a grey title row per group (Tag = $null, skipped when saving)
+# the settings are many: a title row per group (Tag = $null, skipped when saving)
 function Add-SectionRow($g, $title, $checkCol) {
   $i = $g.Rows.Add(); $r = $g.Rows[$i]
   $r.Cells[$checkCol] = New-Object System.Windows.Forms.DataGridViewTextBoxCell
-  $r.Cells[0].Value = $title; $r.ReadOnly = $true; $r.Tag = $null
-  $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(235, 235, 235); $r.DefaultCellStyle.Font = $fontBold
+  $r.Cells[0].Value = $title; $r.ReadOnly = $true; $r.Tag = $null; $r.Height = 32
+  $r.DefaultCellStyle.BackColor = $Theme.Section; $r.DefaultCellStyle.SelectionBackColor = $Theme.Section; $r.DefaultCellStyle.Font = $fontBold
+  $r.DefaultCellStyle.ForeColor = $Theme.Text; $r.DefaultCellStyle.SelectionForeColor = $Theme.Text
 }
 # Managed values of a grid: KEY -> value, or $null when the tick is off
 function Get-GridValues($g, $valueCol, $checkCol) {
@@ -1338,6 +1607,27 @@ function Get-GridValues($g, $valueCol, $checkCol) {
   foreach ($r in $g.Rows) { if ($null -eq $r.Tag) { continue }; $m[$r.Tag.Key] = if ($r.Cells[$checkCol].Value -eq $true) { Get-Cell $r $valueCol } else { $null } }
   $m
 }
+# a ticked row in the colour of its kind (own value of a device / managed for all); the value of an unticked row
+# is only a proposal (ticking pins it) and stays grey
+function Set-RowLook($r, $valueCol, $checkCol, $tint) {
+  $on = $r.Cells[$checkCol].Value -eq $true
+  $r.DefaultCellStyle.BackColor = if ($on) { $tint } else { $Theme.Card }
+  $r.Cells[$valueCol].Style.ForeColor = if ($on) { $Theme.Text } else { $Theme.Muted }
+}
+function Set-Dirty([string]$what, [bool]$on) {
+  switch ($what) { 'dev' { $lblDirtyDev.Visible = $on } 'com' { $lblDirtyCom.Visible = $on } 'keys' { $lblDirtyKeys.Visible = $on } }
+}
+
+function Get-SessionUser($s) {
+  $v = [string]$s['SESSION']
+  if ($v -match '^active \((.+)\)$') { return $Matches[1] }
+  if ($v -and $v -ne 'none') { return $v }
+  # a screen that shows a web page (WEB_BUTTON=kiosk) has no Windows session: the page is what it shows
+  if ($s['CFG_WEB_BUTTON'] -eq 'kiosk') { return (Get-Text 'UserKiosk') }
+  ''
+}
+function Get-Version($s) { (([string]$s['SOFTWARE']).Trim() -split '\s+')[-1] }
+function Get-Seen($d) { if ($d.Minutes -lt 1) { Get-Text 'SeenNow' } else { Get-Text 'SeenAgo' (Format-Minutes $d.Minutes) } }
 
 function Update-DeviceList {
   try {
@@ -1345,34 +1635,88 @@ function Update-DeviceList {
     $script:Devices = @(Get-Devices)
   } catch { $barText.Text = Get-Text 'ErrReadFolder' $script:Folder $_.Exception.Message; return }
   $sel = if ($script:Selected) { $script:Selected.File } else { $null }
+  $f = [System.Management.Automation.WildcardPattern]::Escape($txtDevSearch.Text.Trim())
+  $script:Listing = $true
   $list.BeginUpdate(); $list.Items.Clear()
   foreach ($d in $script:Devices) {
-    $s = $d.S
-    $it = New-Object System.Windows.Forms.ListViewItem($d.State)
-    $web = [string]$s['CFG_WEB_BUTTON']
-    # schedule "07:30-19:00" (power on - power off) next to the web button mode
-    if ($s['CFG_POWER_ON_TIME'] -or $s['CFG_POWER_OFF_TIME']) { $web += " $($s['CFG_POWER_ON_TIME'])-$($s['CFG_POWER_OFF_TIME'])" }
-    $sec = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $sec = Get-Text 'LastUpdate' $sec $s['LAST_UPDATE'] }
-    foreach ($v in @($d.Name, ([string]$s['SOFTWARE']).Trim(), $web, $s['IP'], $s['DEFAULT_USER'], $s['SESSION'], ('{0:yyyy-MM-dd HH:mm}' -f $d.When), $s['TRANSPORT'],
-                     $s['SHARE_UPDATE'], $s['WIFI_STATUS'], $s['MAC'], $s['UPTIME'], $s['NETWORK'], $s['FREERDP'], $s['CENTRAL_CONFIG'], $sec)) { [void]$it.SubItems.Add([string]$v) }
-    $it.BackColor = $d.Color; $it.Tag = $d
+    $s = $d.S; $user = Get-SessionUser $s
+    if ($f -and -not (@($d.Name, $d.State, $s['IP'], $user, $s['DEFAULT_USER'], $s['MAC']) | Where-Object { "$_" -like "*$f*" })) { continue }
+    $it = New-Object System.Windows.Forms.ListViewItem($d.Name)
+    $it.ImageKey = $d.Kind; $it.UseItemStyleForSubItems = $false; $it.BackColor = $Theme.Card
+    foreach ($v in @($d.State, $user, (Get-Version $s), (Get-Seen $d))) { [void]$it.SubItems.Add([string]$v) }
+    $it.SubItems[1].ForeColor = if ($d.Kind -eq 'ok') { $Theme.Text } else { $script:KindColor[$d.Kind] }
+    if (-not $user) { $it.SubItems[2].Text = '' }
+    $it.ToolTipText = "$($d.Name)   $([char]0x00B7)   $($d.State)   $([char]0x00B7)   $($s['IP'])"
+    foreach ($x in $it.SubItems) { $x.BackColor = $Theme.Card }
+    $it.Tag = $d
     [void]$list.Items.Add($it)
-    if ($d.File -eq $sel) { $it.Selected = $true }
+    if ($d.File -eq $sel) { $it.Selected = $true; $script:Selected = $d }
   }
   $list.Sort()
   $list.EndUpdate()
+  $script:Listing = $false
   if ($list.SelectedItems.Count) { $list.SelectedItems[0].EnsureVisible() }
   $on = @($script:Devices | Where-Object { $_.Minutes -le $script:StaleMinutes }).Count
+  $bad = @($script:Devices | Where-Object { $_.Kind -in 'error', 'warn' }).Count
+  $lblDevCount.Text = Get-Text 'DevCount' $script:Devices.Count $on $bad
+  $navDevices.Tag.Count = "$($script:Devices.Count)"; $navDevices.Invalidate()
   $upd = try { Get-PublishedUpdate } catch { '?' }
   $barText.Text = Get-Text 'StatusBar' $script:Folder $script:Devices.Count $on $upd (Get-Date) $(if ($renamed.Count) { Get-Text 'StatusRenamed' ($renamed -join ', ') } else { '' })
+  if ($script:Selected) { Update-DeviceHeader $script:Selected }
+}
+
+# header of the selected device: refreshed with the list, without touching the settings being edited
+function Update-DeviceHeader($d) {
+  if (-not $d) {
+    $lblDevName.Text = Get-Text 'NoDevice'; $lblDevState.Visible = $false; $lblDevInfo.Text = ''
+    $btnRemoteDev.Enabled = $false; $btnBrandDev.Enabled = $false; return
+  }
+  $s = $d.S
+  $lblDevName.Text = $d.Name
+  $lblDevState.Text = $d.State; $lblDevState.ForeColor = $script:KindColor[$d.Kind]; $lblDevState.BackColor = $script:KindSoft[$d.Kind]; $lblDevState.Visible = $true
+  $lblDevState.Location = New-Object System.Drawing.Point(($lblDevName.Right + 12), ($lblDevName.Top + [int](($lblDevName.Height - $lblDevState.Height) / 2) + 1))
+  $dot = "   $([char]0x00B7)   "; $parts = @()
+  $ip = ([string]$s['IP']) -replace '/.*$', ''; if ($ip) { $parts += $ip }
+  $v = Get-Version $s; if ($v) { $parts += Get-Text 'DevVersion' $v }
+  $parts += Get-Text 'DevLastReport' (Get-Seen $d)
+  $u = Get-SessionUser $s
+  $parts += if ($u -and $u -eq (Get-Text 'UserKiosk') -and $s['SESSION'] -in $null, '', 'none') { Get-Text 'DevKioskPage' } elseif ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
+  $lblDevInfo.Text = $parts -join $dot
+  $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true
+}
+
+function Update-Summary($d) {
+  $s = $d.S
+  $lvSummary.BeginUpdate(); $lvSummary.Items.Clear(); $lvSummary.Groups.Clear()
+  $groups = [ordered]@{
+    SumSession = @(@('ColSession', $s['SESSION']), @('ColDefaultUser', $s['DEFAULT_USER']), @('ColTransport', $s['TRANSPORT']), @('ColWebButton', $(
+      $w = [string]$s['CFG_WEB_BUTTON']; if ($s['CFG_POWER_ON_TIME'] -or $s['CFG_POWER_OFF_TIME']) { $w += "   ($($s['CFG_POWER_ON_TIME'])-$($s['CFG_POWER_OFF_TIME']))" }; $w)))
+    SumNetwork = @(@('ColIp', $s['IP']), @('ColMac', $s['MAC']), @('ColNetwork', $s['NETWORK']), @('ColWifi', $s['WIFI_STATUS']))
+    SumSoftware = @(@('ColSoftware', $s['SOFTWARE']), @('ColFreeRdp', $s['FREERDP']), @('ColShareUpdate', $s['SHARE_UPDATE']), @('ColSecurityUpdates', $(
+      $x = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $x = Get-Text 'LastUpdate' $x $s['LAST_UPDATE'] }; $x)))
+    SumManagement = @(@('ColCentralConfig', $s['CENTRAL_CONFIG']), @('SumSecrets', $s['SECRETS']), @('SumSsh', $s['CFG_SSH']), @('SumRemoteScreen', $s['CFG_REMOTE_SCREEN']), @('ColUptime', $s['UPTIME']))
+  }
+  foreach ($gk in $groups.Keys) {
+    $grp = New-Object System.Windows.Forms.ListViewGroup((Get-Text $gk)); [void]$lvSummary.Groups.Add($grp)
+    foreach ($row in $groups[$gk]) {
+      $val = [string]$row[1]; if (-not $val) { $val = [string][char]0x2014 }
+      $it = New-Object System.Windows.Forms.ListViewItem((Get-Text $row[0]), $grp); $it.ForeColor = $Theme.Muted; $it.UseItemStyleForSubItems = $false
+      $sub = $it.SubItems.Add($val); $sub.ForeColor = $Theme.Text
+      [void]$lvSummary.Items.Add($it)
+    }
+  }
+  $lvSummary.EndUpdate()
 }
 
 function Show-Device($d) {
   $script:Selected = $d
+  Update-DeviceHeader $d
+  if (-not $d) { $gridDev.Rows.Clear(); $txtStatus.Text = ''; $txtEvents.Text = ''; $lvSummary.Items.Clear(); return }
   $txtStatus.Text = (Read-Lines (Join-Path $script:StatusDir "$($d.File).txt")) -join "`r`n"
   $ev = @(Read-Lines (Join-Path $script:StatusDir "$($d.File)-events.log") | Where-Object { $_ })
   $txtEvents.Text = ($ev | Select-Object -Last 400) -join "`r`n"
   $txtEvents.SelectionStart = $txtEvents.Text.Length; $txtEvents.ScrollToCaret()
+  Update-Summary $d
   Update-DeviceGrid
 }
 
@@ -1391,29 +1735,38 @@ function Update-DeviceGrid {
   $common = Read-ConfFile $script:CommonFile
   $exc = Read-ConfFile (Get-HostFile $d.Name)
   $gridDev.Rows.Clear(); $section = $null
+  $arrow = [string][char]0x2192
   foreach ($s in $script:Settings) {
     if ($s.Section -ne $section) { $section = $s.Section; Add-SectionRow $gridDev $section 4 }
     $now = Get-ReportedValue $d $s
     $nowText = if ($null -eq $now) { Get-Text 'ValNotReported' } else { $now }
-    $fromCommon = if ($s.HostOnly) { Get-Text 'ValDeviceOnly' } elseif ($common.Contains($s.Key)) { $common[$s.Key] } else { Get-Text 'ValDeviceDecides' }
-    if ($s.Key -eq 'WIFI_PSK' -and $common.Contains($s.Key)) { $fromCommon = $script:MarkSaved }
-    if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $common.Contains($s.Key)) { $fromCommon = if ($common[$s.Key]) { $script:MarkSet } else { Get-Text 'ValNoPin' } }
-    $i = $gridDev.Rows.Add(); $r = $gridDev.Rows[$i]
-    $r.Cells[0].Value = $s.Label; $r.Cells[1].Value = [string]$nowText; $r.Cells[2].Value = [string]$fromCommon; $r.Tag = $s
     $use = $exc.Contains($s.Key)
+    $inCommon = -not $s.HostOnly -and $common.Contains($s.Key)
+    # where the value in force comes from, and the one on its way when the device has not applied it yet
+    $src = if ($use) { 'SrcThis' } elseif ($inCommon) { 'SrcCommon' } else { 'SrcDevice' }
+    $target = if ($use) { $exc[$s.Key] } elseif ($inCommon) { $common[$s.Key] } else { $null }
+    $pending = $false
+    if ($null -ne $target -and $null -ne $now -and $s.Key -notin 'WIFI_PSK', 'SETTINGS_PIN_SHA256') { $pending = (ConvertTo-Canonical $s.Key $target) -cne [string]$now }
+    $i = $gridDev.Rows.Add(); $r = $gridDev.Rows[$i]
+    $r.Cells[0].Value = $s.Label; $r.Cells[1].Value = [string]$nowText; $r.Tag = $s
+    # on its way: where it comes from and the value in the tooltip, the cell stays short
+    $r.Cells[2].Value = if ($pending) { "$arrow " + (Get-Text 'SrcPending') } else { Get-Text $src }
+    $r.Cells[2].Style.ForeColor = if ($pending) { $script:KindColor.warn } elseif ($use) { New-Color '#a16207' } elseif ($inCommon) { $Theme.Accent } else { $Theme.Muted }
+    $r.Cells[2].ToolTipText = if ($pending) { Get-Text 'TipPending' (Get-Text $src) (ConvertTo-Canonical $s.Key $target) } elseif ($s.HostOnly) { Get-Text 'ValDeviceOnly' } elseif ($common.Contains($s.Key)) { "common.conf: $(if ($s.Key -in 'WIFI_PSK', 'SETTINGS_PIN_SHA256') { $script:MarkSaved } else { $common[$s.Key] })" } else { Get-Text 'ValDeviceDecides' }
+    $r.Cells[1].ToolTipText = [string]$nowText
     # without an exception the cell proposes the current value: ticking the box alone pins it
     $init = if ($use) { $exc[$s.Key] } elseif ($null -ne $now -and $s.Key -ne 'SETTINGS_PIN_SHA256') { $now } else { '' }
     if ($s.Key -eq 'WIFI_PSK') { $init = if ($use) { $script:MarkSaved } else { '' } }
     if ($s.Key -eq 'SETTINGS_PIN_SHA256' -and $use) { $init = if ($exc[$s.Key]) { $script:MarkSet } else { '' } }
     Set-Cell $r 3 $s $init
-    $r.Cells[4].Value = $use; $r.Cells[5].Value = $s.Help
-    if ($use) { $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(255, 250, 215) }
+    $r.Cells[4].Value = $use
+    Set-RowLook $r 3 4 $Theme.Own
   }
   $ign = @(Get-IgnoredKeys $exc)
-  $tabDevSettings.Text = Get-Text 'TabDeviceSettingsOf' $d.Name
   if ($ign.Count) { $barText.Text = Get-Text 'IgnoredKeysDevice' $d.Name ($ign -join ', ') }
-  $gridDev.CurrentCell = $null
-  $script:Loading = $false
+  Set-GridFilter $gridDev $filterDev.Tag.Box.Text
+  $gridDev.CurrentCell = $null; Show-Help $helpDev $null
+  $script:Loading = $false; Set-Dirty 'dev' $false
 }
 
 function Update-CommonGrid {
@@ -1434,18 +1787,21 @@ function Update-CommonGrid {
     if ($s.Key -eq 'WIFI_PSK') { $v = if ($common.Contains('WIFI_PSK')) { $script:MarkSaved } else { '' } }
     if ($s.Key -eq 'SETTINGS_PIN_SHA256') { $v = if ($common[$s.Key]) { $script:MarkSet } else { '' } }
     Set-Cell $r 1 $s $v
-    $r.Cells[2].Value = $common.Contains($s.Key); $r.Cells[3].Value = $s.Help
-    if ($common.Contains($s.Key)) { $r.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(225, 240, 255) }
+    $r.Cells[2].Value = $common.Contains($s.Key)
+    Set-RowLook $r 1 2 $Theme.Managed
   }
   $ign = @(Get-IgnoredKeys $common -Common)
   if ($ign.Count) { $barText.Text = Get-Text 'IgnoredKeysCommon' ($ign -join ', ') }
-  $gridCom.CurrentCell = $null
-  $script:Loading = $false
+  Set-GridFilter $gridCom $filterCom.Tag.Box.Text
+  $gridCom.CurrentCell = $null; Show-Help $helpCom $null
+  $script:Loading = $false; Set-Dirty 'com' $false
 }
 
 function Update-KeysView {
+  $script:Loading = $true
   $txtKeys.Text = if (Test-Path -LiteralPath $script:KeysFile) { (Read-Lines $script:KeysFile) -join "`r`n" } else { '' }
   $txtKeys.SelectionStart = 0; $txtKeys.SelectionLength = 0     # all selected, one key press would erase the list
+  $script:Loading = $false; Set-Dirty 'keys' $false
 }
 
 function Save-Device {
@@ -1457,7 +1813,7 @@ function Save-Device {
   $extra = if ($plan.Notes.Count) { "`r`n`r`n" + ($plan.Notes -join "`r`n`r`n") } else { '' }
   if (-not (Confirm-Action (Get-Text 'ConfirmSaveDeviceTitle' $d.Name) ((Get-Text 'ConfirmSaveDevice' $d.Name) + "`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra))) { return }
   try { [void](Write-ConfFile $plan.File $plan.Values $script:HostHeader $plan.RenameMac) } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
-  $barText.Text = Get-Text 'SavedDevice' $plan.File (Get-Text 'ColCentralConfig')
+  $barText.Text = Get-Text 'SavedDevice' $plan.File (Get-Text 'ColSource')
   Update-DeviceGrid
 }
 
@@ -1465,7 +1821,7 @@ function Clear-Device {
   $d = $script:Selected; if (-not $d) { return }
   $f = Get-HostFile $d.Name
   if (-not (Test-Path -LiteralPath $f)) { Show-Message (Get-Text 'MsgNoExceptionsTitle') (Get-Text 'MsgNoExceptions' $d.Name) 'Information'; return }
-  if (-not (Confirm-Action (Get-Text 'ConfirmRemoveTitle') (Get-Text 'ConfirmRemove' $d.Name))) { return }
+  if (-not (Confirm-Action (Get-Text 'ConfirmRemoveTitle') (Get-Text 'ConfirmRemove' $d.Name) 'Button2')) { return }
   Move-Item -LiteralPath $f -Destination (Get-BackupPath $f)
   Add-ChangeLog "$($d.Name).conf: all exceptions removed"
   Update-DeviceGrid
@@ -1486,7 +1842,7 @@ function Save-Common {
   $def = if ($plan.Warnings.Count -or $plan.Notes.Count) { 'Button2' } else { 'Button1' }
   if (-not (Confirm-Action (Get-Text 'ConfirmSaveCommonTitle') ((Get-Text 'ConfirmSaveCommon') + "`r`n`r`n- " + ($plan.Changes -join "`r`n- ") + $extra) $def)) { return }
   try { [void](Write-ConfFile $plan.File $plan.Values $script:CommonHeader) } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
-  $barText.Text = Get-Text 'SavedCommon' $plan.File (Get-Text 'ColCentralConfig')
+  $barText.Text = Get-Text 'SavedCommon' $plan.File (Get-Text 'ColSource')
   Update-CommonGrid
   if ($script:Selected) { Update-DeviceGrid }
 }
@@ -1500,6 +1856,40 @@ function Save-Keys {
   try { $r = Save-AuthorizedKeys $txtKeys.Text } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
   $barText.Text = Get-Text 'SavedKeys' $script:KeysFile $r.Before $r.After
   Update-KeysView
+}
+# a public key into the list (not saved yet); $false = not a key line
+function Add-KeyLine([string]$line) {
+  $line = "$line".Trim()
+  if ($line -cnotmatch $script:Rx.SshKey) { return $false }
+  $body = ($line -split ' ')[1]
+  if (@(Get-KeyLines $txtKeys.Text | Where-Object { ($_ -split ' ')[1] -ceq $body }).Count) { $barText.Text = Get-Text 'KeyAlready' (Get-KeyLabel $line); return $true }
+  $t = $txtKeys.Text.TrimEnd()
+  $txtKeys.Text = $(if ($t) { "$t`r`n$line" } else { $line }) + "`r`n"
+  $barText.Text = Get-Text 'KeyAdded' (Get-KeyLabel $line)
+  $true
+}
+# the key of the administrator at this PC (the one ssh.exe uses for the remote screen), created when missing
+function Add-MyKey {
+  $pub = Join-Path $env:USERPROFILE '.ssh\id_ed25519.pub'; $key = $pub -replace '\.pub$', ''
+  if (-not (Test-Path -LiteralPath $pub)) {
+    $kg = (Get-Command ssh-keygen.exe -ErrorAction SilentlyContinue).Source
+    if (-not $kg) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'ErrRemoteNoSshExe'); return }
+    # a private key without its .pub: ssh-keygen would ask whether to overwrite it, in a window nobody sees
+    if (Test-Path -LiteralPath $key) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyNoPub' $key); return }
+    if (-not (Confirm-Action (Get-Text 'KeyTitle') (Get-Text 'KeyCreateConfirm' $key))) { return }
+    $dir = Split-Path $key; if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $p = Start-Process $kg -ArgumentList "-q -t ed25519 -N `"`" -C `"otr-manager@$env:COMPUTERNAME`" -f `"$key`"" -WindowStyle Hidden -Wait -PassThru
+    if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $pub)) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyCreateFailed' $p.ExitCode) 'Error'; return }
+  }
+  $line = @(Read-Lines $pub | Where-Object { $_.Trim() }) | Select-Object -First 1
+  if (-not (Add-KeyLine $line)) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyNotValid' $pub) }
+}
+function Add-KeyFromFile {
+  $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'KeyFileTitle'; $ofd.Filter = Get-Text 'KeyFilter'
+  $d = Join-Path $env:USERPROFILE '.ssh'; if (Test-Path -LiteralPath $d) { $ofd.InitialDirectory = $d }
+  if ($ofd.ShowDialog() -ne 'OK') { return }
+  $n = 0; foreach ($l in (Read-Lines $ofd.FileName)) { if (Add-KeyLine $l) { $n++ } }
+  if (-not $n) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyNotValid' $ofd.FileName) }
 }
 
 # Logo and background picture of every device ($d = $null) or of one device: a preview on the background colors, where the
@@ -1580,13 +1970,30 @@ function Show-BrandingDialog($d) {
   $dlg.Dispose()
 }
 
-# changing a value ticks "Use exception" / "Managed here" by itself
-$gridDev.add_CellValueChanged({ param($s, $e) if (-not $script:Loading -and $e.RowIndex -ge 0 -and $e.ColumnIndex -eq 3 -and $null -ne $gridDev.Rows[$e.RowIndex].Tag) { $gridDev.Rows[$e.RowIndex].Cells[4].Value = $true } })
-$gridCom.add_CellValueChanged({ param($s, $e) if (-not $script:Loading -and $e.RowIndex -ge 0 -and $e.ColumnIndex -eq 1 -and $null -ne $gridCom.Rows[$e.RowIndex].Tag) { $gridCom.Rows[$e.RowIndex].Cells[2].Value = $true } })
-foreach ($g in @($gridDev, $gridCom)) { $g.add_CurrentCellDirtyStateChanged({ param($s, $e) if ($s.IsCurrentCellDirty) { [void]$s.CommitEdit('CurrentCellChange') } }) }
+# changing a value ticks "exception" / "managed here" by itself; the tick colours the row
+$gridDev.add_CellValueChanged({ param($s, $e)
+  if ($script:Loading -or $e.RowIndex -lt 0 -or $null -eq $gridDev.Rows[$e.RowIndex].Tag) { return }
+  $r = $gridDev.Rows[$e.RowIndex]
+  if ($e.ColumnIndex -eq 3) { $r.Cells[4].Value = $true }
+  Set-RowLook $r 3 4 $Theme.Own; Set-Dirty 'dev' $true })
+$gridCom.add_CellValueChanged({ param($s, $e)
+  if ($script:Loading -or $e.RowIndex -lt 0 -or $null -eq $gridCom.Rows[$e.RowIndex].Tag) { return }
+  $r = $gridCom.Rows[$e.RowIndex]
+  if ($e.ColumnIndex -eq 1) { $r.Cells[2].Value = $true }
+  Set-RowLook $r 1 2 $Theme.Managed; Set-Dirty 'com' $true })
+foreach ($g in @($gridDev, $gridCom)) {
+  $g.add_CurrentCellDirtyStateChanged({ param($s, $e) if ($s.IsCurrentCellDirty) { [void]$s.CommitEdit('CurrentCellChange') } })
+  # the help of the selected setting under the grid
+  $g.add_CurrentCellChanged({ param($s, $e) if ($script:Loading) { return }; $r = $s.CurrentRow; Show-Help $s.Tag $(if ($r) { $r.Tag } else { $null }) })
+}
+$txtKeys.add_TextChanged({ if (-not $script:Loading) { Set-Dirty 'keys' $true } })
 
-$list.add_SelectedIndexChanged({ if ($list.SelectedItems.Count -eq 1) { Show-Device $list.SelectedItems[0].Tag } })
-$btnRefresh.add_Click({ Update-DeviceList; if ($script:Selected) { $n = $script:Selected.File; $q = $script:Devices | Where-Object File -eq $n | Select-Object -First 1; if ($q) { Show-Device $q } } })
+$list.add_SelectedIndexChanged({ if (-not $script:Listing -and $list.SelectedItems.Count -eq 1) { Show-Device $list.SelectedItems[0].Tag } })
+$txtDevSearch.add_TextChanged({ Update-DeviceList })
+$btnRefresh.add_Click({
+  Update-DeviceList
+  if ($script:Selected) { $n = $script:Selected.File; $q = $script:Devices | Where-Object File -eq $n | Select-Object -First 1; if ($q) { Show-Device $q } }
+  if ($script:Page -eq 3) { Update-ProblemView } })
 $btnOpen.add_Click({ Start-Process explorer.exe $script:Folder })
 $btnRelease.add_Click({
   $form.Cursor = 'WaitCursor'
@@ -1622,11 +2029,13 @@ function Update-ProblemView {
   $form.Cursor = 'WaitCursor'
   try { $sum = Get-ProblemSummary (Get-ProblemEvents $since) } finally { $form.Cursor = 'Default' }
   $lblHeadline.Text = Get-ProblemHeadline $sum
+  $lblHeadline.ForeColor = if (@($sum | Where-Object { $_ }).Count) { $Theme.Text } else { $script:KindColor.ok }
   $probList.BeginUpdate(); $probList.Items.Clear(); $probText.Text = ''
-  foreach ($p in $sum) {
+  foreach ($p in @($sum | Where-Object { $_ })) {
     $it = New-Object System.Windows.Forms.ListViewItem (Get-Text "Prob_$($p.Kind)")
+    $it.ImageKey = if ($p.Wide) { 'warn' } else { 'off' }
     foreach ($v in @((Get-WhereLabel $p.Where), "$($p.Count)", "$($p.Devices.Count): $($p.Devices -join ', ')", ($p.Users -join ', '), $p.First.ToString('dd/MM HH:mm'), $p.Last.ToString('dd/MM HH:mm'))) { [void]$it.SubItems.Add($v) }
-    if ($p.Wide) { $it.BackColor = [System.Drawing.Color]::FromArgb(255, 225, 190) }
+    if ($p.Wide) { $it.BackColor = $script:KindSoft.warn }
     $it.Tag = $p; [void]$probList.Items.Add($it)
   }
   $probList.EndUpdate()
@@ -1635,7 +2044,7 @@ $probList.add_SelectedIndexChanged({
   if ($probList.SelectedItems.Count -ne 1) { return }
   $probText.Text = (@($probList.SelectedItems[0].Tag.Events | ForEach-Object { '{0:dd/MM HH:mm:ss}  {1,-14} {2}' -f $_.Time, $_.Device, $_.Text }) -join "`r`n")
 })
-$cmbPeriod.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
+$cmbPeriod.add_SelectedIndexChanged({ if ($script:Page -eq 3) { Update-ProblemView } })
 # ---------------- remote screen ----------------
 # The screen of the device in the default browser: over SSH (the administrators' key, as otradmin) the device starts
 # x11vnc and the noVNC viewer on 127.0.0.1 with a one-time password (remote-screen.sh); an SSH tunnel brings them to
@@ -1687,7 +2096,6 @@ function Start-RemoteScreen($d) {
 }
 
 $btnProbRefresh.add_Click({ Update-ProblemView })
-$tabs.add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tabProblems) { Update-ProblemView } })
 $btnSaveDev.add_Click({ Save-Device })
 $btnReloadDev.add_Click({ Update-DeviceGrid })
 $btnClearDev.add_Click({ Clear-Device })
@@ -1698,38 +2106,42 @@ $btnRemoteDev.add_Click({ if ($script:Selected) { Start-RemoteScreen $script:Sel
 $btnBrandCom.add_Click({ Show-BrandingDialog $null })
 $btnSaveKeys.add_Click({ Save-Keys })
 $btnReloadKeys.add_Click({ Update-KeysView })
+$btnMyKey.add_Click({ Add-MyKey })
+$btnKeyFile.add_Click({ Add-KeyFromFile })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 60000
-$timer.add_Tick({ Update-DeviceList })      # only the list: grids being edited are left alone
+$timer.add_Tick({ Update-DeviceList })      # the list and the header only: grids being edited are left alone
 
 $form.add_Shown({
-  $split.SplitterDistance = 250
+  $split.SplitterDistance = [Math]::Max(400, [Math]::Min(500, [int]($split.Width * 0.38)))
+  Select-Page 0
   Update-DeviceList; Update-CommonGrid; Update-KeysView
-  if ($list.Items.Count) { $list.Items[0].Selected = $true }
+  if ($list.Items.Count) { $list.Items[0].Selected = $true } else { Show-Device $null }
   $timer.Start()
 })
 if ($env:OTR_MANAGER_BRANDING_SHOT) {   # test: the logo dialog (of OTR_MANAGER_BRANDING_HOST, or common) into a PNG
   $form.add_Shown({ Show-BrandingDialog ($script:Devices | Where-Object Name -eq $env:OTR_MANAGER_BRANDING_HOST | Select-Object -First 1); $form.Close() })
 }
 if ($env:OTR_MANAGER_SCREENSHOT) {   # test: draws the window into a PNG instead of leaving it open
+  # OTR_MANAGER_TAB = page (0 devices, 1 common, 2 keys, 3 problems), OTR_MANAGER_DETAIL = tab of the selected device,
+  # OTR_MANAGER_DEVICE = the device to select, OTR_MANAGER_ROW = the setting whose help shows
   # an error must close the window and be reported: nobody is there to close it
   $form.add_Shown({ try {
-    if ($env:OTR_MANAGER_TAB) { $tabs.SelectedIndex = [int]$env:OTR_MANAGER_TAB }
-    if ($form.Width -ge 1280) {
-      $form.Refresh()
-      $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
-      $form.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
-    } else {
-      # Windows clamps a window to the screen: on a small test session the contents are drawn at the
-      # intended size instead (child controls are not clamped), without the title bar
-      $w = 1264; $h = 781; $bh = $bar.Height; $th = $h - $bh
-      $tabs.Dock = 'None'; $tabs.SetBounds(0, 0, $w, $th); $bar.Dock = 'None'; $bar.SetBounds(0, $th, $w, $bh)
-      $split.SplitterDistance = 250; $form.Refresh(); [System.Windows.Forms.Application]::DoEvents()
-      $bmp = New-Object System.Drawing.Bitmap($w, $h)
-      $tabs.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $w, $th)))
-      $bar.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, $th, $w, $bh)))
+    if ($env:OTR_MANAGER_DEVICE) { foreach ($it in $list.Items) { if ($it.Text -eq $env:OTR_MANAGER_DEVICE) { $it.Selected = $true } } }
+    if ($env:OTR_MANAGER_TAB) { Select-Page ([int]$env:OTR_MANAGER_TAB) }
+    if ($env:OTR_MANAGER_DETAIL) { $detail.SelectedIndex = [int]$env:OTR_MANAGER_DETAIL }
+    if ($env:OTR_MANAGER_ROW) {
+      $g = if ($script:Page -eq 1) { $gridCom } else { $gridDev }
+      foreach ($r in $g.Rows) { if ($r.Tag -and $r.Tag.Key -eq $env:OTR_MANAGER_ROW) { $g.CurrentCell = $r.Cells[0]; break } }
     }
+    # Windows clamps a window to the screen: the contents are drawn at the intended size instead (child controls
+    # are not clamped), without the title bar
+    $w = 1440; $h = 840
+    $root.Dock = 'None'; $root.SetBounds(0, 0, $w, $h)
+    $split.SplitterDistance = 470; $form.Refresh(); [System.Windows.Forms.Application]::DoEvents()
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $root.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $w, $h)))
     $bmp.Save($env:OTR_MANAGER_SCREENSHOT, [System.Drawing.Imaging.ImageFormat]::Png)
   } catch { [Console]::Error.WriteLine("screenshot failed: $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))") } finally { $form.Close() } })
 }
