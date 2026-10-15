@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.13 (2026-10-15)
 
 - **A vault in the manager for the SSH key and the signing key** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).
   At the first start the manager asks for an access code and keeps, encrypted with it in `vault.otr` next to the
