@@ -23,6 +23,11 @@ piccolo gestore Windows: stato di ogni postazione, configurazione centrale, logo
 di qualsiasi postazione nel browser. Niente agenti, niente server di gestione, niente cloud, nessuna licenza per
 postazione.
 
+> **Non è openthinclient.** OpenThinRDP è un progetto nuovo e indipendente, senza alcun legame con openthinclient: i
+> nomi si somigliano, nient'altro è in comune. openthinclient è un progetto più vecchio in cui le postazioni si avviano
+> da rete (PXE) dal suo server di gestione; OpenThinRDP si installa su ogni postazione o gira live da una chiavetta
+> USB, non ha bisogno di un server ed è costruito attorno a RDP con il trasporto UDP di FreeRDP.
+
 È nato da una migrazione reale da un sistema thin client commerciale, su un parco di Dell OptiPlex 3000 Thin
 Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva lavora ogni giorno.
 

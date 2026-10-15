@@ -22,6 +22,11 @@ Windows PC with Remote Desktop turned on. They are managed from a shared folder 
 of every device, central settings, logo, signed updates, and the screen of any device in your browser. No agent,
 no management server, no cloud, no licence per device.
 
+> **Not openthinclient.** OpenThinRDP is a new, independent project, not affiliated with openthinclient: the names
+> sound alike, nothing else is shared. openthinclient is an older project whose devices boot over the network (PXE)
+> from its management server; OpenThinRDP is installed on each device or runs live from a USB stick, needs no server
+> and is built around RDP with FreeRDP's UDP transport.
+
 It grew out of a real migration away from a commercial thin client OS, on a fleet of Dell OptiPlex 3000 Thin
 Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from runs every day.
 
