@@ -93,6 +93,14 @@ once and the release is retried at every run.
 The Windows manager (`management/windows/OpenThinRDP-Manager.vbs`, or the `.cmd` to pass `-Folder`/`-Language`) shows the devices, their status and events,
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
 Before saving `common.conf` it lists the devices that would reject it.
+
+The window has four pages on the left: **Devices** (the list, and the selected device with its settings, a summary,
+its events and its full report), **Common settings**, **SSH keys** and **Problems**; the actions on the folder
+(refresh, open, release from GitHub, check permissions) are in the bar at the top. In a settings list each row shows
+the value in use on the device, where it comes from (*the device itself*, *common settings*, *this device* for an
+exception) and *on its way* when a saved value has not reached the device yet (it reads the folder every 5 minutes;
+if it stays, the device has probably rejected the configuration: see its state). The help of the selected setting is
+under the list; the search box finds a setting by name, key or help text.
 It is available in English and Italian: it follows the Windows display language (English for any language
 without a file in `management/windows/lang/`), or `-Language en` / `-Language it` chooses one.
 
@@ -135,12 +143,14 @@ was used revokes those keys and brings back the image ones.
 
 ## Remote screen
 
-*Device settings > Remote screen...* shows the screen of the selected device in your browser and lets you use it:
+**Remote screen...**, in the header of the selected device, shows its screen in your browser and lets you use it:
 to see what a user sees, or to sign in once to a web page on a screen with no keyboard (the kiosk page keeps the
 sign-in in its profile).
 
 **What it needs**
-- On the device: `SSH=on`, your public key among the SSH keys, and `REMOTE_SCREEN=on` (the default).
+- On the device: `SSH=on`, your public key among the SSH keys, and `REMOTE_SCREEN=on` (the default). On the
+  **SSH keys** page, **Add the key of this PC** adds yours (and creates it in `%USERPROFILE%\.ssh` if you have none
+  yet); then Save, and the devices take it within 5 minutes.
 - On your PC: the OpenSSH client of Windows 10/11 (`ssh.exe`, an optional feature that is usually there) with your
   private key in your user folder (`%USERPROFILE%\.ssh`), and a browser. Nothing else is installed.
 
@@ -160,7 +170,7 @@ During a remote session the screen is the Windows desktop the user is working on
 (`/opt/openthinrdp/novnc`, MPL 2.0 and BSD licenses).
 
 **When it does not start** the manager shows why: SSH off on the device, no address reported yet, the key not
-accepted (put it in the SSH keys tab and in `%USERPROFILE%\.ssh`), or a device that has not received the version
+accepted (Add the key of this PC on the SSH keys page, then Save), or a device that has not received the version
 with the remote screen yet. A device reinstalled with the same address has a new SSH host key: remove the old one
 with `ssh-keygen -R <address>`.
 
