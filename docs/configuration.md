@@ -84,6 +84,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `TPM_SECRETS` | `on` | with a TPM 2.0: folder password, Wi-Fi key and SSH host keys kept encrypted in it ([security.md](security.md)); `off` = root-only files, and back out of the TPM at the next start |
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
+| `UPDATE_KEY` | `any` | signature an update from the management folder needs: `any` (project key or site key) or `site` (only the site key, once the device has it), see [management.md](management.md#a-fleet-on-its-own-key) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 | `REMOTE_SCREEN` | `on` | `off` = no remote screen from the manager ([management.md](management.md#remote-screen)); it needs `SSH=on` |
 

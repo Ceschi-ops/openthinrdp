@@ -172,14 +172,19 @@ on the shared folder the devices report to. No server, no agent, no database: wh
   configuration with a wrong value, the manager stops it first).
 - **Remote screen**: one click shows the screen of a device in your browser and lets you use it, to help a user
   ("what does it say?") or to sign in once to a dashboard on a hall screen. It goes through SSH only, with the
-  administrators' key and a one-time password: nothing new listens on the network, and nothing is installed on your
+  key of the manager and a one-time password: nothing new listens on the network, and nothing is installed on your
   PC (the `ssh.exe` that comes with Windows and your browser). The device shows *Remote assistance active* while it
   lasts and records it in its events; it ends when you close the window, or by itself after 2 hours, and
   `REMOTE_SCREEN=off` turns it off ([details](docs/management.md#remote-screen)).
 - **Problems across the fleet**: the event logs of every device read together and grouped, so "six devices could not
   reach the broker this morning" is one line instead of six logs.
-- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators (one button adds the
-  key of the PC you are on, creating it if needed); **releases** from
+- **A vault with an access code** for the two keys that rule the fleet: the SSH key that opens the screens and the
+  key that signs the update packages. Every administrator of the manager opens it with the same code; without it
+  no screen opens and nothing is signed. Update packages are signed in the manager, so the signing key never sits
+  on a build machine ([details](docs/management.md#vault)). With `UPDATE_KEY=site` your devices accept only the key
+  of your site: the manager checks each GitHub release and signs it again with that key
+  ([details](docs/management.md#a-fleet-on-its-own-key)).
+- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
   GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
 
 Every change is written to a change log in the folder. Guide: [docs/management.md](docs/management.md).

@@ -60,6 +60,10 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   echo "UPDATE_VERSION=$(cat "$OTR_LIB/update-version" 2>/dev/null || echo none)"
   echo "CENTRAL_CONFIG=$(cat "$OTR_LIB/central-status" 2>/dev/null || echo 'never read')"
   echo "UPDATE_FROM=$(cfg UPDATE_FROM)"
+  # which signatures the updates from the folder need, and the site key this device has (its fingerprint): the
+  # manager shows which devices have not got the site key yet
+  echo "UPDATE_KEY=$(cfg UPDATE_KEY)"
+  echo "SITE_KEY=$(key_fingerprint "$OTR_ETC/update-key.asc" 2>/dev/null || echo none)"
   # the account of the management folder (never the password): the manager checks what it may write there
   MA=$(sed -n 's/^username=//p' "$CRED" 2>/dev/null | head -1); MD=$(sed -n 's/^domain=//p' "$CRED" 2>/dev/null | head -1)
   case "$MA" in *\\*|*@*) MD="" ;; esac

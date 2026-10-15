@@ -55,3 +55,34 @@ otr_lang(){
 # never switch off in the middle of a software update (an interrupted install is only retried 10 minutes later):
 # wait for it, 15 minutes at most
 wait_update(){ local i; for i in $(seq 1 180); do systemctl is-active -q openthinrdp-update.service || return 0; sleep 5; done; }
+
+# the fingerprint of the first key in an OpenPGP public key file (armored or binary), upper case, as the manager
+# shows it; fails when the file is missing or holds no version 4 key
+key_fingerprint(){
+  [ -s "$1" ] || return 1
+  python3 - "$1" <<'PY'
+import sys, base64, hashlib
+d = open(sys.argv[1], 'rb').read()
+if b'-----BEGIN PGP' in d:
+    t = d.decode('ascii', 'replace').replace('\r', '').split('\n')
+    i = next(n for n, l in enumerate(t) if l.startswith('-----BEGIN PGP'))
+    while t[i].strip(): i += 1
+    b = ''
+    for l in t[i + 1:]:
+        if l.startswith('-----END') or (l.startswith('=') and len(l.strip()) == 5): break
+        b += l.strip()
+    d = base64.b64decode(b)
+c = d[0]
+if c & 0x40:
+    tag, o = c & 0x3f, d[1]
+    if o < 192: n, s = o, 2
+    elif o < 224: n, s = ((o - 192) << 8) + d[2] + 192, 3
+    else: n, s = int.from_bytes(d[2:6], 'big'), 6
+else:
+    tag, lt = (c >> 2) & 0xf, c & 3
+    w = [1, 2, 4][lt]; n, s = int.from_bytes(d[1:1 + w], 'big'), 1 + w
+body = d[s:s + n]
+if tag != 6 or body[0] != 4: sys.exit(1)
+print(hashlib.sha1(b'\x99' + len(body).to_bytes(2, 'big') + body).hexdigest().upper())
+PY
+}

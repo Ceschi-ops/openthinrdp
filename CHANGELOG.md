@@ -3,6 +3,25 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **A vault in the manager for the SSH key and the signing key** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).
+  At the first start the manager asks for an access code and keeps, encrypted with it in `vault.otr` next to the
+  manager, a new SSH key for the remote screen and the key that signs the update packages. Every administrator who
+  starts the same manager opens it with the same code; without the code the settings can still be edited, but no
+  screen opens and nothing is signed. The remote screen offers only the key of the vault, never the keys in the
+  profile of the PC. Update packages are signed in the manager (**Vault > Sign an update**, or
+  `OpenThinRDP-Manager.cmd -Sign <path>\LATEST.txt`), with the same Ed25519 signature `gpg` writes; `make-update.sh`
+  without `-k` builds the package and leaves `LATEST.txt` to be signed there.
+- **A fleet on its own key: `UPDATE_KEY=site`** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).
+  Devices updating from the management folder can accept only the key of the site, which the manager creates in its
+  vault and sends to the devices over SSH (`site-key.sh`). **Release from GitHub** checks the project signature in
+  the manager (no gpg needed any more) and signs the release again with the site key: a stolen project key installs
+  nothing on such a fleet. A device without the site key still accepts the project key, so none is left without
+  updates. Each device reports its site key (`SITE_KEY`, Summary > Update signatures).
+- The manager read its texts with `Import-PowerShellDataFile`, which refuses more than 500 entries: the texts are
+  now read entry by entry, as constants.
+
 ## 0.1.12 (2026-10-15)
 
 - **H.264 was on although `RDP_GFX` turns it off** ([#33](https://github.com/OpenThinRdp/openthinrdp/issues/33)).

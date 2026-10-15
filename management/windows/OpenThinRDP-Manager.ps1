@@ -15,6 +15,10 @@
   Texts:  every text of the window is in lang\en.psd1, translated in lang\<language>.psd1 (UTF-8 with BOM);
           a key missing from a translation shows the English text. Setting keys, values, the files written
           and config\changes.log stay in English: the devices and other tools read them.
+  Sign:   OpenThinRDP-Manager.cmd -Sign <folder>\LATEST.txt   (an update package made by make-update.sh without -k:
+                                  asks the access code of the vault, writes LATEST.txt.sig next to it)
+  Vault:  vault.otr next to this file: the SSH key of the remote screen and the key that signs the updates,
+          encrypted with the access code asked at the first start (OtrVault.cs)
   Tests:  . .\OpenThinRDP-Manager.ps1 -Folder <path> -FunctionsOnly [-Language en]   (loads the functions, no window)
           $env:OTR_MANAGER_SCREENSHOT = <file.png> (+ $env:OTR_MANAGER_TAB = 0, 1 or 2): draws the window into
           the PNG instead of showing it, then exits
@@ -22,7 +26,8 @@
 param(
   [string]$Folder,
   [string]$Language,       # en, it, ... (a file in lang\); empty = the Windows display language
-  [switch]$FunctionsOnly   # for tests: load the functions without opening the window
+  [switch]$FunctionsOnly,  # for tests: load the functions without opening the window
+  [string]$Sign            # LATEST.txt of an update package to sign with the key of the vault (no window)
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -127,19 +132,33 @@ public static class OtrCrypto {
 }
 '@
 }
+# Ed25519, OpenPGP signatures and the vault (.NET Framework has no Ed25519): OtrVault.cs next to this file
+if (-not ('OtrVault' -as [type])) { Add-Type -ReferencedAssemblies System.Numerics -Path (Join-Path $PSScriptRoot 'OtrVault.cs') }
 
 # ---------------------------------------------------------------------------------------------
 # Language: lang\en.psd1 has every text of the window, lang\<xx>.psd1 replaces the ones it translates
 # (a key missing or empty there keeps the English text, never an empty label)
 # ---------------------------------------------------------------------------------------------
 $script:LangDir = Join-Path $PSScriptRoot 'lang'
+# A language file: one table of constant texts. Read entry by entry (constants only, nothing runs): Import-PowerShellDataFile
+# refuses a table with more than 500 entries.
+function Import-TextTable([string]$file) {
+  $errs = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$errs)
+  if ($errs.Count) { throw "$file, line $($errs[0].Extent.StartLineNumber): $($errs[0].Message)" }
+  $h = $ast.Find({ param($a) $a -is [System.Management.Automation.Language.HashtableAst] }, $false)
+  if (-not $h) { throw "$file holds no table of texts" }
+  $t = @{}
+  foreach ($kv in $h.KeyValuePairs) { $t[[string]$kv.Item1.SafeGetValue()] = [string]$kv.Item2.SafeGetValue() }
+  $t
+}
 function Read-LanguageTexts([string]$dir, [string]$lang) {
   $t = @{}
-  $en = Import-PowerShellDataFile -LiteralPath (Join-Path $dir 'en.psd1')
+  $en = Import-TextTable (Join-Path $dir 'en.psd1')
   foreach ($k in $en.Keys) { $t[$k] = $en[$k] }
   $f = Join-Path $dir "$lang.psd1"
   if ($lang -and $lang -ne 'en' -and (Test-Path -LiteralPath $f)) {
-    try { $tr = Import-PowerShellDataFile -LiteralPath $f } catch { Write-Warning "$f not readable, English texts used: $($_.Exception.Message)"; $tr = @{} }
+    try { $tr = Import-TextTable $f } catch { Write-Warning "$f not readable, English texts used: $($_.Exception.Message)"; $tr = @{} }
     foreach ($k in $tr.Keys) { if ($tr[$k]) { $t[$k] = $tr[$k] } }
   }
   $t
@@ -244,6 +263,7 @@ $script:Settings = @(
   (New-Setting 'TPM_SECRETS'         'choice'     'on' @('on', 'off'))
   (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
   (New-Setting 'UPDATE_GITHUB'       'repo'       'OpenThinRdp/openthinrdp')
+  (New-Setting 'UPDATE_KEY'          'choice'     'any' @('any', 'site'))
   (New-Setting 'SSH'                 'choice'     'off' @('off', 'on'))
   (New-Setting 'REMOTE_SCREEN'       'choice'     'on' @('on', 'off'))
   (Set-Section 'SectionWeb')
@@ -474,11 +494,13 @@ function Get-PublishedUpdate {
 
 # ---------------------------------------------------------------------------------------------
 # A GitHub release into updates\: the latest release (pre-releases excluded) of UPDATE_GITHUB (common.conf,
-# else the project default), for the devices with UPDATE_FROM=share. The devices check the project signature
-# themselves; here the package hash is always checked, the signature too when gpg is available (Git for
-# Windows has it) and the project key is next to this tool (rootfs/opt/openthinrdp/keys in the repository).
+# else the project default), for the devices with UPDATE_FROM=share. Here the package hash and the project signature
+# are checked (OtrVault.cs: no gpg needed), against the project key that comes with this tool
+# (openthinrdp-release.asc next to it, or rootfs/opt/openthinrdp/keys in the repository). With the site key in the
+# vault the release is then signed again with it: devices with UPDATE_KEY=site accept only that signature.
 # ---------------------------------------------------------------------------------------------
-$script:ReleaseKey = Join-Path $PSScriptRoot '..\..\rootfs\opt\openthinrdp\keys\openthinrdp-release.asc'
+$script:ReleaseKey = @((Join-Path $PSScriptRoot 'openthinrdp-release.asc'), (Join-Path $PSScriptRoot '..\..\rootfs\opt\openthinrdp\keys\openthinrdp-release.asc')) |
+  Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $script:ReleaseFileRx = '^openthinrdp-update-[0-9A-Za-z._-]+\.tar\.gz$'
 function Get-ReleaseRepo {
   $r = (Read-ConfFile $script:CommonFile)['UPDATE_GITHUB']
@@ -489,26 +511,11 @@ function Get-ReleaseFile([string]$base, [string]$name, [string]$dest) {
   if ($base -match '^https?://') { Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $dest -TimeoutSec 300 -ErrorAction Stop }
   else { Copy-Item -LiteralPath (Join-Path $base $name) -Destination $dest -ErrorAction Stop }
 }
-# $true = good signature of the key, $false = bad, $null = not checked here (no gpg, or no key file)
+# $true = good signature of a key of the key file, $false = bad, $null = not checked here (no key file)
 function Test-ReleaseSignature([string]$sig, [string]$file, [string]$keyFile) {
-  $gpg = @("$env:ProgramFiles\Git\usr\bin\gpg.exe", (Get-Command gpg.exe -ErrorAction SilentlyContinue).Source) |
-    Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
-  if (-not $gpg -or -not $keyFile -or -not (Test-Path -LiteralPath $keyFile)) { return $null }
-  $gh = Join-Path $env:TEMP "otr-gpg-$(Get-Random)"; New-Item -ItemType Directory $gh | Out-Null
-  # the gpg of Git for Windows is an MSYS program: it wants /c/x/y (C:\x and C:/x are read as relative paths),
-  # and //server/share; Gpg4win wants Windows paths
-  $msys = $gpg -like '*\usr\bin\gpg.exe'
-  $p = { param($x) $q = (Resolve-Path -LiteralPath $x).ProviderPath
-         if (-not $msys) { $q } elseif ($q -like '\\*') { $q -replace '\\', '/' } else { '/' + $q.Substring(0, 1).ToLower() + ($q.Substring(2) -replace '\\', '/') } }
-  # gpg writes its notes on stderr: with "Stop", Windows PowerShell 5.1 turns them into errors even with 2>$null
-  $ErrorActionPreference = 'Continue'
-  try {
-    & $gpg --homedir (& $p $gh) --batch --quiet --import (& $p $keyFile) 2>$null | Out-Null
-    & $gpg --homedir (& $p $gh) --batch --quiet --verify (& $p $sig) (& $p $file) 2>$null | Out-Null
-    $LASTEXITCODE -eq 0
-  } finally { Remove-Item -LiteralPath $gh -Recurse -Force -ErrorAction SilentlyContinue }
-}
-# version order as "sort -V" on the devices: the numbers inside compare as numbers
+  if (-not $keyFile -or -not (Test-Path -LiteralPath $keyFile)) { return $null }
+  try { [OtrVault]::VerifyWithKeyFile([IO.File]::ReadAllBytes($keyFile), [IO.File]::ReadAllBytes($file), [IO.File]::ReadAllText($sig)) } catch { $false }
+}# version order as "sort -V" on the devices: the numbers inside compare as numbers
 function Compare-Version([string]$a, [string]$b) {
   $pa = @($a -split '[^0-9A-Za-z]+'); $pb = @($b -split '[^0-9A-Za-z]+')
   for ($i = 0; $i -lt [Math]::Max($pa.Count, $pb.Count); $i++) {
@@ -517,6 +524,14 @@ function Compare-Version([string]$a, [string]$b) {
     if ($c) { return [Math]::Sign($c) }
   }
   0
+}
+# the index of an update package: version, package file, its SHA-256; Ok = all three in the format the devices accept
+function Read-LatestFile([string]$file) {
+  $l = Read-Lines $file
+  $field = { param($k) ([string]($l | Where-Object { $_ -match "^$k=" } | Select-Object -First 1) -replace "^$k=", '').Trim() }
+  $v = & $field 'version'; $f = & $field 'file'; $h = & $field 'sha256'
+  [pscustomobject]@{ Version = $v; File = $f; Hash = $h
+    Ok = ($v -cmatch '^[0-9A-Za-z._-]+$' -and $f -cmatch $script:ReleaseFileRx -and $h -cmatch '^[0-9a-f]{64}$') }
 }
 # Downloads and checks the release into a temporary folder. Ok = $false with Message, or the release:
 # Version, File, Signature ($true / $null = not checked here), Dir (temporary folder for Publish-Release)
@@ -527,15 +542,13 @@ function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) 
   $fail = { param($m) Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; [pscustomobject]@{ Ok = $false; Message = $m } }
   try { Get-ReleaseFile $base 'LATEST.txt' "$tmp\LATEST.txt"; Get-ReleaseFile $base 'LATEST.txt.sig' "$tmp\LATEST.txt.sig" }
   catch { return (& $fail (Get-Text 'RelNotFound' $base $_.Exception.Message)) }
-  $l = Read-Lines "$tmp\LATEST.txt"
-  $field = { param($lines, $k) ([string]($lines | Where-Object { $_ -match "^$k=" } | Select-Object -First 1) -replace "^$k=", '').Trim() }
-  $v = & $field $l 'version'; $f = & $field $l 'file'; $h = & $field $l 'sha256'
-  if ($v -cnotmatch '^[0-9A-Za-z._-]+$' -or $f -cnotmatch $script:ReleaseFileRx -or $h -cnotmatch '^[0-9a-f]{64}$') { return (& $fail (Get-Text 'RelNotValid')) }
+  $i = Read-LatestFile "$tmp\LATEST.txt"; $v = $i.Version; $f = $i.File; $h = $i.Hash
+  if (-not $i.Ok) { return (& $fail (Get-Text 'RelNotValid')) }
   $sig = Test-ReleaseSignature "$tmp\LATEST.txt.sig" "$tmp\LATEST.txt" $keyFile
   if ($sig -eq $false) { return (& $fail (Get-Text 'RelBadSignature' $v)) }
   $cur = Join-Path $script:Folder 'updates\LATEST.txt'
   if (Test-Path -LiteralPath $cur) {
-    $cv = & $field (Read-Lines $cur) 'version'
+    $cv = (Read-LatestFile $cur).Version
     if ($cv -and (Compare-Version $v $cv) -le 0) { return (& $fail (Get-Text 'RelNotNewer' $v $cv)) }
   }
   try { Get-ReleaseFile $base $f "$tmp\$f" } catch { return (& $fail (Get-Text 'RelNotFound' "$base/$f" $_.Exception.Message)) }
@@ -544,8 +557,17 @@ function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) 
 }
 # Copies a checked release into updates\: package first, then signature and index (a device never sees an
 # index that points to a missing package); the last 3 packages are kept. Removes the temporary folder.
-function Publish-Release($rel) {
+# $siteKey (Get-VaultSigningKey): LATEST.txt is signed again with it first, only over a project signature checked
+# here; the new signature replaces the project one.
+function Publish-Release($rel, $siteKey = $null) {
   try {
+    if ($siteKey) {
+      if ($rel.Signature -ne $true) { throw (Get-Text 'RelResignUnchecked') }
+      $l = Join-Path $rel.Dir 'LATEST.txt'; $data = [IO.File]::ReadAllBytes($l)
+      $sig = [OtrVault]::SignDetached($siteKey, $data, [uint32][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+      if (-not [OtrVault]::VerifyDetached($siteKey.Public, $data, $sig)) { throw (Get-Text 'SignCheckFailed') }
+      [IO.File]::WriteAllText((Join-Path $rel.Dir 'LATEST.txt.sig'), $sig, [Text.Encoding]::ASCII)
+    }
     $u = Join-Path $script:Folder 'updates'
     if (-not (Test-Path -LiteralPath $u)) { New-Item -ItemType Directory -Path $u | Out-Null }
     Copy-Item -LiteralPath (Join-Path $rel.Dir $rel.File) -Destination (Join-Path $u $rel.File) -Force -ErrorAction Stop
@@ -556,8 +578,184 @@ function Publish-Release($rel) {
     }
     Get-ChildItem -LiteralPath $u -Filter 'openthinrdp-update-*.tar.gz' | Where-Object Name -ne $rel.File |
       Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 | Remove-Item -Force
-    Add-ChangeLog ("release {0} copied into updates\ from {1} (signature {2})" -f $rel.Version, $rel.Source, $(if ($rel.Signature) { 'checked here' } else { 'not checked here: the devices check it' }))
+    Add-ChangeLog ("release {0} copied into updates\ from {1} (project signature {2}{3})" -f $rel.Version, $rel.Source,
+      $(if ($rel.Signature) { 'checked here' } else { 'not checked here: the devices check it' }), $(if ($siteKey) { ", signed again with the site key $($siteKey.Hex())" } else { '' }))
   } finally { Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Vault: the secrets of the administrators in vault.otr next to this tool, encrypted with an access code
+# (OtrVault.cs: PBKDF2-HMAC-SHA256 600000 rounds, AES-256-CBC + HMAC-SHA256). Every administrator who starts the
+# same copy of the tool opens it with the same code; without the code there is no remote screen and no signing.
+#   ssh_private, ssh_public   the SSH key of the manager (remote screen; its public half in config\authorized_keys)
+#   sign_*                    the OpenPGP key that signs the update packages (Ed25519, as gpg exports it)
+# Open, the secrets stay in memory until the window closes. ssh.exe needs the private key in a file: a folder
+# that only this account and SYSTEM can read, removed when the vault closes.
+# ---------------------------------------------------------------------------------------------
+$script:VaultFile = if ($env:OTR_MANAGER_VAULT) { $env:OTR_MANAGER_VAULT } else { Join-Path $PSScriptRoot 'vault.otr' }
+$script:VaultKeysDir = Join-Path $env:LOCALAPPDATA 'OpenThinRDP\vault-keys'
+$script:VaultMinCode = 8
+$script:Vault = $null; $script:VaultCode = $null; $script:VaultKeyFile = $null
+function Test-VaultFile { Test-Path -LiteralPath $script:VaultFile }
+function Test-VaultOpen { $null -ne $script:Vault }
+# $false = wrong code
+function Open-Vault([string]$code) {
+  $plain = [OtrVault]::Open($code, [IO.File]::ReadAllText($script:VaultFile))
+  if ($null -eq $plain) { return $false }
+  $h = @{}; ([Text.Encoding]::UTF8.GetString($plain) | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $h[$_.Name] = $_.Value }
+  $script:Vault = $h; $script:VaultCode = $code
+  $true
+}
+# written next to it first, then moved over it: a vault cut in half would lose every key
+function Save-Vault {
+  $sealed = [OtrVault]::Seal($script:VaultCode, [Text.Encoding]::UTF8.GetBytes(($script:Vault | ConvertTo-Json -Compress)))
+  $tmp = "$($script:VaultFile).new"
+  [IO.File]::WriteAllText($tmp, "$sealed`r`n", [Text.Encoding]::ASCII)
+  Move-Item -LiteralPath $tmp -Destination $script:VaultFile -Force
+}
+function New-Vault([string]$code) { $script:Vault = @{ format = 1 }; $script:VaultCode = $code; Save-Vault }
+function Set-VaultCode([string]$code) { $script:VaultCode = $code; Save-Vault }
+function Close-Vault { Remove-VaultKeyFile; $script:Vault = $null; $script:VaultCode = $null }
+function Test-CodeStrength([string]$code) { $code.Length -ge $script:VaultMinCode }
+
+# a new folder that only this account and SYSTEM can read (ssh.exe refuses a private key others can read)
+function New-PrivateDir {
+  $d = Join-Path $script:VaultKeysDir ([guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $d -Force | Out-Null
+  $acl = New-Object System.Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($sid in @([System.Security.Principal.WindowsIdentity]::GetCurrent().User, (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')))) {
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+  }
+  Set-Acl -LiteralPath $d -AclObject $acl
+  $d
+}
+# the private SSH key of the vault in a file for ssh.exe -i; $null = vault closed or no key
+function Get-VaultKeyFile {
+  if (-not (Test-VaultOpen) -or -not $script:Vault['ssh_private']) { return $null }
+  if ($script:VaultKeyFile -and (Test-Path -LiteralPath $script:VaultKeyFile)) { return $script:VaultKeyFile }
+  $f = Join-Path (New-PrivateDir) 'id_manager'
+  [IO.File]::WriteAllText($f, (([string]$script:Vault['ssh_private']) -replace "`r`n", "`n").TrimEnd("`n") + "`n", $script:Utf8)
+  $script:VaultKeyFile = $f
+  $f
+}
+function Remove-VaultKeyFile {
+  if ($script:VaultKeyFile) { Remove-Item -LiteralPath (Split-Path $script:VaultKeyFile) -Recurse -Force -ErrorAction SilentlyContinue; $script:VaultKeyFile = $null }
+  # left by a window that did not close normally
+  Get-ChildItem -LiteralPath $script:VaultKeysDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
+# a command on a device as otradmin with the key of the vault ($key = Get-VaultKeyFile) and no other: the keys in
+# the profile of this account are not offered (IdentitiesOnly)
+function Invoke-DeviceSsh([string]$ip, [string]$command, [string]$key) {
+  $ErrorActionPreference = 'Continue'
+  $out = & ssh.exe -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "otradmin@$ip" $command 2>&1
+  @{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
+}
+# the public half of a private key file, from ssh-keygen -y: fails on a key protected by a passphrase (ssh.exe could
+# not use it without asking) and on anything that is not a private key
+function Get-SshPublicOf([string]$keyFile) {
+  $kg = (Get-Command ssh-keygen.exe -ErrorAction SilentlyContinue).Source
+  if (-not $kg) { throw (Get-Text 'ErrRemoteNoSshExe') }
+  $ErrorActionPreference = 'Continue'
+  $out = & $kg -y -P '' -f $keyFile 2>$null
+  @($out) | Where-Object { "$_" -cmatch $script:Rx.SshKey } | Select-Object -First 1
+}
+# a new SSH key for the manager, made by ssh-keygen in a private folder and kept only in the vault
+function New-VaultSshKey {
+  $kg = (Get-Command ssh-keygen.exe -ErrorAction SilentlyContinue).Source
+  if (-not $kg) { throw (Get-Text 'ErrRemoteNoSshExe') }
+  $d = New-PrivateDir; $f = Join-Path $d 'new'
+  try {
+    $p = Start-Process $kg -ArgumentList "-q -t ed25519 -N `"`" -C openthinrdp-manager -f `"$f`"" -WindowStyle Hidden -Wait -PassThru
+    if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath "$f.pub")) { throw (Get-Text 'KeyCreateFailed' $p.ExitCode) }
+    $script:Vault['ssh_private'] = [IO.File]::ReadAllText($f); $script:Vault['ssh_public'] = ([IO.File]::ReadAllText("$f.pub")).Trim()
+  } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+  Remove-VaultKeyFile; Save-Vault
+  $script:Vault['ssh_public']
+}
+# an existing private key (e.g. the one an administrator used so far), copied into the vault
+function Import-VaultSshKey([string]$file) {
+  $d = New-PrivateDir; $f = Join-Path $d 'import'
+  try {
+    Copy-Item -LiteralPath $file -Destination $f
+    $pub = Get-SshPublicOf $f
+    if (-not $pub) { throw (Get-Text 'VaultSshNotUsable' $file) }
+    $script:Vault['ssh_private'] = [IO.File]::ReadAllText($f); $script:Vault['ssh_public'] = "$pub".Trim()
+  } finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+  Remove-VaultKeyFile; Save-Vault
+  $script:Vault['ssh_public']
+}
+# the key that signs: the file of gpg --export-secret-keys (armored or binary, without a passphrase)
+function Import-VaultSigningKey([string]$file) {
+  $k = [OtrVault]::ReadSecretKey([IO.File]::ReadAllBytes($file))
+  $script:Vault['sign_seed'] = [OtrVault]::ToHex($k.Seed); $script:Vault['sign_public'] = [OtrVault]::ToHex($k.Public)
+  $script:Vault['sign_fingerprint'] = $k.Hex(); $script:Vault['sign_created'] = [long]$k.Created; $script:Vault['sign_user'] = [string]$k.User
+  Save-Vault
+  $k
+}
+# a new key of the site, made here (random, Ed25519) and kept only in the vault; its public half is Export-VaultPublicKey
+function New-VaultSiteKey([string]$user) {
+  $k = [OtrVault]::NewSigningKey($user, [uint32][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+  $script:Vault['sign_seed'] = [OtrVault]::ToHex($k.Seed); $script:Vault['sign_public'] = [OtrVault]::ToHex($k.Public)
+  $script:Vault['sign_fingerprint'] = $k.Hex(); $script:Vault['sign_created'] = [long]$k.Created; $script:Vault['sign_user'] = $user
+  Save-Vault
+  $k
+}
+# update-key.asc for the devices: the public key with its self-signature (the same file every time)
+function Export-VaultPublicKey([string]$file) {
+  $k = Get-VaultSigningKey; if (-not $k) { throw (Get-Text 'VaultNoSigningKey') }
+  [IO.File]::WriteAllText($file, [OtrVault]::ExportPublic($k), [Text.Encoding]::ASCII)
+  $k
+}
+# The public site key to one device over SSH (the key of the vault), checked and installed there by site-key.sh:
+# the first time it cannot come through the folder (whoever may write there would choose the key) nor, outside
+# the project, signed by the project key. $null = done, else the reason.
+function Send-SiteKey($d, [string]$sshKey, [string]$armored) {
+  $ip = ([string]$d.S['IP']) -replace '/.*$', ''
+  if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return (Get-Text 'ErrRemoteNoIp') }
+  if ($d.S['CFG_SSH'] -ne 'on') { return (Get-Text 'SendKeyNoSsh') }
+  $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($armored))
+  $r = Invoke-DeviceSsh $ip "test -x /opt/openthinrdp/site-key.sh || { echo ERROR=old; exit 1; }; echo $b64 | base64 -d | sudo /opt/openthinrdp/site-key.sh install" $sshKey
+  if ($r.Text -match '(?m)^OK=([0-9A-F]{40})') { return $null }
+  if ($r.Text -match '(?m)^ERROR=old') { return (Get-Text 'SendKeyOldVersion') }
+  if ($r.Text -match '(?m)^ERROR=(.+)$') { return $Matches[1] }
+  $t = $r.Text.Trim(); if ($t) { $t } else { "ssh $($r.Code)" }
+}
+# the key that signs the releases again before they go into updates\: the site key of the vault (not the project key,
+# whose signature the release already has); $null = vault closed or no site key
+function Get-ResignKey {
+  $k = Get-VaultSigningKey
+  if ($k -and (Get-SigningKeyRole $k.Hex()) -eq 'own') { $k } else { $null }
+}
+function Get-VaultSigningKey {
+  if (-not (Test-VaultOpen) -or -not $script:Vault['sign_seed']) { return $null }
+  $k = New-Object 'OtrVault+SigningKey'
+  $k.Seed = [OtrVault]::FromHex($script:Vault['sign_seed']); $k.Public = [OtrVault]::FromHex($script:Vault['sign_public'])
+  $k.Fingerprint = [OtrVault]::FromHex($script:Vault['sign_fingerprint']); $k.Created = [uint32]$script:Vault['sign_created']; $k.User = $script:Vault['sign_user']
+  $k
+}
+# project = the key of the GitHub releases (rootfs/opt/openthinrdp/keys next to this tool), own = any other: the
+# devices accept it only as update-key.asc of their image
+function Get-SigningKeyRole([string]$fingerprint) {
+  try { if ((Test-Path -LiteralPath $script:ReleaseKey) -and ([OtrVault]::Fingerprints([IO.File]::ReadAllBytes($script:ReleaseKey)) -contains $fingerprint)) { return 'project' } } catch { }
+  'own'
+}
+# Signs the LATEST.txt of an update package (make-update.sh without -k): its format is checked, and the package
+# next to it against its hash when it is there; the signature is checked again before LATEST.txt.sig is written.
+function Invoke-SignUpdate([string]$file) {
+  $k = Get-VaultSigningKey
+  if (-not $k) { throw (Get-Text 'VaultNoSigningKey') }
+  $i = Read-LatestFile $file
+  if (-not $i.Ok) { throw (Get-Text 'SignNotValid' $file) }
+  $pkg = Join-Path (Split-Path -LiteralPath $file) $i.File
+  $has = Test-Path -LiteralPath $pkg
+  if ($has -and (Get-FileHash -LiteralPath $pkg -Algorithm SHA256).Hash.ToLower() -ne $i.Hash) { throw (Get-Text 'SignBadHash' $i.File) }
+  $data = [IO.File]::ReadAllBytes($file)
+  $sig = [OtrVault]::SignDetached($k, $data, [uint32][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+  if (-not [OtrVault]::VerifyDetached($k.Public, $data, $sig)) { throw (Get-Text 'SignCheckFailed') }
+  [IO.File]::WriteAllText("$file.sig", $sig, [Text.Encoding]::ASCII)
+  [pscustomobject]@{ Version = $i.Version; Fingerprint = $k.Hex(); Role = (Get-SigningKeyRole $k.Hex()); PackageChecked = $has; Signature = "$file.sig" }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -1096,6 +1294,76 @@ function Confirm-Action($title, $text, $default = 'Button1') {
   [System.Windows.Forms.MessageBox]::Show($text, $title, 'YesNo', 'Question', $default) -eq 'Yes'
 }
 
+# The access code of the vault. Open: one box; Create and Change: the code twice. $true = the vault is open (or
+# created, or has the new code); $false = the administrator went on without it. Opening takes a couple of seconds
+# (600000 rounds): the window says so meanwhile.
+function Show-CodeDialog([ValidateSet('Open', 'Create', 'Change')][string]$mode, $owner = $null) {
+  $font = New-Object System.Drawing.Font('Segoe UI', 9.75); $Width = 500
+  $w = New-Object System.Windows.Forms.Form
+  $w.Text = Get-Text "Vault${mode}Title"; $w.Font = $font; $w.FormBorderStyle = 'FixedDialog'; $w.MaximizeBox = $false; $w.MinimizeBox = $false
+  $w.StartPosition = if ($owner) { 'CenterParent' } else { 'CenterScreen' }; $w.ShowInTaskbar = -not $owner; $w.TopMost = -not $owner
+  $note = New-Object System.Windows.Forms.Label; $note.Text = Get-Text "Vault${mode}Text" $script:VaultFile $script:VaultMinCode
+  # the height as the label itself wraps the text (a long path breaks inside, unlike a measure by words)
+  $note.Font = $font; $nh = $note.GetPreferredSize((New-Object System.Drawing.Size(($Width - 32), 0))).Height
+  $note.SetBounds(16, 14, $Width - 32, $nh + 4); $y = $note.Bottom + 12
+  $l1 = New-Object System.Windows.Forms.Label; $l1.Text = Get-Text 'VaultCode'; $l1.AutoSize = $true; $l1.Location = New-Object System.Drawing.Point(16, ($y + 4))
+  $t1 = New-Object System.Windows.Forms.TextBox; $t1.UseSystemPasswordChar = $true; $t1.SetBounds(180, $y, $Width - 196, 26); $y += 36
+  $w.Controls.AddRange(@($note, $l1, $t1))
+  $t2 = $null
+  if ($mode -ne 'Open') {
+    $l2 = New-Object System.Windows.Forms.Label; $l2.Text = Get-Text 'VaultCodeAgain'; $l2.AutoSize = $true; $l2.Location = New-Object System.Drawing.Point(16, ($y + 4))
+    $t2 = New-Object System.Windows.Forms.TextBox; $t2.UseSystemPasswordChar = $true; $t2.SetBounds(180, $y, $Width - 196, 26); $y += 36
+    $w.Controls.AddRange(@($l2, $t2))
+  }
+  $err = New-Object System.Windows.Forms.Label; $err.ForeColor = [System.Drawing.ColorTranslator]::FromHtml('#dc2626'); $err.SetBounds(16, $y, $Width - 32, 40); $y += 44
+  $ok = New-Object System.Windows.Forms.Button; $ok.Text = Get-Text "Vault${mode}Ok"
+  $no = New-Object System.Windows.Forms.Button; $no.Text = Get-Text $(if ($mode -eq 'Change' -or -not $owner) { 'BtnCancel' } else { 'VaultWithout' })
+  foreach ($b in @($ok, $no)) { $b.Height = 30; $b.Width = [Math]::Max(110, [System.Windows.Forms.TextRenderer]::MeasureText($b.Text, $font).Width + 28) }
+  $no.Location = New-Object System.Drawing.Point(($Width - 16 - $no.Width), $y); $ok.Location = New-Object System.Drawing.Point(($no.Left - 8 - $ok.Width), $y)
+  $no.DialogResult = 'Cancel'; $w.AcceptButton = $ok; $w.CancelButton = $no
+  $w.Controls.AddRange(@($err, $ok, $no)); $w.ClientSize = New-Object System.Drawing.Size($Width, ($y + 46))
+  $ok.add_Click({
+    $code = $t1.Text; $err.Text = ''; $why = $null
+    if ($mode -eq 'Open') {
+      $err.ForeColor = [System.Drawing.ColorTranslator]::FromHtml('#6b7280'); $err.Text = Get-Text 'VaultOpening'; $w.Cursor = 'WaitCursor'; $w.Refresh()
+      try { $good = Open-Vault $code } catch { $good = $false; $why = $_.Exception.Message } finally { $w.Cursor = 'Default' }
+      $err.ForeColor = [System.Drawing.ColorTranslator]::FromHtml('#dc2626')
+      if ($good) { $w.DialogResult = 'OK'; $w.Close(); return }
+      $err.Text = if ($why) { Get-Text 'VaultNotReadable' $why } else { Get-Text 'VaultWrongCode' }
+      $t1.SelectAll(); $t1.Focus(); return
+    }
+    if (-not (Test-CodeStrength $code)) { $err.Text = Get-Text 'VaultCodeShort' $script:VaultMinCode; $t1.Focus(); return }
+    if ($code -cne $t2.Text) { $err.Text = Get-Text 'VaultCodeDiffer'; $t2.Text = ''; $t2.Focus(); return }
+    $w.Cursor = 'WaitCursor'; $w.Refresh()
+    try { if ($mode -eq 'Create') { New-Vault $code } else { Set-VaultCode $code } }
+    catch { $err.Text = Get-Text 'VaultSaveFailed' $_.Exception.Message; return } finally { $w.Cursor = 'Default' }
+    $w.DialogResult = 'OK'; $w.Close()
+  })
+  $w.add_Shown({ $t1.Focus() })
+  $r = if ($owner) { $w.ShowDialog($owner) } else { $w.ShowDialog() }
+  $r -eq 'OK'
+}
+
+# -Sign: only the access code, then LATEST.txt.sig next to the LATEST.txt given (the .cmd starts this hidden: the
+# result in a message box too). Exit code 0 = signed, 1 = error, 2 = no code given.
+if ($Sign) {
+  $rc = 0
+  try {
+    if (-not (Test-Path -LiteralPath $Sign -PathType Leaf)) { throw (Get-Text 'SignNoFile' $Sign) }
+    if (-not (Test-VaultFile)) { throw (Get-Text 'VaultMissing' $script:VaultFile) }
+    if (-not (Show-CodeDialog 'Open')) { $rc = 2 }
+    else {
+      $r = Invoke-SignUpdate (Resolve-Path -LiteralPath $Sign).ProviderPath
+      $m = Get-Text 'SignDone' $r.Version $r.Fingerprint (Get-Text "SignRole_$($r.Role)") $r.Signature
+      if (-not $r.PackageChecked) { $m += "`r`n`r`n" + (Get-Text 'SignNoPackage') }
+      [Console]::Out.WriteLine($m); Show-Message (Get-Text 'SignTitle') $m 'Information'
+    }
+  } catch {
+    $rc = 1; [Console]::Error.WriteLine($_.Exception.Message); Show-Message (Get-Text 'SignTitle') $_.Exception.Message 'Error'
+  } finally { Close-Vault }
+  exit $rc
+}
+
 # no default path: every installation has its own folder; the last one chosen is proposed
 if (-not $Folder) {
   $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -1143,7 +1411,8 @@ $script:KindSoft = @{ ok = New-Color '#dcfce7'; off = New-Color '#f1f2f4'; error
 # either the buttons show their text only
 $script:IconFont = @('Segoe Fluent Icons', 'Segoe MDL2 Assets') | Where-Object { $n = $_; @([System.Drawing.FontFamily]::Families | Where-Object Name -eq $n).Count } | Select-Object -First 1
 $script:Glyph = @{ Refresh = 'E72C'; Folder = 'E838'; Download = 'E896'; Shield = 'EA18'; Devices = 'E977'; Settings = 'E713'; Key = 'E8D7'; Warning = 'E7BA'
-  Screen = 'E7F4'; Picture = 'E91B'; Save = 'E74E'; Undo = 'E7A7'; Delete = 'E74D'; Add = 'E710'; Search = 'E721'; Document = 'E8A5' }
+  Screen = 'E7F4'; Picture = 'E91B'; Save = 'E74E'; Undo = 'E7A7'; Delete = 'E74D'; Add = 'E710'; Search = 'E721'; Document = 'E8A5'
+  Lock = 'E72E'; Unlock = 'E785'; Certificate = 'EB95' }
 function New-Glyph([string]$name, $color, [int]$size = 16) {
   if (-not $script:IconFont -or -not $script:Glyph.ContainsKey($name)) { return $null }
   $bmp = New-Object System.Drawing.Bitmap($size, $size)
@@ -1304,7 +1573,9 @@ $btnPerm = New-ActionButton 'BtnCheckPermissions' 'Shield' 'toolbar'
 $btnRelease = New-ActionButton 'BtnImportRelease' 'Download' 'toolbar'
 $btnOpen = New-ActionButton 'BtnOpenFolder' 'Folder' 'toolbar'
 $btnRefresh = New-ActionButton 'BtnRefresh' 'Refresh' 'toolbar'
-foreach ($b in @($btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
+$btnVaultTool = New-ActionButton 'VaultToolClosed' 'Lock' 'toolbar'
+$btnVaultTool.Width = (@('VaultToolClosed', 'VaultToolOpen', 'VaultToolNone') | ForEach-Object { Get-TextWidth (Get-Text $_) } | Measure-Object -Maximum).Maximum + 50
+foreach ($b in @($btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
 $tips = New-Object System.Windows.Forms.ToolTip
 $tips.SetToolTip($btnRefresh, (Get-Text 'NoteDevices')); $tips.SetToolTip($lblFolder, $script:Folder)
 $header.Controls.AddRange(@($lblApp, $lblFolder, $tools))
@@ -1339,9 +1610,10 @@ $navDevices = New-NavButton 'NavDevices' 'Devices' 0
 $navCommon = New-NavButton 'NavCommon' 'Settings' 1
 $navKeys = New-NavButton 'NavKeys' 'Key' 2
 $navProblems = New-NavButton 'NavProblems' 'Warning' 3
-$script:NavButtons = @($navDevices, $navCommon, $navKeys, $navProblems)
-# Dock Top stacks the last added on top
-foreach ($b in @($navProblems, $navKeys, $navCommon, $navDevices)) { $nav.Controls.Add($b) }
+$navVault = New-NavButton 'NavVault' 'Lock' 4
+$script:NavButtons = @($navDevices, $navCommon, $navKeys, $navProblems, $navVault)
+# Dock Top stacks the last added on top; the vault next to the SSH keys
+foreach ($b in @($navProblems, $navVault, $navKeys, $navCommon, $navDevices)) { $nav.Controls.Add($b) }
 
 # ---------------- Devices page: list | selected device ----------------
 $pageDevices = New-Panel 'Fill' $Theme.Page
@@ -1564,7 +1836,53 @@ $probCard.Controls.Add($probSplit); $probCard.Controls.Add($probTop)
 $probWrap.Controls.Add($probCard)
 $pageProblems.Controls.Add($probWrap); $pageProblems.Controls.Add((New-PageHeader (Get-Text 'NavProblems') (Get-Text 'ProbNote')))
 
-$script:Pages = @($pageDevices, $pageCommon, $pageKeys, $pageProblems)
+# ---------------- Vault page ----------------
+# three blocks: the vault (open, close, code), the SSH key of the manager, the key that signs the updates
+$pageVault = New-Panel 'Fill' $Theme.Page
+$vaultWrap = New-Panel 'Fill' $Theme.Page; $vaultWrap.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 12)
+$vaultCard = New-Panel 'Fill' $Theme.Card; Add-Line $vaultCard 'Box'; $vaultCard.Padding = New-Object System.Windows.Forms.Padding(1); $vaultCard.AutoScroll = $true
+function New-VaultBlock([string]$titleKey, [string]$glyph, $buttons) {
+  $p = New-Panel 'Top' $Theme.Card 150; $p.Padding = New-Object System.Windows.Forms.Padding(18, 14, 18, 14)
+  $t = New-Label ('  ' + (Get-Text $titleKey)) $fontBold; $t.AutoSize = $false; $t.Dock = 'Top'; $t.Height = 28
+  $img = New-Glyph $glyph $Theme.Accent 18; if ($img) { $t.Image = $img; $t.ImageAlign = 'MiddleLeft'; $t.Text = '      ' + (Get-Text $titleKey) }
+  $t.TextAlign = 'MiddleLeft'
+  $n = New-Label '' $fontBase $Theme.Muted; $n.AutoSize = $false; $n.Dock = 'Fill'; $n.Padding = New-Object System.Windows.Forms.Padding(0, 4, 0, 0)
+  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.Dock = 'Bottom'; $fl.Height = 34; $fl.WrapContents = $false; $fl.BackColor = $Theme.Card
+  foreach ($b in $buttons) { $fl.Controls.Add($b) }
+  $p.Controls.Add($n); $p.Controls.Add($fl); $p.Controls.Add($t)
+  $p.Tag = @{ Line = 'Bottom'; Note = $n }
+  $p.add_Paint({ param($s, $e) $pen = New-Object System.Drawing.Pen($Theme.Line); $e.Graphics.DrawLine($pen, 0, $s.Height - 1, $s.Width, $s.Height - 1); $pen.Dispose() })
+  $p
+}
+$btnVaultOpen = New-ActionButton 'BtnVaultOpen' 'Unlock' 'primary'
+$btnVaultCode = New-ActionButton 'BtnVaultCode' 'Key' 'secondary'
+$btnVaultSshAdd = New-ActionButton 'BtnVaultSshAdd' 'Add' 'primary'
+$btnVaultSshNew = New-ActionButton 'BtnVaultSshNew' 'Refresh' 'secondary'
+$btnVaultSshImport = New-ActionButton 'BtnVaultSshImport' 'Document' 'secondary'
+$btnVaultSign = New-ActionButton 'BtnVaultSign' 'Certificate' 'primary'
+$btnVaultSignImport = New-ActionButton 'BtnVaultSignImport' 'Document' 'secondary'
+$btnVaultSignNew = New-ActionButton 'BtnVaultSignNew' 'Add' 'secondary'
+$btnVaultSignExport = New-ActionButton 'BtnVaultSignExport' 'Save' 'secondary'
+$btnVaultSignSend = New-ActionButton 'BtnVaultSignSend' 'Devices' 'secondary'
+# the open/create/close button changes its text: wide enough for the longest
+$btnVaultOpen.Width = (@('BtnVaultOpen', 'BtnVaultCreate', 'BtnVaultClose') | ForEach-Object { Get-TextWidth (Get-Text $_) } | Measure-Object -Maximum).Maximum + 50
+$blkVault = New-VaultBlock 'VaultBlockTitle' 'Lock' @($btnVaultOpen, $btnVaultCode)
+$blkSsh = New-VaultBlock 'VaultSshTitle' 'Screen' @($btnVaultSshAdd, $btnVaultSshNew, $btnVaultSshImport)
+$blkSign = New-VaultBlock 'VaultSignTitle' 'Certificate' @($btnVaultSign, $btnVaultSignSend, $btnVaultSignExport, $btnVaultSignNew, $btnVaultSignImport)
+# Dock Top stacks the last added on top
+foreach ($b in @($blkSign, $blkSsh, $blkVault)) { $vaultCard.Controls.Add($b) }
+$vaultWrap.Controls.Add($vaultCard)
+$pageVault.Controls.Add($vaultWrap); $pageVault.Controls.Add((New-PageHeader (Get-Text 'NavVault') (Get-Text 'PageVaultNote')))
+# each block as high as its text
+function Set-VaultHeights {
+  foreach ($b in @($blkVault, $blkSsh, $blkSign)) {
+    $need = 14 + 28 + 4 + (Measure-Note $b.Tag.Note.Text ($vaultCard.ClientSize.Width - 40)) + 10 + 34 + 14
+    if ($b.Height -ne $need) { $b.Height = $need }
+  }
+}
+$vaultCard.add_Resize({ Set-VaultHeights })
+
+$script:Pages = @($pageDevices, $pageCommon, $pageKeys, $pageProblems, $pageVault)
 foreach ($p in $script:Pages) { $p.Visible = $false; $content.Controls.Add($p) }
 # Fill first, then the edges: the last one added takes its side first
 $root.Controls.Add($content); $root.Controls.Add($nav); $root.Controls.Add($header); $root.Controls.Add($bar)
@@ -1582,6 +1900,7 @@ function Select-Page([int]$i) {
     $b = $script:NavButtons[$k]; $b.BackColor = if ($k -eq $i) { $Theme.ShellSelected } else { $Theme.Shell }; $b.Invalidate()
   }
   if ($i -eq 3) { Update-ProblemView }
+  if ($i -eq 4) { Update-VaultView }
 }
 
 function Set-Cell($row, $col, $s, $value) {
@@ -1692,7 +2011,10 @@ function Update-Summary($d) {
     SumSession = @(@('ColSession', $s['SESSION']), @('ColDefaultUser', $s['DEFAULT_USER']), @('ColTransport', $s['TRANSPORT']), @('ColWebButton', $(
       $w = [string]$s['CFG_WEB_BUTTON']; if ($s['CFG_POWER_ON_TIME'] -or $s['CFG_POWER_OFF_TIME']) { $w += "   ($($s['CFG_POWER_ON_TIME'])-$($s['CFG_POWER_OFF_TIME']))" }; $w)))
     SumNetwork = @(@('ColIp', $s['IP']), @('ColMac', $s['MAC']), @('ColNetwork', $s['NETWORK']), @('ColWifi', $s['WIFI_STATUS']))
-    SumSoftware = @(@('ColSoftware', $s['SOFTWARE']), @('ColFreeRdp', $s['FREERDP']), @('ColShareUpdate', $s['SHARE_UPDATE']), @('ColSecurityUpdates', $(
+    SumSoftware = @(@('ColSoftware', $s['SOFTWARE']), @('ColFreeRdp', $s['FREERDP']), @('ColShareUpdate', $s['SHARE_UPDATE']), @('SumUpdateKeys', $(
+      # where the updates come from, which signature they need, and the site key the device has (0.1.13 and later)
+      if ($s['UPDATE_KEY']) { Get-Text 'SumUpdateKeysValue' $s['UPDATE_FROM'] $s['UPDATE_KEY'] $(if ($s['SITE_KEY'] -match '^[0-9A-F]{40}$') { ($s['SITE_KEY'] -replace '(.{4})', '$1 ').Trim() } else { Get-Text 'SumSiteKeyNone' }) }
+      else { [string]$s['UPDATE_FROM'] })), @('ColSecurityUpdates', $(
       $x = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $x = Get-Text 'LastUpdate' $x $s['LAST_UPDATE'] }; $x)))
     SumManagement = @(@('ColCentralConfig', $s['CENTRAL_CONFIG']), @('SumSecrets', $s['SECRETS']), @('SumSsh', $s['CFG_SSH']), @('SumRemoteScreen', $s['CFG_REMOTE_SCREEN']), @('ColUptime', $s['UPTIME']))
   }
@@ -1855,7 +2177,7 @@ function Save-Keys {
   if (-not (Confirm-Action (Get-Text 'ConfirmSaveKeysTitle') $msg $(if ($n) { 'Button1' } else { 'Button2' }))) { return }
   try { $r = Save-AuthorizedKeys $txtKeys.Text } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
   $barText.Text = Get-Text 'SavedKeys' $script:KeysFile $r.Before $r.After
-  Update-KeysView
+  Update-KeysView; Update-VaultView
 }
 # a public key into the list (not saved yet); $false = not a key line
 function Add-KeyLine([string]$line) {
@@ -1868,21 +2190,146 @@ function Add-KeyLine([string]$line) {
   $barText.Text = Get-Text 'KeyAdded' (Get-KeyLabel $line)
   $true
 }
-# the key of the administrator at this PC (the one ssh.exe uses for the remote screen), created when missing
+# the key of the manager (in the vault, made when missing): the one the remote screen uses
 function Add-MyKey {
-  $pub = Join-Path $env:USERPROFILE '.ssh\id_ed25519.pub'; $key = $pub -replace '\.pub$', ''
-  if (-not (Test-Path -LiteralPath $pub)) {
-    $kg = (Get-Command ssh-keygen.exe -ErrorAction SilentlyContinue).Source
-    if (-not $kg) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'ErrRemoteNoSshExe'); return }
-    # a private key without its .pub: ssh-keygen would ask whether to overwrite it, in a window nobody sees
-    if (Test-Path -LiteralPath $key) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyNoPub' $key); return }
-    if (-not (Confirm-Action (Get-Text 'KeyTitle') (Get-Text 'KeyCreateConfirm' $key))) { return }
-    $dir = Split-Path $key; if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-    $p = Start-Process $kg -ArgumentList "-q -t ed25519 -N `"`" -C `"otr-manager@$env:COMPUTERNAME`" -f `"$key`"" -WindowStyle Hidden -Wait -PassThru
-    if ($p.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $pub)) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyCreateFailed' $p.ExitCode) 'Error'; return }
+  if (-not (Request-VaultOpen)) { return }
+  if (-not $script:Vault['ssh_public']) {
+    try { [void](New-VaultSshKey) } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error'; return } finally { Update-VaultView }
   }
-  $line = @(Read-Lines $pub | Where-Object { $_.Trim() }) | Select-Object -First 1
-  if (-not (Add-KeyLine $line)) { Show-Message (Get-Text 'KeyTitle') (Get-Text 'KeyNotValid' $pub) }
+  [void](Add-KeyLine $script:Vault['ssh_public']); Select-Page 2
+}
+
+# ---------------- vault ----------------
+# the vault open: created at the first use (asking the code), opened with the code otherwise; $false = not open
+function Request-VaultOpen {
+  if (Test-VaultOpen) { return $true }
+  if (-not (Test-VaultFile)) { return (Start-VaultCreate) }
+  $ok = Show-CodeDialog 'Open' $form
+  Update-VaultView
+  $ok
+}
+# a new vault: the code, then a new SSH key for the manager, put in the SSH keys list (saved from there)
+function Start-VaultCreate {
+  if (-not (Show-CodeDialog 'Create' $form)) { Update-VaultView; return $false }
+  $line = $null
+  try { $line = New-VaultSshKey } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error' }
+  Update-VaultView
+  if ($line) { [void](Add-KeyLine $line); Select-Page 2; Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultCreated') 'Information' }
+  $true
+}
+# the public SSH key of the vault is in config\authorized_keys (saved)
+function Test-VaultKeyListed {
+  if (-not (Test-VaultOpen) -or -not $script:Vault['ssh_public'] -or -not (Test-Path -LiteralPath $script:KeysFile)) { return $false }
+  $body = ([string]$script:Vault['ssh_public'] -split ' ')[1]
+  @(Get-KeyLines ((Read-Lines $script:KeysFile) -join "`n") | Where-Object { ($_ -split ' ')[1] -ceq $body }).Count -gt 0
+}
+function Update-VaultView {
+  $open = Test-VaultOpen; $exists = Test-VaultFile
+  $state = if ($open) { 'Open' } elseif ($exists) { 'Closed' } else { 'None' }
+  $btnVaultTool.Text = Get-Text "VaultTool$state"
+  $btnVaultTool.Image = New-Glyph $(if ($open) { 'Unlock' } else { 'Lock' }) $(if ($state -eq 'None') { $script:KindColor.warn } else { $Theme.ShellText }) 16
+  $blkVault.Tag.Note.Text = Get-Text "VaultState$state" $script:VaultFile
+  $btnVaultOpen.Text = Get-Text $(if ($open) { 'BtnVaultClose' } elseif ($exists) { 'BtnVaultOpen' } else { 'BtnVaultCreate' })
+  $btnVaultOpen.Image = New-Glyph $(if ($open) { 'Lock' } else { 'Unlock' }) ([System.Drawing.Color]::White) 16
+  $btnVaultCode.Enabled = $open
+  if (-not $open) { $blkSsh.Tag.Note.Text = Get-Text 'VaultClosedNote'; $blkSign.Tag.Note.Text = Get-Text 'VaultClosedNote' }
+  else {
+    $pub = [string]$script:Vault['ssh_public']
+    $blkSsh.Tag.Note.Text = if ($pub) { (Get-KeyLabel $pub) + "   $([char]0x00B7)   " + ($pub -split ' ')[0] + "`r`n" + (Get-Text $(if (Test-VaultKeyListed) { 'VaultSshListed' } else { 'VaultSshNotListed' })) } else { Get-Text 'VaultSshNone' }
+    $k = Get-VaultSigningKey
+    $blkSign.Tag.Note.Text = if ($k) {
+      $fp = ($k.Hex() -replace '(.{4})', '$1 ').Trim()
+      $when = [DateTimeOffset]::FromUnixTimeSeconds($k.Created).LocalDateTime.ToString('d')
+      Get-Text 'VaultSignSet' $fp $k.User $when (Get-Text "VaultRole_$(Get-SigningKeyRole $k.Hex())")
+    } else { Get-Text 'VaultSignNone' }
+  }
+  foreach ($b in @($btnVaultSshAdd, $btnVaultSshNew, $btnVaultSshImport, $btnVaultSignImport, $btnVaultSignNew)) { $b.Enabled = $open }
+  $btnVaultSshAdd.Enabled = $open -and [bool]$script:Vault['ssh_public']
+  $btnVaultSign.Enabled = $open -and [bool]$script:Vault['sign_seed']
+  $btnVaultSignExport.Enabled = $btnVaultSign.Enabled
+  # sending makes sense for a key of the site only: the devices have the project key already
+  $btnVaultSignSend.Enabled = $btnVaultSign.Enabled -and [bool](Get-ResignKey)
+  Set-VaultHeights
+}
+function Switch-Vault {
+  if (Test-VaultOpen) { Close-Vault; Update-VaultView; $barText.Text = Get-Text 'VaultClosedNow'; return }
+  [void](Request-VaultOpen)
+}
+function Import-SshKeyDialog {
+  $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'VaultSshImportTitle'; $ofd.Filter = Get-Text 'VaultSshFilter'
+  $d = Join-Path $env:USERPROFILE '.ssh'; if (Test-Path -LiteralPath $d) { $ofd.InitialDirectory = $d }
+  if ($ofd.ShowDialog() -ne 'OK') { return }
+  if ($script:Vault['ssh_private'] -and -not (Confirm-Action (Get-Text 'VaultTitle') (Get-Text 'VaultSshReplace') 'Button2')) { return }
+  try { $line = Import-VaultSshKey $ofd.FileName } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error'; return } finally { Update-VaultView }
+  Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultSshImported' (Get-KeyLabel $line) $ofd.FileName) 'Information'
+}
+function New-SshKeyAction {
+  if (-not (Confirm-Action (Get-Text 'VaultTitle') (Get-Text $(if ($script:Vault['ssh_private']) { 'VaultSshReplace' } else { 'VaultSshNewConfirm' })) 'Button2')) { return }
+  try { $line = New-VaultSshKey } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error'; return } finally { Update-VaultView }
+  [void](Add-KeyLine $line); Select-Page 2
+}
+function Import-SigningKeyDialog {
+  $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'VaultSignImportTitle'; $ofd.Filter = Get-Text 'VaultSignFilter'
+  if ($ofd.ShowDialog() -ne 'OK') { return }
+  if ($script:Vault['sign_seed'] -and -not (Confirm-Action (Get-Text 'VaultTitle') (Get-Text 'VaultSignReplace' $script:Vault['sign_fingerprint']) 'Button2')) { return }
+  try { $k = Import-VaultSigningKey $ofd.FileName } catch { Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultSignNotValid' $_.Exception.Message) 'Error'; return } finally { Update-VaultView }
+  Add-ChangeLog "vault: signing key $($k.Hex()) imported"
+  # the exported file holds the key without any protection
+  if (Confirm-Action (Get-Text 'VaultTitle') (Get-Text 'VaultSignDeleteFile' $k.Hex() $ofd.FileName)) {
+    try { Remove-Item -LiteralPath $ofd.FileName -Force } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error' }
+  }
+}
+# a new key of this site, in the vault; then its public half to save (update-key.asc)
+function New-SiteKeyAction {
+  $msg = if ($script:Vault['sign_seed']) { Get-Text 'VaultSignNewReplace' $script:Vault['sign_fingerprint'] } else { Get-Text 'VaultSignNewConfirm' }
+  if (-not (Confirm-Action (Get-Text 'VaultTitle') $msg $(if ($script:Vault['sign_seed']) { 'Button2' } else { 'Button1' }))) { return }
+  Add-Type -AssemblyName Microsoft.VisualBasic
+  $def = if ($env:USERDNSDOMAIN) { "Thin client updates ($($env:USERDNSDOMAIN.ToLower()))" } else { 'Thin client updates' }
+  $user = [Microsoft.VisualBasic.Interaction]::InputBox((Get-Text 'VaultSignNewName'), (Get-Text 'VaultTitle'), $def).Trim()
+  if (-not $user) { return }
+  if ($user.Length -gt 100 -or $user -match '[\x00-\x1f]') { Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultSignNewBadName'); return }
+  try { $k = New-VaultSiteKey $user } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error'; return } finally { Update-VaultView }
+  Add-ChangeLog "vault: new site key $($k.Hex()) ($user)"
+  Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultSignNewDone' $k.Hex()) 'Information'
+  Export-PublicKeyDialog
+}
+# the site key to every device that reports a different one (or none): over SSH, one by one, with the result of each
+function Send-SiteKeyAction {
+  $k = Get-VaultSigningKey; $key = Get-VaultKeyFile
+  if (-not $k) { return }
+  if (-not $key) { Show-Message (Get-Text 'VaultTitle') (Get-Text 'ErrRemoteNoVaultKey'); return }
+  $fp = $k.Hex()
+  $todo = @($script:Devices | Where-Object { $_.Kind -ne 'off' -and $_.S['SITE_KEY'] -ne $fp })
+  $off = @($script:Devices | Where-Object { $_.Kind -eq 'off' -and $_.S['SITE_KEY'] -ne $fp })
+  if (-not $todo.Count) { Show-Message (Get-Text 'VaultTitle') (Get-Text 'SendKeyNothing' $fp $off.Count) 'Information'; return }
+  if (-not (Confirm-Action (Get-Text 'VaultTitle') (Get-Text 'SendKeyConfirm' $fp ($todo.Name -join ', ') $off.Count))) { return }
+  $armored = [OtrVault]::ExportPublic($k); $lines = @()
+  $form.Cursor = 'WaitCursor'
+  try {
+    foreach ($d in $todo) {
+      $barText.Text = Get-Text 'SendKeyRunning' $d.Name; [System.Windows.Forms.Application]::DoEvents()
+      $why = Send-SiteKey $d $key $armored
+      $lines += if ($why) { "$([char]0x2717) $($d.Name): $why" } else { "$([char]0x2713) $($d.Name)" }
+    }
+  } finally { $form.Cursor = 'Default'; $barText.Text = '' }
+  Add-ChangeLog "site key $fp sent over SSH: $(@($lines | ForEach-Object { $_.Substring(2) }) -join '; ')"
+  Show-Message (Get-Text 'VaultTitle') ((Get-Text 'SendKeyDone' $fp $off.Count) + "`r`n`r`n" + ($lines -join "`r`n")) 'Information'
+}
+function Export-PublicKeyDialog {
+  $sfd = New-Object System.Windows.Forms.SaveFileDialog; $sfd.Title = Get-Text 'VaultSignExportTitle'; $sfd.FileName = 'update-key.asc'
+  $sfd.Filter = 'update-key.asc|*.asc'
+  if ($sfd.ShowDialog() -ne 'OK') { return }
+  try { $k = Export-VaultPublicKey $sfd.FileName } catch { Show-Message (Get-Text 'VaultTitle') $_.Exception.Message 'Error'; return }
+  Show-Message (Get-Text 'VaultTitle') (Get-Text 'VaultSignExported' $sfd.FileName $k.Hex()) 'Information'
+}
+function Invoke-SignDialog {
+  $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'SignTitle'; $ofd.Filter = 'LATEST.txt|LATEST.txt|*.txt|*.txt'
+  if ($ofd.ShowDialog() -ne 'OK') { return }
+  try { $r = Invoke-SignUpdate $ofd.FileName } catch { Show-Message (Get-Text 'SignTitle') $_.Exception.Message 'Error'; return }
+  Add-ChangeLog "update $($r.Version) signed with key $($r.Fingerprint) ($($r.Signature))"
+  $m = Get-Text 'SignDone' $r.Version $r.Fingerprint (Get-Text "SignRole_$($r.Role)") $r.Signature
+  if (-not $r.PackageChecked) { $m += "`r`n`r`n" + (Get-Text 'SignNoPackage') }
+  Show-Message (Get-Text 'SignTitle') $m 'Information'
 }
 function Add-KeyFromFile {
   $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'KeyFileTitle'; $ofd.Filter = Get-Text 'KeyFilter'
@@ -1999,10 +2446,16 @@ $btnRelease.add_Click({
   $form.Cursor = 'WaitCursor'
   try { $rel = Get-Release } catch { $rel = [pscustomobject]@{ Ok = $false; Message = $_.Exception.Message } } finally { $form.Cursor = 'Default' }
   if (-not $rel.Ok) { Show-Message (Get-Text 'RelTitle') $rel.Message 'Information'; return }
+  # the site key signs it again: the vault opened for it when there is one
+  if ((Test-VaultFile) -and -not (Test-VaultOpen)) { [void](Request-VaultOpen) }
+  $site = Get-ResignKey
+  if ($site -and $rel.Signature -ne $true) { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelResignUnchecked') 'Error'; Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue; return }
   $sigText = if ($rel.Signature) { Get-Text 'RelSigChecked' } else { Get-Text 'RelSigNotChecked' }
+  $siteOnly = (Read-ConfFile $script:CommonFile)['UPDATE_KEY'] -eq 'site'
+  $sigText += "`r`n" + $(if ($site) { Get-Text 'RelResign' $site.Hex() } elseif ($siteOnly) { Get-Text 'RelNoResignWarn' } else { Get-Text 'RelNoResign' })
   if (-not (Confirm-Action (Get-Text 'RelTitle') (Get-Text 'RelConfirm' $rel.Version (Get-PublishedUpdate) $sigText) 'Button2')) {
     Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue; return }
-  try { Publish-Release $rel; Show-Message (Get-Text 'RelTitle') (Get-Text 'RelDone' $rel.Version) 'Information' }
+  try { Publish-Release $rel $site; Show-Message (Get-Text 'RelTitle') (Get-Text 'RelDone' $rel.Version) 'Information' }
   catch { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error' }
   Update-DeviceList
 })
@@ -2046,22 +2499,22 @@ $probList.add_SelectedIndexChanged({
 })
 $cmbPeriod.add_SelectedIndexChanged({ if ($script:Page -eq 3) { Update-ProblemView } })
 # ---------------- remote screen ----------------
-# The screen of the device in the default browser: over SSH (the administrators' key, as otradmin) the device starts
-# x11vnc and the noVNC viewer on 127.0.0.1 with a one-time password (remote-screen.sh); an SSH tunnel brings them to
-# a free local port. Nothing is installed on this PC: the ssh.exe of Windows 10/11 and the browser. The device shows a
-# notice while it lasts and stops by itself after 2 hours; closing the window here ends it.
-function Invoke-DeviceSsh([string]$ip, [string]$command) {
-  $out = & ssh.exe -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "otradmin@$ip" $command 2>&1
-  @{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
-}
+# The screen of the device in the default browser: over SSH (the key of the manager in the vault, as otradmin) the
+# device starts x11vnc and the noVNC viewer on 127.0.0.1 with a one-time password (remote-screen.sh); an SSH tunnel
+# brings them to a free local port. Nothing is installed on this PC: the ssh.exe of Windows 10/11 and the browser.
+# Only the key of the vault is offered (IdentitiesOnly): the keys in the profile of this account do not open
+# screens. The device shows a notice while it lasts and stops by itself after 2 hours; closing the window here ends it.
 function Start-RemoteScreen($d) {
   $name = $d.Name; $ip = ([string]$d.S['IP']) -replace '/.*$', ''
   if (-not (Get-Command ssh.exe -ErrorAction SilentlyContinue)) { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoSshExe'); return }
   if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoIp'); return }
   if ($d.S['CFG_SSH'] -ne 'on') { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoSsh'); return }
+  if (-not (Request-VaultOpen)) { return }
+  $key = Get-VaultKeyFile
+  if (-not $key) { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoVaultKey'); Select-Page 4; return }
   $form.Cursor = 'WaitCursor'; $barText.Text = Get-Text 'RemoteStarting' $name; [System.Windows.Forms.Application]::DoEvents()
   try {
-    $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start'
+    $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start' $key
     $pw = if ($r.Text -match '(?m)^PASSWORD=(\S+)') { $Matches[1] } else { '' }
     if (-not $pw) {
       $why = if ($r.Text -match '(?m)^ERROR=(.+)$') { $Matches[1] } else { $r.Text.Trim() }
@@ -2069,7 +2522,8 @@ function Start-RemoteScreen($d) {
     }
     # a free local port, then the tunnel to the viewer on the device (127.0.0.1:6080 there)
     $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l.Start(); $port = $l.LocalEndpoint.Port; $l.Stop()
-    $tunnel = Start-Process ssh.exe -WindowStyle Hidden -PassThru -ArgumentList @('-N', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
+    # Start-Process joins the arguments with spaces: the path of the key in quotes
+    $tunnel = Start-Process ssh.exe -WindowStyle Hidden -PassThru -ArgumentList @('-N', '-i', "`"$key`"", '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
       '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-L', "${port}:127.0.0.1:6080", "otradmin@$ip")
     $ok = $false
     for ($i = 0; $i -lt 40 -and -not $tunnel.HasExited; $i++) {
@@ -2077,7 +2531,7 @@ function Start-RemoteScreen($d) {
     }
     if (-not $ok) {
       if (-not $tunnel.HasExited) { $tunnel.Kill() }
-      [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop')
+      [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key)
       Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteFailed' (Get-Text 'ErrRemoteTunnel')); return
     }
     Start-Process "http://127.0.0.1:$port/vnc_lite.html?password=$pw&scale=true"
@@ -2092,7 +2546,7 @@ function Start-RemoteScreen($d) {
   $b.add_Click({ $w.Close() }); $w.AcceptButton = $b; $w.Controls.AddRange(@($t, $b))
   [void]$w.ShowDialog($form)
   if (-not $tunnel.HasExited) { $tunnel.Kill() }
-  [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop')
+  [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key)
 }
 
 $btnProbRefresh.add_Click({ Update-ProblemView })
@@ -2108,6 +2562,19 @@ $btnSaveKeys.add_Click({ Save-Keys })
 $btnReloadKeys.add_Click({ Update-KeysView })
 $btnMyKey.add_Click({ Add-MyKey })
 $btnKeyFile.add_Click({ Add-KeyFromFile })
+$btnVaultTool.add_Click({ Select-Page 4 })
+$btnVaultOpen.add_Click({ Switch-Vault })
+$btnVaultCode.add_Click({ if (Show-CodeDialog 'Change' $form) { $barText.Text = Get-Text 'VaultCodeChanged' } })
+$btnVaultSshAdd.add_Click({ [void](Add-KeyLine $script:Vault['ssh_public']); Select-Page 2 })
+$btnVaultSshNew.add_Click({ New-SshKeyAction })
+$btnVaultSshImport.add_Click({ Import-SshKeyDialog })
+$btnVaultSign.add_Click({ Invoke-SignDialog })
+$btnVaultSignImport.add_Click({ Import-SigningKeyDialog })
+$btnVaultSignNew.add_Click({ New-SiteKeyAction })
+$btnVaultSignExport.add_Click({ Export-PublicKeyDialog })
+$btnVaultSignSend.add_Click({ Send-SiteKeyAction; Update-DeviceList })
+# the secrets leave memory and the disk with the window
+$form.add_FormClosed({ Close-Vault })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 60000
@@ -2119,6 +2586,10 @@ $form.add_Shown({
   Update-DeviceList; Update-CommonGrid; Update-KeysView
   if ($list.Items.Count) { $list.Items[0].Selected = $true } else { Show-Device $null }
   $timer.Start()
+  # the access code at every start: the vault opened, or created the first time (both can be skipped)
+  if ($env:OTR_MANAGER_SCREENSHOT) { if ($env:OTR_MANAGER_VAULT_CODE -and (Test-VaultFile)) { [void](Open-Vault $env:OTR_MANAGER_VAULT_CODE) } }
+  else { [void](Request-VaultOpen) }
+  Update-VaultView
 })
 if ($env:OTR_MANAGER_BRANDING_SHOT) {   # test: the logo dialog (of OTR_MANAGER_BRANDING_HOST, or common) into a PNG
   $form.add_Shown({ Show-BrandingDialog ($script:Devices | Where-Object Name -eq $env:OTR_MANAGER_BRANDING_HOST | Select-Object -First 1); $form.Close() })

@@ -6,7 +6,9 @@
 # Signatures accepted:
 #   github  only the project key, /opt/openthinrdp/keys/openthinrdp-release.asc (in the image and the updates)
 #   share   the project key (a release copied into the folder by the manager) or the key of the site,
-#           /etc/openthinrdp/update-key.asc (your own packages, built into your image)
+#           /etc/openthinrdp/update-key.asc (your own packages, built into your image or brought by an update);
+#           with UPDATE_KEY=site only the key of the site, once the device has one (the manager re-signs the
+#           releases with it), else still the project key: a device is never left without updates
 # "check <mounted folder>": run by report.sh every 5 minutes and at boot, with the folder mounted.
 # "check-github": run by report.sh too, but asks GitHub at most every 3 hours (UPDATE_GITHUB = owner/repository,
 # the latest release that is not a pre-release).
@@ -80,6 +82,7 @@ verify(){
 case "$1" in
   check)
     SRC=share; D="$2/updates"; KEYS=("$PROJECT_KEY" "$SITE_KEY")
+    [ "$(cfg UPDATE_KEY)" = site ] && [ -s "$SITE_KEY" ] && KEYS=("$SITE_KEY")
     [ -f "$D/LATEST.txt" ] || { echo "no update published in the management folder" > $ST; exit 0; } ;;
   check-github)
     SRC=github; KEYS=("$PROJECT_KEY")

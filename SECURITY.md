@@ -33,6 +33,11 @@ ed25519, fingerprint 8552 734B 5C1B 67D7 C576  F1AB 79B2 3AE6 1CD4 F6AF
 A device installs nothing whose `LATEST.txt` is not signed by it (or by your own key, for your own packages
 in your management folder).
 
+A fleet does not have to trust this key: with `UPDATE_FROM=share` and `UPDATE_KEY=site` its devices accept only the
+key of its own site, kept in the vault of its manager, which checks every release against this key and signs it
+again ([docs/management.md](docs/management.md#a-fleet-on-its-own-key)). Then a stolen project key installs nothing
+there. The revocation certificate of the project key is kept offline, apart from the key.
+
 ### Replacing or revoking the key
 
 Devices check signatures with `sqv` against `/opt/openthinrdp/keys/openthinrdp-release.asc`, which may hold
