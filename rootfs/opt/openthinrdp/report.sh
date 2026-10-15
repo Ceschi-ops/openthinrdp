@@ -9,7 +9,8 @@
 #   updates\                       signed updates (auto-update.sh)
 . /opt/openthinrdp/lib/common.sh
 . "$OTR/lib/netif.sh"
-CRED=$OTR_ETC/smb.cred
+. "$OTR/lib/secrets.sh"
+CRED=$(secret_path smb.cred)
 LOG=$OTR_LOG/report.log
 OUT=/run/openthinrdp-status.txt
 MNT=/run/openthinrdp-share
@@ -76,6 +77,8 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
               /Packages that will be upgraded:/{n=NF-8}
               END{close_run(); print (c?c:"never") "|" (a?a:"never")}' $UL)
   echo "SECURITY_UPDATES=$(cfg SECURITY_UPDATES)"
+  # where the folder password, the Wi-Fi key and the SSH host keys are kept: tpm, or file (no TPM)
+  echo "SECRETS=$(secret_mode)"
   echo "LAST_UPDATE_CHECK=${UU%%|*}" | sed 's/=$/=never/'
   echo "LAST_UPDATE=${UU#*|}" | sed 's/=$/=never/'
   echo "REBOOT_REQUIRED=$([ -f /run/reboot-required ] && echo yes || echo no)"

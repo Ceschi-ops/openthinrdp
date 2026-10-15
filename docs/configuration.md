@@ -81,6 +81,7 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `MGMT_USER` | | account of the management folder: `user`, `DOMAIN\user` or `user@domain`. Empty = `smb.cred` of the image |
 | `MGMT_PASSWORD` | | its password. Only in central settings or the dialog; stored only in `/etc/openthinrdp/smb.cred` |
 | `SECURITY_UPDATES` | `on` | Debian security updates, never FreeRDP, never a reboot |
+| `TPM_SECRETS` | `on` | with a TPM 2.0: folder password, Wi-Fi key and SSH host keys kept encrypted in it ([security.md](security.md)); `off` = root-only files, and back out of the TPM at the next start |
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |

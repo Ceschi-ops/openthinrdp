@@ -84,6 +84,7 @@ ARM, PC senza UEFI.
 | Memoria | 2 GB di RAM |
 | Spazio | 8 GB per installarlo (eMMC, SSD o disco); nessuno per provarlo in live da una chiavetta |
 | Rete | cavo, Wi-Fi (WPA2 personale) o un adattatore Ethernet USB |
+| TPM 2.0 | facoltativo: se c'è, i segreti del dispositivo (password della cartella di gestione, chiave Wi-Fi, chiavi SSH) restano cifrati dentro il TPM ([sicurezza](docs/security.md)); senza, funziona uguale |
 | Lato Windows | un broker RDS (host di sessione o raccolta VDI su Hyper-V), oppure qualsiasi PC o server Windows che accetti il Desktop remoto (Pro, Enterprise, Server) |
 
 Hardware provato e impostazioni del firmware: [docs/hardware.md](docs/hardware.md).

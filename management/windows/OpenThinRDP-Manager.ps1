@@ -240,6 +240,7 @@ $script:Settings = @(
   (New-Setting 'MGMT_SHARE'          'share'      '')
   (New-Setting 'MGMT_USER'           'user'       '')
   (New-Setting 'SECURITY_UPDATES'    'choice'     'on' @('off', 'on'))
+  (New-Setting 'TPM_SECRETS'         'choice'     'on' @('on', 'off'))
   (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
   (New-Setting 'UPDATE_GITHUB'       'repo'       'OpenThinRdp/openthinrdp')
   (New-Setting 'SSH'                 'choice'     'off' @('off', 'on'))
@@ -355,7 +356,7 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
     $l = $v.ToLower()
     if ($s.Choices -contains $l) { return $l }
     $alias = @{ NETMODE = @{ statico = 'static' }; USB_MODE = @{ dischi = 'disks' }; WEB_BUTTON = @{ portale = 'app'; portal = 'app'; chrome = 'browser'; chromium = 'browser' } }
-    if ($key -in 'WIFI', 'SSH', 'REMOTE_SCREEN', 'SECURITY_UPDATES') { if ($l -in 'yes', 'true', '1', 'si') { return 'on' }; return 'off' }
+    if ($key -in 'WIFI', 'SSH', 'REMOTE_SCREEN', 'SECURITY_UPDATES', 'TPM_SECRETS') { if ($l -in 'yes', 'true', '1', 'si') { return 'on' }; return 'off' }
     if ($alias.ContainsKey($key) -and $alias[$key].ContainsKey($l)) { return $alias[$key][$l] }
     return $s.Choices[0]
   }

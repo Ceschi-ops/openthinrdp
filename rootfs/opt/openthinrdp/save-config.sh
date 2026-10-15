@@ -6,6 +6,7 @@
 # $2 = --print: validate and print every setting in its stored (normalized) form, change nothing.
 # central-apply.sh uses it to compare like with like.
 . /opt/openthinrdp/lib/common.sh
+. /opt/openthinrdp/lib/secrets.sh
 otr_lang
 F="$1"; [ -f "$F" ] || { echo "$V_NODATA"; exit 1; }
 has(){ grep -q "^$1=" "$F"; }
@@ -81,8 +82,8 @@ fi
 V[NTP]=$(get NTP | tr -s ' ,;' ' ' | sed 's/^ //; s/ $//')
 for t in ${V[NTP]}; do ipok "$t" || nameok "$t" || err "$V_NTP $t"; done
 
-# --- Wi-Fi: the key lives ONLY in $WCF (root 600); an empty password keeps the saved one
-WCF=/etc/wpa_supplicant/openthinrdp-wifi.conf
+# --- Wi-Fi: the key lives ONLY in the TPM or in a root-only file (lib/secrets.sh); an empty password keeps the saved one
+WCF=$(secret_path wifi.conf)
 V[WIFI]=$(onoff "$(get WIFI)"); V[WIFI_SSID]=$(get WIFI_SSID)
 V[WIFI_COUNTRY]=$(get WIFI_COUNTRY | tr 'a-z' 'A-Z'); [[ ${V[WIFI_COUNTRY]} =~ ^([A-Z]{2})?$ ]] || err "$V_COUNTRY"
 WPIN=$(sed -n 's/^WIFI_PSK=//p' "$F" | head -1 | tr -d '\r'); WHEX=""
@@ -107,10 +108,10 @@ fi
 # --- management
 V[MGMT_SHARE]=$(get MGMT_SHARE)
 [ -z "${V[MGMT_SHARE]}" ] || [[ ${V[MGMT_SHARE]} =~ $SHARERE ]] || err "$V_SHARE"
-# account of the management folder: the user in the settings, the password ONLY in $CRED (root 600), like the
+# account of the management folder: the user in the settings, the password ONLY in the TPM or a root-only file, like the
 # Wi-Fi key; an empty password keeps the saved one. DOMAIN\user, user@domain, or user (then the domain is DOMAIN).
 # Without MGMT_USER the file is left as it is (e.g. the smb.cred built into the image).
-CRED=$OTR_ETC/smb.cred
+CRED=$(secret_path smb.cred)
 V[MGMT_USER]=$(get MGMT_USER); [ -z "${V[MGMT_USER]}" ] || userok "${V[MGMT_USER]}" || err "$V_MGMT_USER"
 MPW=$(sed -n 's/^MGMT_PASSWORD=//p' "$F" | head -1 | tr -d '\r')
 OLDPW=$(sed -n 's/^password=//p' "$CRED" 2>/dev/null | head -1)
@@ -118,6 +119,7 @@ OLDPW=$(sed -n 's/^password=//p' "$CRED" 2>/dev/null | head -1)
 [ -n "$MPW" ] && [ -z "${V[MGMT_USER]}" ] && err "$V_MGMT_NOUSER"
 [ -n "${V[MGMT_USER]}" ] && [ -z "$MPW" ] && [ -z "$OLDPW" ] && err "$V_MGMT_NOPASSWORD"
 V[SECURITY_UPDATES]=$(onoff "$(get SECURITY_UPDATES)")
+V[TPM_SECRETS]=$(onoff "$(get TPM_SECRETS)")
 case "$(low "$(get UPDATE_FROM)")" in share|cartella|folder) V[UPDATE_FROM]=share ;; off|no|none|nessuno) V[UPDATE_FROM]=off ;; *) V[UPDATE_FROM]=github ;; esac
 [ "${V[UPDATE_FROM]}" = share ] && [ -z "${V[MGMT_SHARE]}" ] && err "$V_UPDATE_SHARE"
 V[UPDATE_GITHUB]=$(get UPDATE_GITHUB); [[ ${V[UPDATE_GITHUB]} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || err "$V_UPDATE_GITHUB"
@@ -181,7 +183,7 @@ if [ -n "$WHEX" ] && [ -n "${V[WIFI_SSID]}" ]; then
   { echo "ctrl_interface=/run/wpa_supplicant"; [ -n "${V[WIFI_COUNTRY]}" ] && echo "country=${V[WIFI_COUNTRY]}"
     printf 'network={\n\tssid="%s"\n\tpsk=%s\n\tkey_mgmt=WPA-PSK\n\tieee80211w=1\n}\n' "${V[WIFI_SSID]}" "$WHEX"; } > "$NW"
   if ! cmp -s "$NW" $WCF; then
-    mv "$NW" $WCF; chmod 600 $WCF
+    secret_store wifi.conf "$NW"
     WL=$(ls /sys/class/net | grep -E '^wl' | head -1)
     [ -n "$WL" ] && wpa_cli -p /run/wpa_supplicant -i "$WL" reconfigure >/dev/null 2>&1
   else rm -f "$NW"; fi
@@ -192,7 +194,7 @@ if [ -n "${V[MGMT_USER]}" ]; then
   case "$MU" in *\\*) MD=${MU%%\\*}; MU=${MU#*\\} ;; *@*) MD=${MU#*@}; MU=${MU%%@*} ;; esac
   NC=$(mktemp "$OTR_ETC/.cred.XXXXXX"); chmod 600 "$NC"
   { echo "username=$MU"; echo "password=${MPW:-$OLDPW}"; [ -n "$MD" ] && echo "domain=$MD"; } > "$NC"
-  if cmp -s "$NC" "$CRED"; then rm -f "$NC"; else mv -f "$NC" "$CRED"; chmod 600 "$CRED"; fi
+  if cmp -s "$NC" "$CRED"; then rm -f "$NC"; else secret_store smb.cred "$NC"; fi
 fi
 # hostname, and /etc/hosts always matching it (otherwise sudo and X look the name up on the network)
 H=${V[HOSTNAME]}

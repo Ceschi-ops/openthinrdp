@@ -81,6 +81,7 @@ PCs without UEFI.
 | Memory | 2 GB of RAM |
 | Storage | 8 GB to install it (eMMC, SSD or disk); nothing to try it live from a USB stick |
 | Network | cable, Wi-Fi (WPA2 personal) or a USB Ethernet adapter |
+| TPM 2.0 | optional: with one, the device's secrets (management folder password, Wi-Fi key, SSH host keys) are kept encrypted in it ([security](docs/security.md)); without one it works the same |
 | Windows side | an RD Connection Broker (RDS session hosts or a Hyper-V VDI collection), or any Windows PC or server that accepts Remote Desktop (Pro, Enterprise, Server) |
 
 Tested hardware and firmware settings: [docs/hardware.md](docs/hardware.md).

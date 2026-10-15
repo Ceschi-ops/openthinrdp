@@ -14,6 +14,16 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   the Debian mirror once); the viewer, noVNC 1.7.0, is included unmodified, with a standard-library WebSocket bridge
   instead of websockify (about 50 MB of dependencies).
 - README: the manager gets a section of its own, with the remote screen.
+- **The device's secrets in the TPM, when there is one** ([#17](https://github.com/OpenThinRdp/openthinrdp/issues/17)).
+  The management folder password, the Wi-Fi key and the SSH host keys are kept encrypted with a key that never
+  leaves the TPM 2.0 and decrypted at every start into memory, before the network and SSH; a disk or eMMC taken
+  out of the device gives nothing. Devices set up before move their plain files into the TPM at the next start,
+  keeping the same SSH host keys. Bound to the TPM only, so BIOS updates do not lose them. Without a TPM nothing
+  changes, so older PCs keep working. The status file says which mode a device is in (`SECRETS=`). The update
+  installs the TPM libraries systemd needs (needs the Debian mirror once). The folder password and the Wi-Fi key
+  keep their usual paths (links to memory), so the network configuration does not change; each secret is read back
+  and compared before its plain file goes. `TPM_SECRETS=off` keeps a device out of the TPM or brings it back out,
+  and set centrally it counts from the first start after the update: a fleet can be moved one device at a time.
 
 ## 0.1.9 (2026-10-14)
 

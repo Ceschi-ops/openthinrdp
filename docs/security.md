@@ -23,10 +23,25 @@ keyboard is untrusted and that the management folder is readable by the devices 
   project key, or with `UPDATE_FROM=share` also your own key ([management.md](management.md#signed-updates)),
   and a matching hash; never an older version.
 - **Credentials.** The user's password goes to FreeRDP on its command line, which FreeRDP overwrites with `*`
-  right after start (visible to the local `kiosk` account for a moment at most). The Wi-Fi key is stored only
-  in `/etc/wpa_supplicant` (root, 600) and the management folder password only in `/etc/openthinrdp/smb.cred`
-  (root, 600); neither is ever reported or printed back (`save-config.sh --print` shows only their hash). The
-  settings PIN hash is never written to the status files.
+  right after start (visible to the local `kiosk` account for a moment at most); it is never stored. The Wi-Fi
+  key and the management folder password are never reported or printed back (`save-config.sh --print` shows
+  only their hash). The settings PIN hash is never written to the status files.
+- **The device's secrets in the TPM, when there is one.** The management folder password, the Wi-Fi key and the
+  SSH host keys are the only secrets on the device. With a TPM 2.0 (most PCs and thin clients since about 2016)
+  they are kept in `/etc/openthinrdp/sealed/`, encrypted with a key that never leaves the TPM
+  (`systemd-creds --with-key=tpm2`), and decrypted at every start into `/run/openthinrdp/secrets/`, in memory
+  only, before the network and SSH start. A disk or eMMC taken out of the device, or an image of it, gives
+  nothing. They are bound to the TPM only, not to firmware measurements (PCRs), so a BIOS update or a Secure Boot
+  change does not lose them. Devices set up before move their plain files into the TPM at the next start; the
+  status file says which mode a device is in (`SECRETS=tpm` or `SECRETS=file (no TPM)`, also in the manager).
+  Without a TPM they stay in root-only files (600), as before, so older PCs keep working. The folder password and the
+  Wi-Fi key keep their usual paths, links to the copy in memory, so the network configuration never changes; a
+  secret is read back from the TPM and compared before its plain file is deleted. `TPM_SECRETS=off` (central or per
+  device) keeps a device out of the TPM, and puts back in root-only files the secrets of a device that had them there,
+  at the next start; set centrally, it counts from the first start after the update. To roll it out, set it off in
+  `common.conf`, on for one device, restart that one twice, then remove the line.
+  If the TPM is cleared or replaced, or the disk moved to another device, the secrets cannot be read: an event
+  says so, the SSH host keys are created again, and the folder password and the Wi-Fi key must be set again.
 
 - **Remote screen only through SSH.** x11vnc and the viewer's WebSocket bridge listen on 127.0.0.1 only, run as the
   account that owns the screen (not root), start only when an administrator asks over SSH (`otradmin`, key login)
@@ -50,6 +65,10 @@ keyboard is untrusted and that the management folder is readable by the devices 
   iterations, about 0.2 s per try on a thin client): a 6-digit PIN takes days to brute-force from a stolen
   settings file, a 4-digit one less than an hour, so use 6 digits or more. A PIN set by 0.1.4 or earlier is a
   plain SHA-256 and still works; set it again from the manager to store it the new way.
-- Physical access to the disk (no encryption) gives access to everything stored on the device.
+- The disk is not encrypted as a whole: the code is public and no user data is stored on the device, so only the
+  secrets above are protected, and only with a TPM. Without one, physical access to the disk gives them. With one,
+  the whole device in someone's hands still starts and uses them, like any device that boots unattended; lock the
+  firmware setup and USB boot with a BIOS password, and rotate the folder password if a device is lost. Plain
+  copies deleted when the secrets moved into the TPM may survive in flash memory blocks until overwritten.
 
 Report security problems privately to the maintainers (GitHub security advisories) rather than in a public issue.

@@ -44,7 +44,7 @@ ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime; echo "$TIMEZONE" > /etc/t
 printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\n' "$KEYBOARD" > /etc/default/keyboard
 
 # services
-systemctl enable openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer \
+systemctl enable openthinrdp-secrets.service openthinrdp-boot.service openthinrdp-wol.service openthinrdp-report.timer \
   openthinrdp-report.path openthinrdp-schedule.timer systemd-timesyncd pcscd.socket
 systemctl disable ssh 2>/dev/null || true          # apply.sh turns it on with SSH=on and a key
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
