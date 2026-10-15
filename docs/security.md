@@ -34,7 +34,12 @@ keyboard is untrusted and that the management folder is readable by the devices 
   nothing. They are bound to the TPM only, not to firmware measurements (PCRs), so a BIOS update or a Secure Boot
   change does not lose them. Devices set up before move their plain files into the TPM at the next start; the
   status file says which mode a device is in (`SECRETS=tpm` or `SECRETS=file (no TPM)`, also in the manager).
-  Without a TPM they stay in root-only files (600), as before, so older PCs keep working.
+  Without a TPM they stay in root-only files (600), as before, so older PCs keep working. The folder password and the
+  Wi-Fi key keep their usual paths, links to the copy in memory, so the network configuration never changes; a
+  secret is read back from the TPM and compared before its plain file is deleted. `TPM_SECRETS=off` (central or per
+  device) keeps a device out of the TPM, and puts back in root-only files the secrets of a device that had them there,
+  at the next start; set centrally, it counts from the first start after the update. To roll it out, set it off in
+  `common.conf`, on for one device, restart that one twice, then remove the line.
   If the TPM is cleared or replaced, or the disk moved to another device, the secrets cannot be read: an event
   says so, the SSH host keys are created again, and the folder password and the Wi-Fi key must be set again.
 
