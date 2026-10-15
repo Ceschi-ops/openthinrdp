@@ -3,6 +3,30 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## 0.1.11 (2026-10-15)
+
+- **A clearer manager** ([#23](https://github.com/OpenThinRdp/openthinrdp/issues/23)). Pages on the left (Devices,
+  Common settings, SSH keys, Problems), the folder actions in a bar on top. The device list has five columns (a
+  coloured state, who is signed in, version, last report) and a search box; the selected device has a header with
+  its address and its actions (Remote screen, Logo and background) and four tabs: Settings, Summary, Events, Full
+  report. Every setting shows the value in use, where it comes from (the device itself, the common settings, this
+  device) and *on its way* when a saved value has not reached the device yet; the help of the selected setting is
+  shown in full under the list. **Add the key of this PC** on the SSH keys page (created when missing), so another
+  administrator is ready for the remote screen in one click. A screen that shows its kiosk web page is listed as
+  *kiosk*. Fixed: the Problems headline stayed empty when there were no problems.
+- **Settings, PIN and diagnostics in the look of the sign-in screen** ([#28](https://github.com/OpenThinRdp/openthinrdp/issues/28)).
+  The settings of the device in sections (Remote desktop, Network, Wi-Fi, USB, Web page, Power on and off,
+  Management) with a hint under every field; same values, same checks. When the new screen cannot open, the earlier
+  dialog opens instead: the settings must always be reachable.
+- **`USB_MODE=auto`** ([#26](https://github.com/OpenThinRdp/openthinrdp/issues/26)): device by device, a device that
+  is only storage (a stick, a card reader) appears in Windows as a drive, a device with storage and something else
+  (an instrument, a key with its own driver) goes whole. Smart card readers with storage: the reader through the
+  smart card channel, the storage as a drive. Plugged in during a session, `auto` works as `disks` for now. A device
+  that does not know `auto` yet reads it as `all`.
+- **Kerberos only: `RDP_AUTH=kerberos`** ([#22](https://github.com/OpenThinRdp/openthinrdp/issues/22)): the sign-in
+  fails instead of falling back to NTLM, for domains that turned NTLM off and to see a broken Kerberos setup at once.
+- README: OpenThinRDP is not openthinclient ([#30](https://github.com/OpenThinRdp/openthinrdp/issues/30)).
+
 ## 0.1.10 (2026-10-15)
 
 - **Remote screen from the manager** ([#19](https://github.com/OpenThinRdp/openthinrdp/issues/19)). *Device settings >
