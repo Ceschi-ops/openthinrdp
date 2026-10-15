@@ -24,7 +24,7 @@ exec 9>/run/openthinrdp-apply.lock; flock 9
 ALLIF=$(wired_nics); IF=$(main_nic); MODE=$(cfg NETMODE)
 DOM=$(cfg DOMAIN | tr 'A-Z' 'a-z'); [[ $DOM == *.* ]] || DOM=""
 # Wi-Fi only when enabled, with an adapter and a saved key (written by save-config.sh)
-WCF=$(secret_path wifi.conf); WL=""   # in memory when kept in the TPM (lib/secrets.sh)
+WCF=/etc/wpa_supplicant/openthinrdp-wifi.conf; WL=""   # a link to the copy in memory when kept in the TPM (lib/secrets.sh)
 if [ "$(cfg WIFI)" = on ] && [ -s "$WCF" ] && command -v wpa_supplicant >/dev/null; then WL=$(wifi_nics | head -1); fi
 [ "$IF" = "$(wifi_nics | head -1)" ] && [ "$MODE" = static ] && IF=$(wired_nics | head -1)   # static only on a cable
 
@@ -130,7 +130,7 @@ if [ "$(cfg SSH)" = on ] && [ -s "$OTR_ETC/authorized_keys" ]; then
   # moved into the TPM, seen on the QEMU bench)
   if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1 && ! ls "$OTR_SEALED"/ssh_host_*_key.cred >/dev/null 2>&1; then
     ssh-keygen -A >/dev/null 2>&1
-    if secret_tpm; then
+    if secret_enabled; then
       for k in ed25519 ecdsa rsa; do [ -s /etc/ssh/ssh_host_${k}_key ] && { t=$(mktemp); cp /etc/ssh/ssh_host_${k}_key "$t"; secret_store ssh_host_${k}_key "$t"; }; done
     fi
   fi

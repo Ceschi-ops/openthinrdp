@@ -355,6 +355,8 @@
   Help_MGMT_USER            = 'Account the devices use for this folder: user, DOMAIN\user or user@domain. Its password is set on the device (settings dialog) or as MGMT_PASSWORD in the .conf file, and is kept only in /etc/openthinrdp/smb.cred. Empty = the account built into the image.'
   Label_SECURITY_UPDATES    = 'Security updates'
   Help_SECURITY_UPDATES     = 'Debian security updates (FreeRDP is never updated automatically).'
+  Label_TPM_SECRETS         = 'Secrets in the TPM'
+  Help_TPM_SECRETS          = 'on = with a TPM 2.0 the folder password, the Wi-Fi key and the SSH host keys are kept encrypted in it (from the next start); off = root-only files (a device that had them in the TPM puts them back).'
   Label_UPDATE_FROM         = 'Software updates'
   Help_UPDATE_FROM          = 'OpenThinRDP updates, signed, never during a session. github = the releases, checked every 6 hours; share = the updates folder of the management folder (you decide when); off = none.'
   Label_UPDATE_GITHUB       = 'GitHub repository'
