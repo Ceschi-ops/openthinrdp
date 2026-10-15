@@ -21,8 +21,19 @@ OTR_SECRET_LINKED="smb.cred wifi.conf"
 
 # a TPM 2.0 that systemd can use: firmware, driver, device and the tss2 libraries ("partial" = exit 16 = no)
 secret_tpm(){ command -v systemd-creds >/dev/null && systemd-analyze has-tpm2 >/dev/null 2>&1; }
+# TPM_SECRETS: the central settings first (the last copies report.sh keeps, already there before the update that
+# brings this in), then the device's. At the first start after the update the central value counts already, before
+# the central settings are applied: a folder that says off keeps every device out of the TPM from the start.
+secret_setting(){ local f v
+  for f in "$OTR_LIB/central-host.conf" "$OTR_LIB/central-common.conf"; do
+    v=$(sed '1s/^\xEF\xBB\xBF//' "$f" 2>/dev/null | tr -d '\r' | sed -nE 's/^[[:space:]]*TPM_SECRETS[[:space:]]*=[[:space:]]*([A-Za-z0-9]*).*/\1/p' | head -1)
+    [ -n "$v" ] && break
+  done
+  [ -n "$v" ] || v=$(cfg TPM_SECRETS)
+  case "$(echo "$v" | tr 'A-Z' 'a-z')" in off|no|false|0) echo off ;; *) echo on ;; esac
+}
 # the secrets go into the TPM: there is one and TPM_SECRETS is not off
-secret_enabled(){ [ "$(cfg TPM_SECRETS)" != off ] && secret_tpm; }
+secret_enabled(){ [ "$(secret_setting)" != off ] && secret_tpm; }
 secret_sealed(){ [ -s "$OTR_SEALED/$1.cred" ]; }
 secret_linked(){ [[ " $OTR_SECRET_LINKED " == *" $1 "* ]]; }
 
@@ -92,6 +103,6 @@ secret_sshd_hostkeys(){
 secret_mode(){
   local n
   for n in "${!OTR_SECRET_FILES[@]}"; do secret_sealed "$n" && { echo tpm; return; }; done
-  if [ "$(cfg TPM_SECRETS)" = off ]; then echo "file (TPM_SECRETS=off)"
+  if [ "$(secret_setting)" = off ]; then echo "file (TPM_SECRETS=off)"
   elif secret_tpm; then echo "tpm (nothing stored yet)"; else echo "file (no TPM)"; fi
 }

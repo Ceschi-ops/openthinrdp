@@ -8,7 +8,7 @@
 mkdir -p "$OTR_LOG"; touch "$OTR_EVENTS"
 install -d -m 700 "$OTR_SECRETS"
 ON=0; secret_enabled && ON=1
-OFF=0; [ "$(cfg TPM_SECRETS)" = off ] && OFF=1
+OFF=0; [ "$(secret_setting)" = off ] && OFF=1
 moved=""; back=""; lost=""
 for n in "${!OTR_SECRET_FILES[@]}"; do
   p=${OTR_SECRET_FILES[$n]}

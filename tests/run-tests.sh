@@ -281,7 +281,12 @@ ok "secrets: sshd is pointed at the host key in memory before it starts" '$OTR/s
 echo TPM_SECRETS=off >> $OTR_CONF; : > $OTR_EVENTS
 ok "secrets: TPM_SECRETS=off puts them back in root-only files" '$OTR/secrets.sh && [ -f $C ] && [ ! -L $C ] && grep -qx password=Secret2 $C && [ "$(stat -c %a $C)" = 600 ] && [ -f /etc/ssh/ssh_host_ed25519_key ] && [ ! -e $OTR_SEALED/smb.cred.cred ] && [ ! -e /etc/ssh/sshd_config.d/00-openthinrdp-hostkeys.conf ] && grep -q "back to root-only files" $OTR_EVENTS && [ "$(secret_mode)" = "file (TPM_SECRETS=off)" ]'
 ok "secrets: TPM_SECRETS=off moves nothing in" '$OTR/secrets.sh && [ -f $C ] && [ ! -L $C ] && [ ! -e $OTR_SEALED/smb.cred.cred ]'
-sed -i '/^TPM_SECRETS=/d' $OTR_CONF; rm -f /etc/ssh/ssh_host_ed25519_key; $OTR/secrets.sh
+sed -i '/^TPM_SECRETS=/d' $OTR_CONF; rm -f /etc/ssh/ssh_host_ed25519_key
+printf '\xef\xbb\xbfTPM_SECRETS = off\r\n' > $OTR_LIB/central-common.conf
+ok "secrets: off in the central settings counts before they are applied" '[ "$(secret_setting)" = off ] && $OTR/secrets.sh && [ -f $C ] && [ ! -L $C ] && [ ! -e $OTR_SEALED/smb.cred.cred ]'
+printf 'TPM_SECRETS=on\n' > $OTR_LIB/central-host.conf
+ok "secrets: on for this device in the central settings wins over the common off" '[ "$(secret_setting)" = on ] && $OTR/secrets.sh && [ -L $C ] && [ -s $OTR_SEALED/smb.cred.cred ]'
+rm -f $OTR_LIB/central-common.conf $OTR_LIB/central-host.conf
 rm -f /tmp/faketpm; rm -rf /run/openthinrdp; : > $OTR_EVENTS
 ok "secrets: a TPM that does not give them back (cleared, replaced) is reported once" '$OTR/secrets.sh && [ -f $OTR_SEALED/smb.cred.cred.unreadable ] && [ ! -f $OTR_SEALED/smb.cred.cred ] && [ ! -e $C ] && grep -q "NOT readable from the TPM: smb.cred" $OTR_EVENTS && $OTR/secrets.sh && [ "$(grep -c "NOT readable" $OTR_EVENTS)" = 1 ]'
 rm -rf $OTR_SEALED /run/openthinrdp /usr/local/bin/systemd-analyze /usr/local/bin/systemd-creds /etc/ssh/sshd_config.d/00-openthinrdp-hostkeys.conf
