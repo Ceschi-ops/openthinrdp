@@ -223,7 +223,7 @@ $script:Settings = @(
   (New-Setting 'SESSION_THRESHOLD'   'threshold'  '10')
   (New-Setting 'SHUTDOWN_SECS'       'shutdown'   '10')
   (Set-Section 'SectionUsb')
-  (New-Setting 'USB_MODE'            'choice'     'all' @('all', 'disks'))
+  (New-Setting 'USB_MODE'            'choice'     'all' @('all', 'auto', 'disks'))
   (New-Setting 'USB_REDIRECT'        'usb'        '')
   (Set-Section 'SectionNetwork')
   (New-Setting 'NETMODE'             'choice'     'dhcp' @('dhcp', 'static'))

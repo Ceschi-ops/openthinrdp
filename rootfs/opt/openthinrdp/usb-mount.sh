@@ -1,13 +1,15 @@
 #!/bin/bash
-# Mount USB sticks and disks in /media/<label> (started by udev, 70-openthinrdp-usb-mount.rules), only with
-# USB_MODE=disks: FreeRDP (/drive:hotplug,*) then shows them in Windows, also when plugged in during a session.
-# In "all" mode the storage goes to Windows as a whole device and nothing is mounted here.
+# Mount USB sticks and disks in /media/<label> (started by udev, 70-openthinrdp-usb-mount.rules) with
+# USB_MODE=disks, and with auto when the device is only storage (lib/usb.sh): FreeRDP (/drive:hotplug,*) then
+# shows them in Windows, also when plugged in during a session. In "all" mode, and for a device that goes whole
+# with auto, the storage goes to Windows with the device and nothing is mounted here.
 . /opt/openthinrdp/lib/common.sh
+. /opt/openthinrdp/lib/usb.sh
 DEV=/dev/$1
 grep -q "^$DEV " /proc/mounts && exit 0      # both "add" and "change" arrive: no double mount
 TYPE=$(blkid -o value -s TYPE "$DEV" 2>/dev/null)
 [ -n "$TYPE" ] || exit 0
-[ "$(cfg USB_MODE)" = disks ] || exit 0
+usb_mount_here "$(usb_of_block "$1")" || exit 0
 # devices passed whole to Windows (USB_REDIRECT): Windows uses them, not mounted here
 ID=$(udevadm info -q property -n "$DEV" 2>/dev/null | awk -F= '/^ID_VENDOR_ID=/{v=$2} /^ID_MODEL_ID=/{m=$2} END{print tolower(v":"m)}')
 for u in $(cfg USB_REDIRECT); do [ "$u" = "$ID" ] && exit 0; done

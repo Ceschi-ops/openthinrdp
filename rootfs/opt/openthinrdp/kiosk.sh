@@ -2,6 +2,7 @@
 # OpenThinRDP kiosk: login form, RDP session through the broker, reconnection, settings dialog.
 # Runs as the kiosk user inside the X session (started by Openbox, see /etc/xdg/openbox/autostart).
 . /opt/openthinrdp/lib/common.sh
+. /opt/openthinrdp/lib/usb.sh
 otr_lang
 export DISPLAY=${DISPLAY:-:0}
 for i in $(seq 1 200); do xset q >/dev/null 2>&1 && break; sleep 0.1; done
@@ -113,10 +114,12 @@ touch_ids(){
     done; } | tr 'A-F' 'a-f' | grep -E '^[0-9a-f]{4}:[0-9a-f]{4}$' | sort -u
 }
 # Every connected USB device except keyboards and mice (HID boot protocol 1/2), hubs, Bluetooth, smart card
-# readers, touch screens, network adapters, sound devices and, with the camera channel, webcams (see HASCAM)
+# readers, touch screens, network adapters, sound devices and, with the camera channel, webcams (see HASCAM).
+# With USB_MODE=auto also the devices that are only storage: they stay here as drives (lib/usb.sh)
 usb_all_ids(){
-  local d i skip dp n audio video touch=" $(touch_ids | tr '\n' ' ') "
-  for d in /sys/bus/usb/devices/[0-9]*-[0-9]*; do
+  local d i skip dp n audio video touch=" $(touch_ids | tr '\n' ' ') " auto=0
+  [ "$(cfg USB_MODE)" = auto ] && auto=1
+  for d in "$USB_SYS"/[0-9]*-[0-9]*; do
     [ -f "$d/idVendor" ] || continue
     [ "$(cat "$d/bDeviceClass" 2>/dev/null)" = 09 ] && continue
     skip=0; audio=0; video=0
@@ -138,6 +141,7 @@ usb_all_ids(){
     # service controller of the hubs built into some monitors (Microchip USB27xx): useless to Windows,
     # it stays with a driver error in Device Manager
     [ "$(cat "$d/product" 2>/dev/null)" = "Hub Controller" ] && skip=1
+    [ $auto = 1 ] && usb_storage_only "$d" && skip=1
     [ $skip = 0 ] && echo "$(cat "$d/idVendor"):$(cat "$d/idProduct")"
   done | sort -u | tr '\n' ' '
 }
@@ -160,7 +164,10 @@ usb_opt(){
   # passed again instead of being lost. The channel is always open, also without devices at login.
   # USB_MODE=disks: storage (class 08) stays here too, also when plugged in during the session: usb-mount.sh
   # mounts it and /drive:hotplug shows it in Windows. Without it FreeRDP took the stick whole (measured 13/10/2026).
-  local f=$USBFILTER; [ -n "$f" ] && [ "$(cfg USB_MODE)" = disks ] && f="$f#08"
+  # USB_MODE=auto: the same for devices plugged in during the session. FreeRDP's filter matches a class on any
+  # interface, so a device with storage and something else plugged in then stays here too, its storage as a drive;
+  # connected at sign-in it goes whole (usb_all_ids)
+  local f=$USBFILTER; [ -n "$f" ] && case "$(cfg USB_MODE)" in disks|auto) f="$f#08" ;; esac
   echo "/usb:auto${l:+,id:$l}$f"
 }
 # ALSA card of a USB sound device kept on the thin client (see HASCAM): $1 = c for a microphone, p for a speaker,
@@ -322,7 +329,7 @@ settings_dialog(){
   rep=$(tail -1 "$OTR_LOG/report.log" 2>/dev/null | cut -c1-60)
   st=$(printf "$L_STATUS_LINE" "${IPC:-$L_NO_NETWORK}" "$mac" "$(date +%H:%M)" "$sync" "$wst" "${rep:-$L_NEVER}")
 
-  local -a NETV=(dhcp static) NETL=("DHCP" "$L_STATIC") USBV=(all disks) USBL=("$L_USB_ALL" "$L_USB_DISKS")
+  local -a NETV=(dhcp static) NETL=("DHCP" "$L_STATIC") USBV=(auto all disks) USBL=("$L_USB_AUTO" "$L_USB_ALL" "$L_USB_DISKS")
   local -a ONV=(on off) ONL=("$L_ON" "$L_OFF") TRV=(auto udp tcp) TRL=("$L_TR_AUTO" "$L_TR_UDP" "$L_TR_TCP")
   local -a WEBV=(none app browser kiosk) WEBL=("$L_WEB_NONE" "$L_WEB_APP" "$L_WEB_BROWSER" "$L_WEB_KIOSK")
   local -a LNV=(en it) LNL=(English Italiano)

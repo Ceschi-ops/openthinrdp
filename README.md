@@ -127,7 +127,8 @@ What the device needs: [Requirements](#requirements).
   in the session see both (a microphone passed as a USB device stays outside the remote session). Keyboards, mice,
   touch screens, hubs and network adapters stay local; smart card readers go through the smart card channel.
   Touch screens work as touch in Windows. With `USB_MODE=disks` USB sticks stay on the thin client and appear in
-  Windows as drives.
+  Windows as drives; with `USB_MODE=auto` the thin client decides device by device: a stick as a drive, a device
+  with storage and something else (an instrument, a key with its own driver) whole.
 - **Managed from a shared folder (SMB) with a Windows manager**, no server: the whole fleet in one window, settings
   for all devices or one, and the **remote screen** of any device ([the manager](#the-manager-the-whole-fleet-from-one-window)).
 - **Signed updates** that never interrupt a session: from GitHub releases (checked every 3 hours, installed in

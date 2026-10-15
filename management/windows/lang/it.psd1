@@ -327,7 +327,7 @@
   Label_SHUTDOWN_SECS       = 'Spegnimento (s)'
   Help_SHUTDOWN_SECS        = "Secondi prima di spegnere dopo la disconnessione dell'utente (0 = mai, max 3600)."
   Label_USB_MODE            = 'Modo USB'
-  Help_USB_MODE             = 'all = ogni dispositivo USB tranne tastiere, mouse, touch screen, hub, schede di rete e lettori di smart card va a Windows intero; disks = chiavette USB come dischi di rete, smart card tramite /smartcard.'
+  Help_USB_MODE             = 'all = ogni dispositivo USB tranne tastiere, mouse, touch screen, hub, schede di rete e lettori di smart card va a Windows intero; disks = chiavette USB come dischi di rete, smart card tramite /smartcard; auto = un dispositivo che è solo memoria (chiavetta, lettore di schede, disco) come disco, un dispositivo con memoria e altro (uno strumento, una chiave col suo driver) intero. Inserito a sessione aperta, auto funziona come disks.'
   Label_USB_REDIRECT        = 'USB sempre interi (VID:PID)'
   Help_USB_REDIRECT         = 'VID:PID, separati da spazio (es. 1eaf:0009): passati sempre interi, anche nel modo disks.'
   Label_NETMODE             = 'Rete'
