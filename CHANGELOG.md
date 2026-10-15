@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.10 (2026-10-15)
 
 - **Remote screen from the manager** ([#19](https://github.com/OpenThinRdp/openthinrdp/issues/19)). *Device settings >
   Remote screen...* shows the screen of a device in your browser and lets you use it: to help a user, or to sign in
