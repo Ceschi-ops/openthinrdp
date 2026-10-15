@@ -47,8 +47,8 @@ shows *Waiting for Windows* with a Cancel button and tries again every 20 s, wit
 
 | Key | Default | Meaning |
 |---|---|---|
-| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, Bluetooth adapter, network adapter, smart card reader, webcam and USB headset goes to Windows as a whole device (RemoteFX USB redirection). `disks` = USB sticks stay on the thin client, are mounted there and appear in Windows as redirected drives (`\\tsclient`), also when plugged in during a session (since 0.1.7) |
-| `USB_REDIRECT` | | `VID:PID` list always passed whole, in both modes (smart card readers excepted: they always go through the smart card channel) |
+| `USB_MODE` | `all` | `all` = every device except keyboard, mouse, touch screen, hub, Bluetooth adapter, network adapter, smart card reader, webcam and USB headset goes to Windows as a whole device (RemoteFX USB redirection). `disks` = USB sticks stay on the thin client, are mounted there and appear in Windows as redirected drives (`\\tsclient`), also when plugged in during a session (since 0.1.7). `auto` = device by device: a device that is only storage (every interface mass storage: a stick, a card reader, a disk) as a drive, as with `disks`; a device with storage and something else (an instrument with a serial port, a key with its own Windows driver) whole, as with `all`, so that its driver gets all of it. Plugged in during a session, `auto` works as `disks`: FreeRDP's filter sees a class on any interface |
+| `USB_REDIRECT` | | `VID:PID` list always passed whole, in every mode (smart card readers excepted: they always go through the smart card channel) |
 
 A USB stick passed whole (`USB_MODE=all`) gets its drive letter from Windows inside the session of the user it is
 redirected to, as on a physical PC. That letter is not visible to services or to other sessions, so a tool running

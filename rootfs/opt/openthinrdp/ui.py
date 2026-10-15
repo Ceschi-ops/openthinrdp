@@ -16,7 +16,10 @@
 #   ui.py toast ...      small notice in the top right corner with the progress of the software update; ends with it.
 #                        --while-file PATH: a plain notice (no bar, warning icon) that stays while PATH exists
 #                        (remote-screen.sh: "Remote assistance active").
-# The admin dialogs (settings, diagnostics, PIN) stay yad windows.
+#   ui.py form ...       the settings of the device: sections on the left, every field with its hint (spec on stdin,
+#                        see below). Exit: 0 = save (KEY=value lines on stdout), 11 = close, 12 = terminal.
+#   ui.py pin ...        the settings PIN: 0 = OK (the PIN on stdout), 11 = cancel.
+#   ui.py text ...       a text read from stdin as it arrives (diagnostics), with Close.
 import argparse, locale, math, os, subprocess, sys, time
 import gi
 gi.require_version('Gtk', '3.0')
@@ -28,6 +31,7 @@ ap = argparse.ArgumentParser()
 for a in ('class', 'title', 'heading', 'text', 'small', 'info', 'note', 'user', 'logo', 'splash', 'top', 'bottom',
           'web', 'icon', 'timeout', 'primary', 'default', 'lang',
           't-user', 't-password', 't-signin', 't-shutdown', 't-restart', 't-settings', 't-diag', 't-power',
+          't-save', 't-close', 't-terminal',
           'open-power'):     # open-power: tests only, the power menu open (for a screenshot)
     ap.add_argument('--' + a, default='')
 ap.add_argument('--button', action='append', default=[])
@@ -77,6 +81,19 @@ popover button { background: transparent; border: none; box-shadow: none; backgr
                  font-size: 14px; min-height: 38px; padding: 0 18px; }
 popover button:hover { background: #eef2f7; }
 .toast { background: #ffffff; border-radius: 12px; padding: 14px 18px; }
+.card combobox button { min-height: 40px; font-size: 15px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;
+                        background-image: none; box-shadow: none; color: #111827; padding: 0 10px; text-shadow: none; }
+.card combobox button:focus { border-color: #2563eb; }
+.field { color: #1f2937; font-size: 14px; font-weight: bold; }
+.hint { color: #64748b; font-size: 12px; }
+.card entry.readonly { background: #f1f5f9; color: #475569; }
+stacksidebar { border-right: 1px solid #e5e7eb; }
+stacksidebar list { background: transparent; }
+stacksidebar separator { min-height: 0; background: transparent; }
+stacksidebar row { padding: 11px 16px; border-radius: 8px; margin: 0 10px 2px 0; color: #1f2937; font-size: 14px; }
+stacksidebar row:selected { background: #dbeafe; color: #1d4ed8; }
+stacksidebar row:hover:not(:selected) { background: #f1f5f9; }
+.mono { font-family: Monospace; font-size: 13px; color: #111827; }
 """
 
 # icons drawn here: the image has no icon theme. White on the background, coloured in a card.
@@ -283,6 +300,119 @@ if MODE == 'message':
     win.show_all()
     if A.default in buttons: buttons[A.default].grab_focus()
     elif buttons: list(buttons.values())[0].grab_focus()
+    Gtk.main(); sys.exit(code)
+
+def left_label(text, cls, chars=70):
+    l = Gtk.Label(label=text, xalign=0); l.get_style_context().add_class(cls)
+    l.set_line_wrap(True); l.set_max_width_chars(chars); l.set_justify(Gtk.Justification.LEFT)
+    return l
+
+def button(text, cls, cb):
+    b = Gtk.Button(label=text); b.get_style_context().add_class(cls); b.connect('clicked', cb); return b
+
+# Exit codes of the admin screens: 0 = save / OK, 11 = close / cancel, 12 = terminal. Anything else (a Python error)
+# makes kiosk.sh fall back to its yad dialogs: the settings are also how a device in trouble is put right.
+if MODE in ('form', 'text') and sp:
+    mid.remove(sp)       # the card takes the screen: no background picture above it
+
+# --- settings of the device ------------------------------------------------------------------------------------
+# On stdin, one line per section and per field, tab separated:
+#   S  title
+#   F  KEY  type  label  value  choices  hint        type: text, password, choice (choices "value=label|..."), ro
+# Save prints KEY=value for every field but ro, in their order. --small = a status line under the heading.
+if MODE == 'form':
+    card.set_size_request(min(1060, SW - 40), min(720, SH - 40)); card.set_spacing(14)
+    card.pack_start(left_label(A.heading, 'heading'), False, False, 0)
+    if A.small: card.pack_start(left_label(A.small.replace('\\n', '\n'), 'small', 140), False, False, 0)
+    stack = Gtk.Stack(); stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+    side = Gtk.StackSidebar(); side.set_stack(stack); side.set_size_request(210, -1)
+    fields, grid, row, n = [], None, 0, 0
+    for line in sys.stdin.read().split('\n'):
+        p = line.split('\t')
+        if p[0] == 'S' and len(p) > 1:
+            grid = Gtk.Grid(column_spacing=22, row_spacing=4); grid.set_margin_start(22); grid.set_margin_end(14)
+            grid.set_margin_top(4); grid.set_margin_bottom(10); row = 0; n += 1
+            sc = Gtk.ScrolledWindow(); sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC); sc.add(grid)
+            stack.add_titled(sc, 'page%d' % n, p[1])
+        elif p[0] == 'F' and grid is not None:
+            key, typ, lab, val, ch, hint = (p[1:] + [''] * 6)[:6]
+            if typ == 'choice':
+                w = Gtk.ComboBoxText()
+                for c in ch.split('|'):
+                    v, _, t = c.partition('='); w.append(v, t or v)
+                if not w.set_active_id(val): w.set_active(0)
+            else:
+                w = Gtk.Entry(); w.set_text(val)
+                if typ == 'password':
+                    w.set_visibility(False); w.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+                if typ == 'ro':
+                    w.set_editable(False); w.set_can_focus(False); w.get_style_context().add_class('readonly')
+            w.set_hexpand(True); w.set_valign(Gtk.Align.CENTER)
+            fl = Gtk.Label(label=lab, xalign=0); fl.get_style_context().add_class('field'); fl.set_size_request(230, -1)
+            fl.set_line_wrap(True); fl.set_max_width_chars(28); fl.set_margin_top(10)
+            w.set_margin_top(10)
+            grid.attach(fl, 0, row, 1, 1); grid.attach(w, 1, row, 1, 1); row += 1
+            if hint:
+                grid.attach(left_label(hint, 'hint', 72), 1, row, 1, 1); row += 1
+            if typ != 'ro': fields.append((key, typ, w))
+    body = Gtk.Box(spacing=0); body.pack_start(side, False, False, 0); body.pack_start(stack, True, True, 0)
+    card.pack_start(body, True, True, 0)
+    def save(*_):
+        out = []
+        for key, typ, w in fields:
+            v = (w.get_active_id() or '') if typ == 'choice' else w.get_text()
+            out.append('%s=%s' % (key, v.replace('\n', ' ')))
+        leave(0, '\n'.join(out))
+    bar = Gtk.Box(spacing=10); bar.set_margin_top(4)
+    if A.t_terminal: bar.pack_start(button(A.t_terminal, 'secondary', lambda *_: leave(12)), False, False, 0)
+    bs = button(A.t_save or 'Save', 'primary', save); bc = button(A.t_close or 'Close', 'secondary', lambda *_: leave(11))
+    bar.pack_end(bs, False, False, 0); bar.pack_end(bc, False, False, 0)
+    card.pack_start(bar, False, False, 0)
+    win.connect('key-press-event', lambda _w, e: e.keyval == Gdk.KEY_Escape and leave(11))
+    code = 11
+    win.show_all()
+    if A.open_power and A.open_power.isdigit():           # tests: show that section (for a screenshot)
+        stack.set_visible_child_name('page' + A.open_power)
+    Gtk.main(); sys.exit(code)
+
+# --- the settings PIN ------------------------------------------------------------------------------------------
+# OK prints the PIN typed (exit 0); Cancel 11
+if MODE == 'pin':
+    card.set_size_request(min(400, SW - 40), -1)
+    card.pack_start(icon('gear', 40, COLORS['info'], 1.0), False, False, 0)
+    card.pack_start(label(A.heading, 'heading'), False, False, 2)
+    if A.text: card.pack_start(label(A.text, 'text'), False, False, 0)
+    ep = Gtk.Entry(visibility=False); ep.set_input_purpose(Gtk.InputPurpose.PIN); card.pack_start(ep, False, False, 4)
+    row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER); row.set_margin_top(6)
+    ok = lambda *_: leave(0, ep.get_text()) if ep.get_text() else ep.grab_focus()
+    row.pack_start(button(A.t_close or 'Cancel', 'secondary', lambda *_: leave(11)), False, False, 0)
+    row.pack_start(button(A.t_save or 'OK', 'primary', ok), False, False, 0)
+    card.pack_start(row, False, False, 0)
+    ep.connect('activate', ok)
+    win.connect('key-press-event', lambda _w, e: e.keyval == Gdk.KEY_Escape and leave(11))
+    code = 11
+    win.show_all(); ep.grab_focus()
+    Gtk.main(); sys.exit(code)
+
+# --- a text read from stdin as it comes (diagnostics) ----------------------------------------------------------
+if MODE == 'text':
+    card.set_size_request(min(900, SW - 40), min(600, SH - 40)); card.set_spacing(12)
+    card.pack_start(left_label(A.heading, 'heading'), False, False, 0)
+    if A.text: card.pack_start(left_label(A.text, 'small', 120), False, False, 0)
+    tv = Gtk.TextView(editable=False, cursor_visible=False, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+    tv.get_style_context().add_class('mono'); tv.set_left_margin(4)
+    sc = Gtk.ScrolledWindow(); sc.add(tv); card.pack_start(sc, True, True, 0)
+    buf = tv.get_buffer()
+    def on_text(src, cond):
+        data = os.read(sys.stdin.fileno(), 65536)
+        if not data: return False
+        buf.insert(buf.get_end_iter(), data.decode('utf-8', 'replace')); return True
+    GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP, on_text)
+    row = Gtk.Box(); bc = button(A.t_close or 'Close', 'primary', lambda *_: leave(0)); row.pack_end(bc, False, False, 0)
+    card.pack_start(row, False, False, 0)
+    win.connect('key-press-event', lambda _w, e: e.keyval == Gdk.KEY_Escape and leave(0))
+    code = 0
+    win.show_all(); bc.grab_focus()
     Gtk.main(); sys.exit(code)
 
 # --- sign-in screen --------------------------------------------------------------------------------------------

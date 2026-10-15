@@ -68,6 +68,26 @@ ok "messages in Italian" '$OTR/save-config.sh "$T" --print 2>&1 | grep -q "Nome 
 printf 'USB_MODE=Dischi\nUSB_REDIRECT=1EAF:0009,346d:5678\nNTP=a.example.com;b.example.com\nSECURITY_UPDATES=Yes\nPOWER_ON_DAYS=5,1,3\nSHUTDOWN_SECS=030\n' > "$T"
 P=$($OTR/save-config.sh "$T" --print 2>&1)
 ok "aliases and separators normalized" 'echo "$P" | grep -qx "USB_MODE=disks" && echo "$P" | grep -qx "USB_REDIRECT=1eaf:0009 346d:5678" && echo "$P" | grep -qx "NTP=a.example.com b.example.com" && echo "$P" | grep -qx "SECURITY_UPDATES=on" && echo "$P" | grep -qx "POWER_ON_DAYS=135" && echo "$P" | grep -qx "SHUTDOWN_SECS=30"'
+um_of(){ printf 'USB_MODE=%s\n' "$1" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | sed -n 's/^USB_MODE=//p'; }
+ok "USB_MODE auto, all and disks kept, anything else is all" '[ "$(um_of Auto)" = auto ] && [ "$(um_of disks)" = disks ] && [ "$(um_of all)" = all ] && [ "$(um_of garbage)" = all ]'
+
+# --- USB devices by their interfaces (lib/usb.sh), on a tree of its own: a stick (08), a card reader with two
+# storage interfaces, an instrument with storage and a serial port (08 + 02 0a), a smart card reader with storage
+# (0b + 08), a keyboard (03)
+UT=$(mktemp -d)
+mkd(){ local name=$1 d=$UT/$1 n=0 c; shift; mkdir -p "$d"; echo 1234 > "$d/idVendor"
+  for c in "$@"; do mkdir -p "$d/$name:1.$n"; echo "$c" > "$d/$name:1.$n/bInterfaceClass"; n=$((n+1)); done; }
+mkd 1-1 08; mkd 1-2 08 08; mkd 1-3 08 02 0a; mkd 1-4 0b 08; mkd 1-5 03
+. $OTR/lib/usb.sh
+ok "storage only: a stick and a card reader" 'usb_storage_only $UT/1-1 && usb_storage_only $UT/1-2'
+ok "not storage only: an instrument with a serial port, a smart card reader, a keyboard" '! usb_storage_only $UT/1-3 && ! usb_storage_only $UT/1-4 && ! usb_storage_only $UT/1-5'
+printf 'USB_MODE=auto\n' > /etc/openthinrdp/openthinrdp.conf
+ok "auto mounts a stick and the storage of a smart card reader, not an instrument" 'usb_mount_here $UT/1-1 && usb_mount_here $UT/1-4 && ! usb_mount_here $UT/1-3 && ! usb_mount_here ""'
+printf 'USB_MODE=disks\n' > /etc/openthinrdp/openthinrdp.conf
+ok "disks mounts every storage" 'usb_mount_here $UT/1-3 && usb_mount_here $UT/1-1'
+printf 'USB_MODE=all\n' > /etc/openthinrdp/openthinrdp.conf
+ok "all mounts nothing" '! usb_mount_here $UT/1-1 && ! usb_mount_here $UT/1-4'
+: > /etc/openthinrdp/openthinrdp.conf; rm -rf "$UT"
 printf 'NETMODE=Statico\nIPADDR=192.0.2.10\nNETMASK=255.255.255.0\nGATEWAY=192.0.2.1\nDNS1=192.0.2.53\n' > "$T"
 ok "static alias normalized" '$OTR/save-config.sh "$T" --print 2>&1 | grep -qx "NETMODE=static"'
 printf 'IPADDR=garbage\n' > "$T"
