@@ -422,6 +422,8 @@
   DevLastReport          = 'ultimo invio {0}'
   DevSessionOf           = 'collegato: {0}'
   DevNoSession           = 'nessuno collegato'
+  UserKiosk              = 'kiosk'
+  DevKioskPage           = 'mostra la sua pagina kiosk'
   TipRemoteScreen        = 'Mostra lo schermo di questa postazione nel browser (servono SSH = on e la vostra chiave in Chiavi SSH).'
   TabSettings            = 'Impostazioni'
   TabSummary             = 'Riepilogo'

@@ -430,6 +430,8 @@
   DevLastReport          = 'last report {0}'
   DevSessionOf           = 'signed in: {0}'
   DevNoSession           = 'nobody signed in'
+  UserKiosk              = 'kiosk'
+  DevKioskPage           = 'showing its kiosk web page'
   TipRemoteScreen        = 'Shows the screen of this device in your browser (needs SSH = on and your key in SSH keys).'
   TabSettings            = 'Settings'
   TabSummary             = 'Summary'

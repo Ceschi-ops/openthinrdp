@@ -1622,6 +1622,8 @@ function Get-SessionUser($s) {
   $v = [string]$s['SESSION']
   if ($v -match '^active \((.+)\)$') { return $Matches[1] }
   if ($v -and $v -ne 'none') { return $v }
+  # a screen that shows a web page (WEB_BUTTON=kiosk) has no Windows session: the page is what it shows
+  if ($s['CFG_WEB_BUTTON'] -eq 'kiosk') { return (Get-Text 'UserKiosk') }
   ''
 }
 function Get-Version($s) { (([string]$s['SOFTWARE']).Trim() -split '\s+')[-1] }
@@ -1677,7 +1679,8 @@ function Update-DeviceHeader($d) {
   $ip = ([string]$s['IP']) -replace '/.*$', ''; if ($ip) { $parts += $ip }
   $v = Get-Version $s; if ($v) { $parts += Get-Text 'DevVersion' $v }
   $parts += Get-Text 'DevLastReport' (Get-Seen $d)
-  $u = Get-SessionUser $s; $parts += if ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
+  $u = Get-SessionUser $s
+  $parts += if ($u -and $u -eq (Get-Text 'UserKiosk') -and $s['SESSION'] -in $null, '', 'none') { Get-Text 'DevKioskPage' } elseif ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
   $lblDevInfo.Text = $parts -join $dot
   $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true
 }
