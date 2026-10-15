@@ -301,11 +301,85 @@ sys.exit(0 if hmac.compare_digest(d, key) else 1)' "$1" 2>/dev/null ;;
   esac
 }
 pin_ok(){
-  local h p; h=$(cfg SETTINGS_PIN_SHA256); [ -z "$h" ] && return 0
+  local h p r=99; h=$(cfg SETTINGS_PIN_SHA256); [ -z "$h" ] && return 0
+  if [ $GREETER = 1 ]; then
+    p=$(ui pin --heading="$(plain "$L_PIN_ASK")" --t-save="$L_OK" --t-close="$L_CANCEL"); r=$?
+    [ $r = 11 ] && return 1
+  fi
+  # the yad dialog when the screen of ui.py did not work: the settings must always be reachable.
   # Enter in the entry field presses the LAST button: OK goes last
-  p=$(yad --entry --hide-text $IMG --title="$TITLE" --center --text="$L_PIN_ASK" --button="$L_CANCEL:1" --button="$L_OK:0" 2>/dev/null) || return 1
+  if [ $r != 0 ]; then
+    p=$(yad --entry --hide-text $IMG --title="$TITLE" --center --text="$L_PIN_ASK" --button="$L_CANCEL:1" --button="$L_OK:0" 2>/dev/null) || return 1
+  fi
   printf '%s' "$p" | pin_match "$h" && return 0
-  ev "settings: wrong PIN"; yad --error --center --timeout=3 --text="$L_PIN_WRONG" 2>/dev/null; return 1
+  ev "settings: wrong PIN"
+  if [ $GREETER = 1 ]; then ui message --icon=error --heading="$(plain "$L_PIN_WRONG")" --timeout=3 >/dev/null
+  else yad --error --center --timeout=3 --text="$L_PIN_WRONG" 2>/dev/null; fi
+  return 1
+}
+# the settings screen of ui.py (form): sections, and per field KEY type label value choices hint (tab separated).
+# Reads the values of settings_dialog (bash: the caller's locals are visible here)
+settings_spec(){
+  local t=$'\t'
+  sec(){ printf 'S\t%s\n' "$1"; }
+  fld(){ printf 'F\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4//$t/ }" "$5" "$6"; }
+  chs(){ local -n vs=$1 ls=$2; local i o=""; for i in "${!vs[@]}"; do o+="${o:+|}${vs[$i]}=${ls[$i]}"; done; printf '%s' "$o"; }
+  sec "$L_SEC_REMOTE"
+  fld HOSTNAME text "$L_F_HOSTNAME" "$h" "" "$L_H_HOSTNAME"
+  fld DEFAULT_USER text "$L_F_USER" "$u" "" "$L_H_USER"
+  fld BROKER text "$L_F_BROKER" "$br" "" "$L_H_BROKER"
+  fld BROKER_FALLBACK text "$L_F_FALLBACK" "$brf" "" "$L_H_FALLBACK"
+  fld DOMAIN text "$L_F_DOMAIN" "$dom" "" "$L_H_DOMAIN"
+  fld LOAD_BALANCE_INFO text "$L_F_COLLECTION" "$lbi" "" "$L_H_COLLECTION"
+  fld TRANSPORT choice "$L_F_TRANSPORT" "$tr" "$(chs TRV TRL)" "$L_H_TRANSPORT"
+  fld SESSION_THRESHOLD text "$L_F_THRESHOLD" "$thr" "" "$L_H_THRESHOLD"
+  fld SHUTDOWN_SECS text "$L_F_SHUTDOWN" "$off" "" "$L_H_SHUTDOWN"
+  sec "$L_SEC_NETWORK"
+  fld NETMODE choice "$L_F_NETWORK" "$nm" "$(chs NETV NETL)" "$L_H_NETWORK"
+  fld IPADDR text "$L_F_IP" "$ip" "" "$L_H_IP"
+  fld NETMASK text "$L_F_NETMASK" "$mask" "" "$L_H_NETMASK"
+  fld GATEWAY text "$L_F_GATEWAY" "$gw" "" "$L_H_GATEWAY"
+  fld DNS1 text "$L_F_DNS1" "$d1" "" "$L_H_DNS1"
+  fld DNS2 text "$L_F_DNS2" "$d2" "" "$L_H_DNS2"
+  fld NTP text "$L_F_NTP" "$ntp" "" "$L_H_NTP"
+  sec "$L_SEC_WIFI"
+  fld WIFI choice "$L_F_WIFI" "$wf" "$(chs ONV ONL)" "$L_H_WIFI"
+  fld WIFI_SSID text "$L_F_SSID" "$ws" "" "$L_H_SSID"
+  fld WIFI_PSK password "$L_F_WIFIPSK" "" "" "$L_H_WIFIPSK"
+  sec "$L_SEC_USB"
+  fld USB_MODE choice "$L_F_USBMODE" "$um" "$(chs USBV USBL)" "$L_H_USBMODE"
+  fld USB_REDIRECT text "$L_F_USBLIST" "$ur" "" "$L_H_USBLIST"
+  sec "$L_SEC_WEB"
+  fld WEB_BUTTON choice "$L_F_WEB" "$wb" "$(chs WEBV WEBL)" "$L_H_WEB"
+  fld WEB_URL text "$L_F_WEBURL" "$wu" "" "$L_H_WEBURL"
+  fld KIOSK_URL text "$L_F_KIOSKURL" "$ku" "" "$L_H_KIOSKURL"
+  fld KIOSK_RELOAD_MIN text "$L_F_RELOAD" "$kr" "" "$L_H_RELOAD"
+  sec "$L_SEC_POWER"
+  fld POWER_ON_TIME text "$L_F_POWERON" "$pon" "" "$L_H_POWERON"
+  fld POWER_OFF_TIME text "$L_F_POWEROFF" "$poff" "" "$L_H_POWEROFF"
+  fld POWER_ON_DAYS text "$L_F_DAYS" "$pdays" "" "$L_H_DAYS"
+  sec "$L_SEC_MGMT"
+  fld MGMT_SHARE text "$L_F_SHARE" "$share" "" "$L_H_SHARE"
+  fld MGMT_USER text "$L_F_MGMTUSER" "$mu" "" "$L_H_MGMTUSER"
+  fld MGMT_PASSWORD password "$L_F_MGMTPW" "" "" "$L_H_MGMTPW"
+  fld SECURITY_UPDATES choice "$L_F_UPDATES" "$su" "$(chs ONV ONL)" "$L_H_UPDATES"
+  fld LANGUAGE choice "$L_F_LANGUAGE" "$ln" "$(chs LNV LNL)" "$L_H_LANGUAGE"
+}
+# KEY=value lines of the settings screen into the values of settings_dialog
+settings_read(){
+  local l v
+  while IFS= read -r l; do
+    v=${l#*=}
+    case ${l%%=*} in
+      HOSTNAME) h=$v ;; DEFAULT_USER) u=$v ;; BROKER) br=$v ;; BROKER_FALLBACK) brf=$v ;; DOMAIN) dom=$v ;;
+      LOAD_BALANCE_INFO) lbi=$v ;; NETMODE) nm=$v ;; IPADDR) ip=$v ;; NETMASK) mask=$v ;; GATEWAY) gw=$v ;;
+      DNS1) d1=$v ;; DNS2) d2=$v ;; NTP) ntp=$v ;; SHUTDOWN_SECS) off=$v ;; SESSION_THRESHOLD) thr=$v ;;
+      TRANSPORT) tr=$v ;; LANGUAGE) ln=$v ;; MGMT_SHARE) share=$v ;; MGMT_USER) mu=$v ;; MGMT_PASSWORD) mp=$v ;;
+      USB_MODE) um=$v ;; USB_REDIRECT) ur=$v ;; SECURITY_UPDATES) su=$v ;; WEB_BUTTON) wb=$v ;; WEB_URL) wu=$v ;;
+      KIOSK_URL) ku=$v ;; KIOSK_RELOAD_MIN) kr=$v ;; POWER_ON_TIME) pon=$v ;; POWER_OFF_TIME) poff=$v ;;
+      POWER_ON_DAYS) pdays=$v ;; WIFI) wf=$v ;; WIFI_SSID) ws=$v ;; WIFI_PSK) wp=$v ;;
+    esac
+  done <<< "$1"
 }
 settings_dialog(){
   pin_ok || return
@@ -346,6 +420,19 @@ settings_dialog(){
   # fields separated by a character nobody can type (unit separator): passwords may contain anything else
   local FS=$'\x1f'
   while true; do
+    r=99
+    if [ $GREETER = 1 ]; then
+      out=$(settings_spec | ui form --heading="$(plain "$L_SETTINGS")" --small="$(plain "$st")" \
+              --t-save="$L_SAVE" --t-close="$L_CLOSE" --t-terminal="$L_TERMINAL"); r=$?
+      case $r in
+        0) wp=""; mp=""; settings_read "$out" ;;
+        11) break ;;
+        12) xterm -fa Monospace -fs 11 2>/dev/null; break ;;
+        *) ev "settings: the settings screen failed (exit $r), the earlier dialog instead" ;;
+      esac
+    fi
+    if [ $r != 0 ]; then
+    # the earlier yad dialog, when the screen of ui.py cannot open (the settings must always be reachable).
     # 34 fields, 17 per column: left the connection, the network and the session; right the management folder,
     # USB, web button, power schedule and Wi-Fi
     out=$(yad --form --title="$L_SETTINGS" --columns=2 "${geo[@]}" --center --separator="$FS" \
@@ -374,6 +461,7 @@ settings_dialog(){
     wp=${wp%"$FS"}
     nm=$(unlabel "$nm" NETV NETL); um=$(unlabel "$um" USBV USBL); su=$(unlabel "$su" ONV ONL); tr=$(unlabel "$tr" TRV TRL)
     wb=$(unlabel "$wb" WEBV WEBL); ln=$(unlabel "$ln" LNV LNL); wf=$(unlabel "$wf" ONV ONL)
+    fi
     tmp=$(mktemp)
     printf '%s\n' "HOSTNAME=$h" "DEFAULT_USER=$u" "BROKER=$br" "BROKER_FALLBACK=$brf" "DOMAIN=$dom" \
       "LOAD_BALANCE_INFO=$lbi" "NETMODE=$nm" "IPADDR=$ip" "NETMASK=$mask" "GATEWAY=$gw" "DNS1=$d1" "DNS2=$d2" \
@@ -388,11 +476,13 @@ settings_dialog(){
     if [ $r -eq 0 ]; then
       ev "settings saved from the dialog: hostname=$h user=$u network=$nm ip=$ip broker=$br"
       otr_lang     # the language may have changed
-      yad --center --undecorated --skip-taskbar --no-buttons --timeout=2 --width=300 --text="<b>$L_SAVED</b>" 2>/dev/null
+      if [ $GREETER = 1 ]; then ui message --icon=ok --heading="$(plain "$L_SAVED")" --timeout=2 >/dev/null
+      else yad --center --undecorated --skip-taskbar --no-buttons --timeout=2 --width=300 --text="<b>$L_SAVED</b>" 2>/dev/null; fi
       break
     fi
     ev "settings rejected: $(echo "$msg" | tr '\n' ' ')"
-    yad --error --center --width=420 --title="$L_INVALID" --text="$msg" --button="$L_FIX:0" 2>/dev/null
+    if [ $GREETER = 1 ]; then ui message --icon=error --heading="$(plain "$L_INVALID")" --text="$(plain "$msg")" --button="$L_FIX:0" --primary=0 >/dev/null
+    else yad --error --center --width=420 --title="$L_INVALID" --text="$msg" --button="$L_FIX:0" 2>/dev/null; fi
   done
   look; DEF=$(cfg DEFAULT_USER)
 }
@@ -402,6 +492,15 @@ settings_dialog(){
 # management folder, the last events. Read only, a few seconds at most (3 s per remote desktop host).
 diag_port(){ timeout 3 bash -c "</dev/tcp/$1/$2" 2>/dev/null && echo "$L_DIAG_OK" || echo "$L_DIAG_FAIL"; }
 diag_dialog(){
+  local r=99
+  if [ $GREETER = 1 ]; then
+    diag_text | ui text --heading="$(plain "$L_DIAG")" --text="$(plain "$L_DIAG_TEXT")" --t-close="$L_CLOSE"; r=${PIPESTATUS[1]}
+  fi
+  # the earlier yad window when the screen of ui.py cannot open
+  [ "$r" = 0 ] || diag_text | yad --text-info --wrap $IMG --title="$L_DIAG" --width=780 --height=540 --center --fontname="Monospace 10" \
+          --text="$L_DIAG_TEXT" --button="$L_CLOSE:0" 2>/dev/null
+}
+diag_text(){
   . "$OTR/lib/netif.sh"
   local IF GW h a s
   IF=$(main_nic); GW=$(ip -4 route show default 2>/dev/null | awk '{print $3}' | head -1)
@@ -428,8 +527,7 @@ diag_dialog(){
     echo
     echo "Last events:"
     tail -n 10 "$OTR_EVENTS" 2>/dev/null
-  } | yad --text-info --wrap $IMG --title="$L_DIAG" --width=780 --height=540 --center --fontname="Monospace 10" \
-          --text="$L_DIAG_TEXT" --button="$L_CLOSE:0" 2>/dev/null
+  }
 }
 
 # --- session ------------------------------------------------------------------------------------
