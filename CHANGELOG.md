@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.14 (2026-10-16)
 
 - **VPN: WireGuard and OpenVPN** ([#44](https://github.com/OpenThinRdp/openthinrdp/issues/44)). A device outside
   the office reaches the broker, the management folder and the DNS of the office through its own tunnel
@@ -26,6 +26,8 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 - **The OpenThinRDP icon** on the windows of the manager (title bar, taskbar) and in its top bar, and
   `build-launcher.ps1`: an `OpenThinRDP-Manager.exe` with the icon that starts the manager without a console window,
   its arguments in a `.args` file next to it.
+- **Updates install missing Debian packages without the recommended ones**, as the image is built: a package
+  needed by a new version never brings more than its own dependencies.
 
 ## 0.1.13 (2026-10-15)
 
