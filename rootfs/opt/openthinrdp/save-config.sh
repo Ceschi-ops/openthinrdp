@@ -46,6 +46,13 @@ V[LOAD_BALANCE_INFO]=$(get LOAD_BALANCE_INFO); [[ ${V[LOAD_BALANCE_INFO]} =~ ^[A
 case "$(low "$(get TRANSPORT)")" in udp) V[TRANSPORT]=udp ;; tcp) V[TRANSPORT]=tcp ;; *) V[TRANSPORT]=auto ;; esac
 case "$(low "$(get RDP_AUTH)")" in ntlm) V[RDP_AUTH]=ntlm ;; kerberos) V[RDP_AUTH]=kerberos ;; *) V[RDP_AUTH]=negotiate ;; esac
 case "$(low "$(get RDP_CERT)")" in ignore) V[RDP_CERT]=ignore ;; verify) V[RDP_CERT]=verify ;; *) V[RDP_CERT]=tofu ;; esac
+# RD Gateway: a name or an address, optionally :port (1-65535)
+V[RDP_GATEWAY]=$(get RDP_GATEWAY | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+if [ -n "${V[RDP_GATEWAY]}" ]; then
+  gh=${V[RDP_GATEWAY]%:*}; gp=${V[RDP_GATEWAY]##*:}; [ "$gh" = "${V[RDP_GATEWAY]}" ] && gp=443
+  { { ipok "$gh" || nameok "$gh"; } && [[ $gp =~ ^[0-9]{1,5}$ ]] && [ "$gp" -ge 1 ] && [ "$gp" -le 65535 ]; } || err "$V_RDP_GATEWAY"
+fi
+case "$(low "$(get RDP_GATEWAY_USE)")" in detect|rileva|auto) V[RDP_GATEWAY_USE]=detect ;; *) V[RDP_GATEWAY_USE]=always ;; esac
 V[RDP_GFX]=$(get RDP_GFX); [[ ${V[RDP_GFX]} =~ ^[A-Za-z0-9:,]*$ ]] || err "$V_GFX"
 V[RDP_KEYBOARD]=$(get RDP_KEYBOARD); [[ ${V[RDP_KEYBOARD]} =~ ^(0x[0-9a-fA-F]{8})?$ ]] || err "$V_RDPKBD"
 V[RDP_EXTRA]=$(get RDP_EXTRA); [[ ${V[RDP_EXTRA]} =~ $EXTRARE ]] || err "$V_EXTRA"

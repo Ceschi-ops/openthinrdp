@@ -262,7 +262,18 @@ connect(){
   # connection was given up at 9 s while the UDP tunnel still carried the session). 20 s and no more: a broker
   # that accepts the connection and then hangs costs this much on every attempt before the next one.
   o+=(/timeout:20000)
-  if [ $HASUDP = 1 ] && [ "$(cfg TRANSPORT)" != tcp ]; then o+=(/network:auto)
+  # RD Gateway: the broker and the VM through it, over HTTPS, with the credentials of the session (FreeRDP's
+  # default). FreeRDP carries no UDP through a gateway and declines it as soon as a gateway is set, also when
+  # detect reaches a server on the local network straight (measured 16/10/2026): with always no UDP is offered at all
+  # (-multitransport); with detect FreeRDP declines it by itself.
+  # /network:auto stays: the server adapts frame rate and quality to the line, which matters most from outside.
+  v=$(cfg RDP_GATEWAY)
+  if [ -n "$v" ]; then
+    if [ "$(cfg RDP_GATEWAY_USE)" = detect ]; then o+=(/gateway:g:"$v",type:auto,usage-method:detect)
+    else o+=(/gateway:g:"$v",type:auto,usage-method:direct /network:auto -multitransport); fi
+  fi
+  if [ -n "$v" ] && [ "$(cfg RDP_GATEWAY_USE)" != detect ]; then :
+  elif [ $HASUDP = 1 ] && [ "$(cfg TRANSPORT)" != tcp ]; then o+=(/network:auto)
   elif [ $HASUDP = 1 ]; then o+=(/network:lan -multitransport)
   else o+=(/network:lan); fi
   v=$(cfg RDP_KEYBOARD); [ -n "$v" ] && o+=(/kbd:layout:"$v")
@@ -524,6 +535,14 @@ diag_text(){
     echo "Time            $(date '+%H:%M:%S'), synchronized: $(timedatectl show -p NTPSynchronized --value 2>/dev/null)"
     echo
     [ -z "$(cfg BROKER)" ] && echo "Remote desktop  no broker or PC set"
+    # through an RD Gateway the brokers are not reached straight: the gateway on its HTTPS port is what counts
+    s=$(cfg RDP_GATEWAY)
+    if [ -n "$s" ]; then
+      gp=${s##*:}; gh=${s%:*}; [ "$gh" = "$s" ] && gp=443
+      a=$(getent ahostsv4 "$gh" 2>/dev/null | awk 'NR==1{print $1}')
+      if [ -z "$a" ]; then echo "RD Gateway      $gh: name $L_DIAG_NOTFOUND (DNS)"
+      else echo "RD Gateway      $gh ($a): port $gp $(diag_port "$a" "$gp")   use: $(cfg RDP_GATEWAY_USE)"; fi
+    fi
     for h in $(cfg BROKER) $(cfg BROKER_FALLBACK); do
       a=$(getent ahostsv4 "$h" 2>/dev/null | awk 'NR==1{print $1}')
       if [ -z "$a" ]; then echo "Remote desktop  $h: name $L_DIAG_NOTFOUND (DNS)"
@@ -558,7 +577,10 @@ last_error(){ local l
   l=$(echo "$l" | sed 's/.*\] - //' | tr -d '\r' | cut -c1-160); [ -n "$l" ] && echo " - $l"; }
 # The VM of the session (the watchdog writes its address while connected) still accepts RDP, twice 5 s apart: it is
 # not shutting down or restarting.
-vm_alive(){ local a; a=$(cat /tmp/kiosk.vm 2>/dev/null); [ -n "$a" ] || return 1
+# Through an RD Gateway the connection is to the gateway, and the VM cannot be reached to ask: code 1 then counts
+# as an ending, as with a VM that does not answer.
+vm_alive(){ local a; [ -n "$(cfg RDP_GATEWAY)" ] && return 1
+  a=$(cat /tmp/kiosk.vm 2>/dev/null); [ -n "$a" ] || return 1
   sleep 3; timeout 3 bash -c "exec 3<>/dev/tcp/$a/3389" 2>/dev/null || return 1
   sleep 5; timeout 3 bash -c "exec 3<>/dev/tcp/$a/3389" 2>/dev/null; }
 # Is the user already connected from ANOTHER thin client? Based on the thin clients' own reports
@@ -625,7 +647,8 @@ session(){
   LAST_ERR=""; LAST_EC=""
   thr=$(cfg_num SESSION_THRESHOLD 10)
   if [ "$(cfg TRANSPORT)" = udp ]; then
-    if [ $HASUDP = 1 ]; then udponly=1; else ev "TRANSPORT=udp but this FreeRDP has no UDP transport: TCP used"; fi
+    if [ -n "$(cfg RDP_GATEWAY)" ]; then ev "TRANSPORT=udp with an RD Gateway: TCP used (FreeRDP carries no UDP through a gateway)"
+    elif [ $HASUDP = 1 ]; then udponly=1; else ev "TRANSPORT=udp but this FreeRDP has no UDP transport: TCP used"; fi
   fi
   while [ $att -lt $max ]; do
     att=$((att+1))

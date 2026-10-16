@@ -288,6 +288,28 @@ ok "make-update without -k: LATEST.txt to sign in the manager, no signature" '/t
 ok "make-update without -k does not publish into a management folder" '! /tmp/mu/management/publish/make-update.sh -v 9.0.2 -o /tmp/mu-share >/dev/null 2>&1 && [ ! -e /tmp/mu-share/updates ]'
 rm -rf /tmp/mu /tmp/mu-share /tmp/mu.log
 
+# --- RD Gateway: validation, and the options connect() of the kiosk gives FreeRDP (FreeRDP replaced by a stub)
+ok "RD Gateway: a name, a name:port and an address are accepted" 'check x "RDP_GATEWAY=rdg.example.com" && check x "RDP_GATEWAY=rdg.example.com:8443" && check x "RDP_GATEWAY=192.0.2.10"'
+ok "RD Gateway: a bad name or port is refused" '! check x "RDP_GATEWAY=rdg example" && ! check x "RDP_GATEWAY=rdg.example.com:0" && ! check x "RDP_GATEWAY=rdg.example.com:70000"'
+ok "RD Gateway: use always, detect (rileva), anything else always" 'printf "RDP_GATEWAY_USE=Rileva\n" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "RDP_GATEWAY_USE=detect" && printf "RDP_GATEWAY_USE=x\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "RDP_GATEWAY_USE=always"'
+(
+  eval "$(sed -n '/^connect(){/,/^}/p; /^vm_alive(){/,/^  sleep 5/p' $OTR/kiosk.sh)"
+  usb_reclaim(){ :; }; reset_cam(){ :; }; usb_opt(){ echo /usb:auto; }; touch_ids(){ :; }; usb_sound_card(){ return 1; }
+  sleep(){ :; }; xrandr(){ :; }; sudo(){ :; }; xfreerdp3(){ printf '%s\n' "$@" > /tmp/frdp.args; }
+  HASUDP=1 HASCAM=0 NTLMPKG=n KRBPKG=k
+  cp $OTR_CONF /tmp/conf.save
+  printf 'RDP_AUTH=ntlm\n' > $OTR_CONF; connect u p rdbroker.example.test; cp /tmp/frdp.args /tmp/frdp.none
+  printf 'RDP_AUTH=ntlm\nRDP_GATEWAY=rdg.example.test\n' > $OTR_CONF; connect u p rdbroker.example.test; cp /tmp/frdp.args /tmp/frdp.always
+  printf 'RDP_AUTH=ntlm\nRDP_GATEWAY=rdg.example.test:8443\nRDP_GATEWAY_USE=detect\n' > $OTR_CONF; connect u p rdbroker.example.test; cp /tmp/frdp.args /tmp/frdp.detect
+  echo 10.9.9.9 > /tmp/kiosk.vm; vm_alive && echo alive > /tmp/frdp.vm || echo "not asked" > /tmp/frdp.vm
+  cp /tmp/conf.save $OTR_CONF
+)
+ok "connect without a gateway: no /gateway, /network:auto (UDP)" '! grep -q "^/gateway" /tmp/frdp.none && grep -qx "/network:auto" /tmp/frdp.none && ! grep -qx -- "-multitransport" /tmp/frdp.none'
+ok "connect with RDP_GATEWAY: through it, same credentials, no UDP offered" 'grep -qx "/gateway:g:rdg.example.test,type:auto,usage-method:direct" /tmp/frdp.always && grep -qx -- "-multitransport" /tmp/frdp.always && [ "$(grep -cx "/network:auto" /tmp/frdp.always)" = 1 ] && grep -qx "/v:rdbroker.example.test" /tmp/frdp.always'
+ok "connect with RDP_GATEWAY_USE=detect: the gateway only when needed" 'grep -qx "/gateway:g:rdg.example.test:8443,type:auto,usage-method:detect" /tmp/frdp.detect && ! grep -qx -- "-multitransport" /tmp/frdp.detect && grep -qx "/network:auto" /tmp/frdp.detect'
+ok "through a gateway the VM is not probed after a drop" 'grep -qx "not asked" /tmp/frdp.vm'
+rm -f /tmp/frdp.* /tmp/conf.save /tmp/kiosk.vm
+
 # --- Kerberos: a server's own name instead of an alias shared by two brokers, or an address
 printf '%s\n' '10.9.9.1 broker1.example.test broker1' '10.9.9.2 broker2.example.test broker2' \
   '10.9.9.1 rdbroker.example.test' '10.9.9.2 rdbroker.example.test' >> /etc/hosts

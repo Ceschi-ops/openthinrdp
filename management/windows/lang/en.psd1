@@ -569,4 +569,9 @@
   SendKeyDone            = 'Site key {0}: the devices report it within 5 minutes (Summary, Update signatures). Devices off: {1}.'
   RemoteHostKeyChanged   = "{0} ({1}) answers with an SSH host key different from the one this manager knows for it. That is normal after the device was reinstalled; otherwise another machine may be answering in its place.`r`n`r`nForget the old key and accept the new one?"
   SendKeyHostChanged     = 'its SSH host key changed (reinstalled?): open its Remote screen once to confirm the new key'
+  Label_RDP_GATEWAY      = 'RD Gateway'
+  Help_RDP_GATEWAY       = 'Remote Desktop Gateway for devices outside the office, name[:port] (443 when no port), e.g. rdgateway.example.com. The connection to the broker and the VM goes through it over HTTPS, with the credentials of the session. Empty = straight to the broker. Through a gateway the session uses TCP: FreeRDP carries no UDP over it.'
+  Label_RDP_GATEWAY_USE  = 'Use of the gateway'
+  Help_RDP_GATEWAY_USE   = 'always = every connection through the RD Gateway; detect = a server on the local network straight, the others through the gateway: for a device that moves between the office and outside. With a gateway set the session uses TCP in both cases: FreeRDP declines UDP as soon as a gateway is configured.'
+  ErrHostPort            = '{0}: a name or an address, optionally :port (1-65535)'
 }

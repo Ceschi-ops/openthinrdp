@@ -5,6 +5,11 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **RD Gateway: `RDP_GATEWAY`** ([#42](https://github.com/OpenThinRdp/openthinrdp/issues/42)). Devices outside the
+  office connect through the Remote Desktop Gateway of the deployment, over HTTPS, with the credentials of the
+  session; `RDP_GATEWAY_USE=detect` reaches a server on the local network straight. Through a gateway the session
+  uses TCP. The diagnostics test the gateway, the manager has both settings.
+
 - **The manager fits every screen** ([#38](https://github.com/OpenThinRdp/openthinrdp/issues/38)). The columns of
   the lists and grids share the width (the Exception column was behind a scroll bar even on large screens), rows of
   buttons wrap instead of running out of the window, the top bar and the device actions keep only their icons when

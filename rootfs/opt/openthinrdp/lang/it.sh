@@ -201,6 +201,7 @@ V_HOSTNAME="Nome macchina non valido (lettere, cifre e trattino; non solo cifre)
 V_USER="Utente predefinito non valido"
 V_BROKER="Broker non valido"
 V_FALLBACK="Broker di riserva non valido:"
+V_RDP_GATEWAY="RD Gateway non valido (nome o indirizzo, eventualmente :porta)"
 V_DOMAIN="Dominio non valido"
 V_COLLECTION="Raccolta RDS non valida (es. tsv://VMResource.1.MIA_RACCOLTA)"
 V_GFX="RDP_GFX non valido (solo lettere, cifre, : e ,)"

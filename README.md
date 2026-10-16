@@ -67,7 +67,8 @@ numbers: [docs/udp.md](docs/udp.md#on-a-lossy-line).
 
 - You publish desktops with **Windows Remote Desktop Services**: RD Connection Broker with session hosts or a
   Hyper-V VDI collection. Or there is no broker at all: each device connects to one Windows PC or server (set
-  its name instead of the broker), e.g. a reception desk that works on the PC in the office.
+  its name instead of the broker), e.g. a reception desk that works on the PC in the office. Devices outside the
+  office go through the **RD Gateway** over HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)).
 - You have **x86-64 PCs or thin clients with UEFI** (Secure Boot works) and want to keep them useful without a
   licence per device.
 - You want to **try RDP over UDP** on real clients, or help bring it into FreeRDP.

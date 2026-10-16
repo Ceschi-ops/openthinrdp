@@ -240,6 +240,8 @@ $script:Settings = @(
   (New-Setting 'TRANSPORT'           'choice'     'auto' @('auto', 'udp', 'tcp'))
   (New-Setting 'RDP_AUTH'            'choice'     'negotiate' @('negotiate', 'kerberos', 'ntlm'))
   (New-Setting 'RDP_CERT'            'choice'     'tofu' @('tofu', 'ignore', 'verify'))
+  (New-Setting 'RDP_GATEWAY'         'hostport'   '')
+  (New-Setting 'RDP_GATEWAY_USE'     'choice'     'always' @('always', 'detect'))
   (New-Setting 'RDP_GFX'             'gfx'        'progressive,AVC420:off,AVC444:off')
   (New-Setting 'RDP_KEYBOARD'        'rdpkbd'     '')
   (New-Setting 'MULTIMON'            'choice'     'auto' @('auto', 'off'))
@@ -342,6 +344,9 @@ function Test-SettingValue([string]$key, [string]$v) {
     'host'       { if ($v -cnotmatch $script:Rx.Host -or $v -cmatch '^[0-9]+$') { return (Get-Text 'ErrHostname') } }
     'user'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.User) { return (Get-Text 'ErrUser') } }
     'name'       { if ($v -ne '' -and $v -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrNotValid' $L) } }
+    # a name or an address, optionally :port (as save-config.sh on the device)
+    'hostport'   { if ($v -ne '') { $h = $v; $p = 443; if ($v -match '^(.+):(\d{1,5})$') { $h = $Matches[1]; $p = [int]$Matches[2] }
+                   if ((-not (Test-Ip $h) -and $h -cnotmatch $script:Rx.Name) -or $p -lt 1 -or $p -gt 65535) { return (Get-Text 'ErrHostPort' $L) } } }
     'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrListValue' $L $t) } } }
     'collection' { if ($v -cnotmatch $script:Rx.Collection) { return (Get-Text 'ErrCollection') } }
     'repo'       { if ($v -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { return (Get-Text 'ErrRepo') } }
@@ -381,7 +386,8 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
     # aliases accepted by the device (older files, other languages); anything else = what the device falls back to
     $l = $v.ToLower()
     if ($s.Choices -contains $l) { return $l }
-    $alias = @{ NETMODE = @{ statico = 'static' }; USB_MODE = @{ dischi = 'disks' }; WEB_BUTTON = @{ portale = 'app'; portal = 'app'; chrome = 'browser'; chromium = 'browser' } }
+    $alias = @{ NETMODE = @{ statico = 'static' }; USB_MODE = @{ dischi = 'disks' }; WEB_BUTTON = @{ portale = 'app'; portal = 'app'; chrome = 'browser'; chromium = 'browser' }
+      RDP_GATEWAY_USE = @{ rileva = 'detect'; auto = 'detect' } }
     if ($key -in 'WIFI', 'SSH', 'REMOTE_SCREEN', 'SECURITY_UPDATES', 'TPM_SECRETS') { if ($l -in 'yes', 'true', '1', 'si') { return 'on' }; return 'off' }
     if ($alias.ContainsKey($key) -and $alias[$key].ContainsKey($l)) { return $alias[$key][$l] }
     return $s.Choices[0]

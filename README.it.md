@@ -70,7 +70,8 @@ Per arrivarci è servita una correzione al trasporto UDP di FreeRDP, che abbiamo
 
 - Pubblicate desktop con **Servizi Desktop remoto di Windows**: broker RDS con host di sessione o raccolta VDI su
   Hyper-V. Oppure non c'è nessun broker: ogni postazione si collega a un PC o server Windows (al posto del broker
-  si mette il suo nome), per esempio una reception che lavora sul PC dell'ufficio.
+  si mette il suo nome), per esempio una reception che lavora sul PC dell'ufficio. Le postazioni fuori sede passano
+  dall'**RD Gateway** in HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)).
 - Avete **PC o thin client x86-64 con UEFI** (Secure Boot funziona) e volete tenerli in servizio senza una licenza
   per postazione.
 - Volete **provare RDP in UDP** su client veri, o aiutarlo a entrare in FreeRDP.

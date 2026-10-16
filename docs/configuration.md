@@ -29,6 +29,8 @@ The reference with comments is [`rootfs/opt/openthinrdp/defaults.conf`](../rootf
 | `TRANSPORT` | `auto` | `auto` = UDP, TCP when UDP is blocked or fails; `udp` = UDP only; `tcp` = TCP only. See [udp.md](udp.md) |
 | `RDP_AUTH` | `negotiate` | `negotiate` = Kerberos, NTLM when Kerberos is not available (`DOMAIN` must be the full DNS name, e.g. `example.local`); `kerberos` = Kerberos only: the sign-in fails instead of falling back to NTLM (for domains that turned NTLM off, and to see a broken Kerberos setup at once); `ntlm` = NTLM only. Behind an alias shared by several brokers the device connects to one of them by its own name, so that the Kerberos ticket is for the server it talks to |
 | `RDP_CERT` | `tofu` | `ignore`, `tofu` (trust on first use) or `verify` |
+| `RDP_GATEWAY` | | RD Gateway (Remote Desktop Gateway) for devices outside the office: `name[:port]`, 443 when no port. See [RD Gateway](#rd-gateway) |
+| `RDP_GATEWAY_USE` | `always` | `always` = every connection through the gateway; `detect` = a server on the local network straight, the others through the gateway |
 | `RDP_GFX` | `progressive,AVC420:off,AVC444:off` | `/gfx` options. Without a GPU on the server this keeps text pixel exact |
 | `RDP_KEYBOARD` | | keyboard layout id for Windows, e.g. `0x00000409`. Empty = taken from the X keyboard |
 | `MULTIMON` | `auto` | `auto` = every monitor when more than one is connected (`/multimon`), `off` = only the main one |
@@ -42,6 +44,32 @@ another device shows "Session opened elsewhere" with *Resume here* instead of re
 answers but the virtual machine refuses the desktop (it is restarting or installing a Windows update), the device
 shows *Waiting for Windows* with a Cancel button and tries again every 20 s, without counting attempts, for up to
 20 minutes.
+
+### RD Gateway
+
+A device in a branch office or at home reaches the RDS deployment through its **RD Gateway**, the role that
+carries RDP over HTTPS (port 443), so that nothing but 443 is published on the Internet. Set `RDP_GATEWAY` to its
+public name, e.g. in `config\<hostname>.conf` of the devices that are outside, or in `common.conf` with
+`RDP_GATEWAY_USE=detect` for devices that move:
+
+```
+RDP_GATEWAY=rdgateway.example.com
+```
+
+- The broker and, after its redirect, the virtual machine are reached through the gateway with the **credentials of
+  the session**: the user signs in once. Who may connect, and to which servers, is decided by the policies of the
+  gateway (RD CAP and RD RAP).
+- **TCP only.** FreeRDP carries no UDP through a gateway (its UDP transport, port 3391, is not implemented) and
+  declines UDP as soon as a gateway is set, also when `detect` reaches a server on the local network straight.
+  `TRANSPORT=udp` is not enforced with a gateway. `/network:auto` stays: the server adapts frame rate and image
+  quality to the line.
+- **Certificate.** The gateway presents its HTTPS certificate: with `RDP_CERT=verify` it must be trusted by the device
+  (a public certificate, or your CA in the `ca/` folder of the site files).
+- **Kerberos** needs the domain controllers: outside the office, with no KDC proxy, use `RDP_AUTH=negotiate` (NTLM
+  when Kerberos cannot be reached) or `ntlm`.
+- The diagnostics of the device (settings, *Diagnostics*) test the gateway on its port instead of the brokers on
+  3389. A session that the server closes with code 1 counts as ended: through a gateway the device cannot ask the
+  virtual machine whether it still runs.
 
 ## USB
 
