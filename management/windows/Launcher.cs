@@ -1,7 +1,8 @@
 // OpenThinRDP Manager launcher: starts OpenThinRDP-Manager.ps1, next to this program, with Windows PowerShell and no
 // console window, so the manager can be pinned and started like any program, with the OpenThinRDP icon.
 // Arguments: those in <program name>.args next to it (one line, e.g. -Folder "\\fileserver\thinclients" -Language it),
-// then those given to the program. Built by build-launcher.ps1 with the C# compiler of .NET Framework (C# 5).
+// then those given to the program. A copy on the local disk finds the manager through <program name>.script.
+// Built by build-launcher.ps1 with the C# compiler of .NET Framework (C# 5).
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -14,10 +15,15 @@ static class Launcher {
     static int Main(string[] args) {
         string exe = Assembly.GetExecutingAssembly().Location, dir = Path.GetDirectoryName(exe);
         string ps1 = Path.Combine(dir, "OpenThinRDP-Manager.ps1");
+        // A copy of this program on the local disk (Windows shows the icon of a shortcut only for a local program):
+        // <program name>.script says where the manager is, e.g. \\fileserver\it\manager\OpenThinRDP-Manager.ps1
+        string scriptFile = Path.ChangeExtension(exe, ".script");
+        if (!File.Exists(ps1) && File.Exists(scriptFile)) ps1 = File.ReadAllText(scriptFile).Trim().Trim('"');
         if (!File.Exists(ps1)) {
-            MessageBox.Show("OpenThinRDP-Manager.ps1 was not found next to " + exe + ".", "OpenThinRDP Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("The manager was not found: " + ps1 + ".", "OpenThinRDP Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
+        dir = Path.GetDirectoryName(ps1);
         string extra = "", argsFile = Path.ChangeExtension(exe, ".args");
         if (File.Exists(argsFile)) extra = File.ReadAllText(argsFile).Replace('\r', ' ').Replace('\n', ' ').Trim();
         StringBuilder line = new StringBuilder("-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File ").Append(Quote(ps1));
