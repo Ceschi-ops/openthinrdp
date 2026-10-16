@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenThinRDP: the OpenVPN tunnel (VPN=openvpn), profile from the manager
+After=network-online.target openthinrdp-secrets.service
+Wants=network-online.target
+
+[Service]
+# started and stopped by /opt/openthinrdp/vpn.sh (apply): not enabled by itself
+ExecStart=/opt/openthinrdp/vpn.sh openvpn-run
+Restart=always
+RestartSec=15

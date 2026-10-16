@@ -18,6 +18,8 @@ mkdir -p "$OTR_LOG" "$OTR_LIB"
 
 H=$(hostname)
 IF=$(main_nic)
+# the VPN first: outside the office the management folder is reached through it
+[ "$(cfg VPN)" != off ] && "$OTR/vpn.sh" check
 RS=$(cfg MGMT_SHARE); SHARE=$(echo "$RS" | tr '\\' '/')
 IPC=$(ip -4 -o addr show dev "$IF" 2>/dev/null | awk '{print $4}' | head -1)
 # only an xfreerdp3 with /u: is a session (the kiosk also runs "xfreerdp3 --version")
@@ -64,6 +66,9 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   # manager shows which devices have not got the site key yet
   echo "UPDATE_KEY=$(cfg UPDATE_KEY)"
   echo "SITE_KEY=$(key_fingerprint "$OTR_ETC/update-key.asc" 2>/dev/null || echo none)"
+  # the VPN: its state, and the WireGuard public key to add as a peer on the server (never the private one)
+  echo "VPN=$("$OTR/vpn.sh" status 2>/dev/null)"
+  [ "$(cfg VPN)" = wireguard ] && echo "VPN_PUBLIC_KEY=$("$OTR/vpn.sh" pubkey 2>/dev/null)"
   # the account of the management folder (never the password): the manager checks what it may write there
   MA=$(sed -n 's/^username=//p' "$CRED" 2>/dev/null | head -1); MD=$(sed -n 's/^domain=//p' "$CRED" 2>/dev/null | head -1)
   case "$MA" in *\\*|*@*) MD="" ;; esac

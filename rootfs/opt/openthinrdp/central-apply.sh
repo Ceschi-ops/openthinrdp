@@ -16,7 +16,7 @@ HOSTF=$OTR_LIB/central-host.conf
 # value and quietly differ from the ones installed later.
 MANAGED=$OTR_LIB/central-managed
 # keys that only the file of a single device may set (they identify the device)
-HOST_ONLY="HOSTNAME DEFAULT_USER NETMODE IPADDR"
+HOST_ONLY="HOSTNAME DEFAULT_USER NETMODE IPADDR VPN_ADDRESS"
 KEYS="$(cfg_keys | tr '\n' ' ')WIFI_PSK MGMT_PASSWORD"
 # secrets: compared through their hash (save-config.sh --print), applied with the value of the central file
 SECRETS="WIFI_PSK MGMT_PASSWORD"

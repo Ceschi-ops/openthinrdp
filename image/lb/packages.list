@@ -43,6 +43,9 @@ vainfo
 # network, management, updates
 ifupdown
 dhcpcd-base
+# VPN for devices outside the office (VPN=wireguard|openvpn, vpn.sh)
+wireguard-tools
+openvpn
 wpasupplicant
 iw
 ethtool

@@ -549,6 +549,8 @@ diag_text(){
       else echo "Remote desktop  $h ($a): port 3389 $(diag_port "$a" 3389)"; fi
     done
     echo "Transport       $(cfg TRANSPORT), FreeRDP ${FRV:-?}$([ "$HASUDP" = 1 ] && echo ' with UDP')"
+    # the state of the tunnel as the last report saw it (vpn.sh runs as root)
+    [ "$(cfg VPN)" != off ] && echo "VPN             $(sed -n 's/^VPN=//p' /run/openthinrdp-status.txt 2>/dev/null | head -1)"
     s=$(cfg MGMT_SHARE)
     echo "Management      ${s:-none}${s:+   last report: $(tail -1 "$OTR_LOG/report.log" 2>/dev/null | cut -c1-90)}"
     echo

@@ -89,6 +89,25 @@ fi
 V[NTP]=$(get NTP | tr -s ' ,;' ' ' | sed 's/^ //; s/ $//')
 for t in ${V[NTP]}; do ipok "$t" || nameok "$t" || err "$V_NTP $t"; done
 
+# --- VPN (vpn.sh). WireGuard needs the server, its key and the address of the device; OpenVPN its profile, which the
+# manager sends over SSH (it is not a setting). Missing WireGuard settings are no error: VPN_ADDRESS is set per
+# device, and a device without it reports "settings incomplete" instead of refusing the whole central configuration
+cidrok(){ local a=${1%/*} p=${1#*/}; [ "$p" != "$1" ] && ipok "$a" && [[ $p =~ ^[0-9]{1,2}$ ]] && [ "$p" -le 32 ]; }
+case "$(low "$(get VPN)")" in wireguard|wg) V[VPN]=wireguard ;; openvpn|ovpn) V[VPN]=openvpn ;; *) V[VPN]=off ;; esac
+V[VPN_SERVER]=$(get VPN_SERVER | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+if [ -n "${V[VPN_SERVER]}" ]; then
+  vh=${V[VPN_SERVER]%:*}; vp=${V[VPN_SERVER]##*:}; [ "$vh" = "${V[VPN_SERVER]}" ] && vp=51820
+  { { ipok "$vh" || nameok "$vh"; } && [[ $vp =~ ^[0-9]{1,5}$ ]] && [ "$vp" -ge 1 ] && [ "$vp" -le 65535 ]; } || err "$V_VPN_SERVER"
+fi
+V[VPN_SERVER_KEY]=$(get VPN_SERVER_KEY | tr -d '[:space:]')
+[ -z "${V[VPN_SERVER_KEY]}" ] || [[ ${V[VPN_SERVER_KEY]} =~ ^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$ ]] || err "$V_VPN_KEY"
+V[VPN_ADDRESS]=$(get VPN_ADDRESS | tr -d '[:space:]')
+[ -z "${V[VPN_ADDRESS]}" ] || cidrok "${V[VPN_ADDRESS]}" || err "$V_VPN_ADDRESS"
+V[VPN_ROUTES]=$(get VPN_ROUTES | tr -s ' ,;' ' ' | sed 's/^ //; s/ $//')
+for t in ${V[VPN_ROUTES]}; do cidrok "$t" || err "$V_VPN_ROUTE $t"; done
+V[VPN_DNS]=$(get VPN_DNS | tr -s ' ,;' ' ' | sed 's/^ //; s/ $//')
+for t in ${V[VPN_DNS]}; do ipok "$t" || err "$V_VPN_DNS $t"; done
+
 # --- Wi-Fi: the key lives ONLY in the TPM or in a root-only file (lib/secrets.sh); an empty password keeps the saved one
 WCF=$(secret_path wifi.conf)
 V[WIFI]=$(onoff "$(get WIFI)"); V[WIFI_SSID]=$(get WIFI_SSID)

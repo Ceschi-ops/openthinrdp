@@ -100,6 +100,57 @@ own input is used. A device listed in `USB_REDIRECT` is still passed whole.
 | `WIFI` | `off` | `on` = use Wi-Fi when no cable is connected |
 | `WIFI_SSID`, `WIFI_COUNTRY` | | network name, regulatory country (two letters) |
 | `WIFI_PSK` | | password or 64-hex key. Only in central settings or the dialog; stored only in `/etc/wpa_supplicant` |
+| `VPN` | `off` | `wireguard` or `openvpn`: the device's own VPN, for devices outside the office. See [VPN](#vpn) |
+| `VPN_SERVER`, `VPN_SERVER_KEY` | | WireGuard: the server, `name[:port]` (51820 when no port), and its public key |
+| `VPN_ADDRESS` | | WireGuard: the address of this device in the tunnel with its prefix, e.g. `10.8.0.15/24`. One per device: ignored in `common.conf` |
+| `VPN_ROUTES` | | networks of the office through the tunnel (CIDR, space separated); empty = all the traffic (WireGuard). With OpenVPN, added to the routes the server pushes |
+| `VPN_DNS` | | DNS servers of the office, in front of the others while the tunnel is up. Empty: WireGuard keeps the DNS it has, OpenVPN takes the ones the server pushes |
+
+### VPN
+
+The other way for a device outside the office: its own tunnel to the office network, WireGuard or OpenVPN. Through
+it go the broker, the management folder (status, central configuration, updates) and the DNS of the office, so the
+device works as it does inside. Compared with the [RD Gateway](#rd-gateway): no gateway server to publish, and inside
+WireGuard the session **keeps UDP**; a VPN server is needed instead, often the firewall of the office.
+
+**WireGuard**, set in the manager or in the configuration files:
+
+```
+# config\common.conf
+VPN=wireguard
+VPN_SERVER=vpn.example.com
+VPN_SERVER_KEY=<public key of the server>
+VPN_ROUTES=192.168.0.0/23
+VPN_DNS=192.168.1.10
+
+# config\<hostname>.conf
+VPN_ADDRESS=10.8.0.15/24
+```
+
+- The **private key is made on the device** at the first start with `VPN=wireguard` and never leaves it (a secret,
+  in the TPM when there is one). Its public key is in the status report (`VPN_PUBLIC_KEY`); in the manager, the
+  Summary of the device shows it, and a double click or Ctrl+C on that row copies the `[Peer]` block to add on the
+  server (the public key and `AllowedIPs` = the address of the device /32). Until the server knows it, the state
+  says *no answer from the server yet*.
+- `VPN_ROUTES` empty sends **all the traffic** through the tunnel: the server itself stays on the local way, the
+  default route of the local network stays and is used again as soon as the tunnel goes.
+- A server name is resolved again when the tunnel stays silent for 3 minutes (a dynamic address). The tunnel sends a
+  keepalive every 25 s, so that a NAT router at home keeps it open.
+
+**OpenVPN**: `VPN=openvpn`, and the profile of the device (the `.ovpn` file the VPN provider or the firewall gives)
+sent from the manager with **VPN profile...** (device header, shown when `VPN=openvpn`), with the user and password
+when the profile asks for them (`auth-user-pass`).
+
+- Profile and password go **over SSH** with the key of the vault (`SSH=on` on the device) and are secrets of the
+  device: they never go through the management folder, which every device can read, and never on a command line.
+  The profile is refused when it would run commands or write files (`script-security`, `up`/`down`, `plugin`,
+  `management`, `log`...): the scripts that run are the device's own.
+- The tunnel restarts by itself when it drops. A **password the server refuses** is tried again only after an hour
+  (or as soon as the manager sends new credentials): retried every few seconds, it would lock a domain account.
+- DNS servers pushed by the server (`dhcp-option DNS`) are used unless `VPN_DNS` names others.
+
+The state of the VPN is in the report (`VPN=`), in the manager (Summary, Network) and in the diagnostics of the
+device. Events: *VPN: ...* in the event log.
 
 ## Management
 

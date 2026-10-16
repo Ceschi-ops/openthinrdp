@@ -68,7 +68,8 @@ numbers: [docs/udp.md](docs/udp.md#on-a-lossy-line).
 - You publish desktops with **Windows Remote Desktop Services**: RD Connection Broker with session hosts or a
   Hyper-V VDI collection. Or there is no broker at all: each device connects to one Windows PC or server (set
   its name instead of the broker), e.g. a reception desk that works on the PC in the office. Devices outside the
-  office go through the **RD Gateway** over HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)).
+  office go through the **RD Gateway** over HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)) or their own
+  **VPN**, WireGuard or OpenVPN ([`VPN`](docs/configuration.md#vpn)).
 - You have **x86-64 PCs or thin clients with UEFI** (Secure Boot works) and want to keep them useful without a
   licence per device.
 - You want to **try RDP over UDP** on real clients, or help bring it into FreeRDP.
@@ -262,8 +263,6 @@ their owners; the comparison reflects public information and our understanding, 
 Ideas we would like to build, roughly in this order. Tell us in an issue which ones you need, or send a pull
 request:
 
-- **VPN**: WireGuard and OpenVPN, so a device at home or in a branch office reaches the broker on its own.
-- **RD Gateway**: Remote Desktop over HTTPS from outside the network, without a VPN.
 - **Wi-Fi with 802.1X** (WPA-Enterprise) and wired 802.1X.
 - **Network installation (PXE)** for many devices at once.
 - **More tested hardware** and more languages (one file each).
