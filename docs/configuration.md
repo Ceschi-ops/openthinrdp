@@ -59,10 +59,10 @@ RDP_GATEWAY=rdgateway.example.com
 - The broker and, after its redirect, the virtual machine are reached through the gateway with the **credentials of
   the session**: the user signs in once. Who may connect, and to which servers, is decided by the policies of the
   gateway (RD CAP and RD RAP).
-- **TCP only.** FreeRDP carries no UDP through a gateway (its UDP transport, port 3391, is not implemented) and
-  declines UDP as soon as a gateway is set, also when `detect` reaches a server on the local network straight.
-  `TRANSPORT=udp` is not enforced with a gateway. `/network:auto` stays: the server adapts frame rate and image
-  quality to the line.
+- **TCP through the gateway.** FreeRDP carries no UDP through a gateway (its UDP transport, port 3391, is not
+  implemented). With `detect`, a server reached straight on the local network keeps UDP (since 0.1.15; before, UDP
+  was declined as soon as a gateway was set). `TRANSPORT=udp` is not enforced with a gateway. `/network:auto` stays:
+  the server adapts frame rate and image quality to the line.
 - **Certificate.** The gateway presents its HTTPS certificate: with `RDP_CERT=verify` it must be trusted by the device
   (a public certificate, or your CA in the `ca/` folder of the site files).
 - **Kerberos** needs the domain controllers: outside the office, with no KDC proxy, use `RDP_AUTH=negotiate` (NTLM
