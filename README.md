@@ -186,6 +186,14 @@ on the shared folder the devices report to. No server, no agent, no database: wh
   ([details](docs/management.md#a-fleet-on-its-own-key)).
 - **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
   GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
+- **Fits any screen**, from a 27" monitor down to a laptop with display scaling: every column stays in view, rows
+  of buttons wrap, the top bar keeps only its icons when the room is short. `build-launcher.ps1` makes an `.exe`
+  with the OpenThinRDP icon to pin to the taskbar, which starts the manager without a console window
+  ([details](docs/management.md#central-settings)).
+
+<p align="center">
+<img src="docs/screenshots/manager-vault.png" alt="Vault page of the manager: the access code, the SSH key of the manager, the key that signs the updates" width="70%">
+</p>
 
 Every change is written to a change log in the folder. Guide: [docs/management.md](docs/management.md).
 
