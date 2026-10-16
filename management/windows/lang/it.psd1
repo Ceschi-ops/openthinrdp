@@ -566,4 +566,46 @@
   Label_RDP_GATEWAY_USE  = 'Uso del gateway'
   Help_RDP_GATEWAY_USE   = "always = ogni connessione attraverso l'RD Gateway; detect = un server nella rete locale direttamente, gli altri attraverso il gateway: per una postazione che si sposta tra la sede e fuori. Con un gateway impostato la sessione va in TCP in entrambi i casi: FreeRDP rifiuta l'UDP appena c'è un gateway configurato."
   ErrHostPort            = '{0}: un nome o un indirizzo, eventualmente :porta (1-65535)'
+  # ---- VPN ----
+  Label_VPN              = 'VPN'
+  Help_VPN               = "Per una postazione fuori sede: off, wireguard o openvpn. Nel tunnel passano il broker, la cartella di gestione e il DNS della sede; dentro WireGuard la sessione tiene l'UDP. WireGuard: le impostazioni qui sotto; la chiave privata nasce sulla postazione, la sua chiave pubblica è nel Riepilogo (doppio clic o Ctrl+C sulla riga copia il blocco [Peer] per il server). OpenVPN: il profilo va alla postazione col pulsante Profilo VPN... (via SSH, mai dalla cartella)."
+  Label_VPN_SERVER       = 'Server VPN (WireGuard)'
+  Help_VPN_SERVER        = 'Il server WireGuard, nome[:porta] (51820 se manca la porta). Un nome viene risolto di nuovo quando il tunnel resta muto (indirizzo dinamico).'
+  Label_VPN_SERVER_KEY   = 'Chiave pubblica del server (WireGuard)'
+  Help_VPN_SERVER_KEY    = 'La chiave pubblica del server WireGuard: 44 caratteri che finiscono con =, come la danno wg show o il firewall.'
+  Label_VPN_ADDRESS      = 'Indirizzo nel tunnel (WireGuard)'
+  Help_VPN_ADDRESS       = "L'indirizzo di QUESTA postazione nel tunnel con il prefisso, es. 10.8.0.15/24: uno per postazione, mai preso dalle impostazioni comuni. Il server riconosce la postazione dalla sua chiave pubblica con questo indirizzo /32."
+  Label_VPN_ROUTES       = 'Reti attraverso la VPN'
+  Help_VPN_ROUTES        = 'Reti della sede attraverso il tunnel (CIDR, separate da spazi), es. 192.168.0.0/23. Vuoto = tutto il traffico (WireGuard). Con OpenVPN si aggiungono alle rotte che manda il server.'
+  Label_VPN_DNS          = 'DNS della VPN'
+  Help_VPN_DNS           = 'Server DNS della sede, messi davanti finché il tunnel è su (col dominio come dominio di ricerca). Vuoto = WireGuard tiene i DNS che ha; OpenVPN prende quelli che manda il server.'
+  ErrWgKey               = '{0}: una chiave WireGuard è di 44 caratteri e finisce con = (wg pubkey)'
+  ErrCidr                = '{0}: un indirizzo con il prefisso, es. 10.8.0.15/24'
+  ErrCidrValue           = "{0}: non è una rete con il prefisso (es. 192.168.0.0/23): '{1}'"
+  SumVpn                 = 'VPN'
+  SumVpnKey              = 'Chiave pubblica VPN'
+  SumCopied              = 'Copiato: {0}'
+  BtnVpnProfile          = 'Profilo VPN...'
+  TipVpnProfile          = 'Manda a questa postazione il profilo OpenVPN (.ovpn) con utente e password, via SSH (servono SSH = on e la chiave del gestore nella cassaforte).'
+  VpnTitle               = 'Profilo VPN - {0}'
+  VpnNote                = "Il profilo OpenVPN (.ovpn, come lo dà il fornitore della VPN o il firewall) e l'utente e la password che chiede vanno a questa postazione via SSH, con la chiave della cassaforte. Sulla postazione sono segreti (nel TPM quando c'è): non passano mai dalla cartella di gestione. Per cambiare solo utente e password, lasciare vuoto il profilo."
+  VpnNow                 = 'VPN adesso: {0}'
+  VpnProfile             = 'Profilo'
+  VpnUser                = 'Utente'
+  VpnPassword            = 'Password'
+  VpnAuthHint            = "Solo se il profilo li chiede (auth-user-pass). Una password che il server rifiuta viene riprovata dopo un'ora, per non bloccare l'account."
+  BtnVpnSend             = 'Invia'
+  VpnChooseTitle         = 'Profilo OpenVPN'
+  VpnProfileRefused      = '{0} non viene inviato: {1}'
+  VpnNothing             = 'Scegliere un profilo, oppure scrivere utente e password.'
+  VpnErrAuth             = 'Utente e password: tutti e due, una riga ciascuno.'
+  VpnNoAuthConfirm       = 'Il profilo chiede utente e password (auth-user-pass) e qui non ci sono: inviarlo lo stesso? La postazione tiene quelli che ha.'
+  VpnLogAuth             = 'utente {0}'
+  VpnFailed              = 'Non inviato: {0}'
+  LogVpnProfile          = 'profilo VPN di {0}: {1}'
+  VpnDone                = 'Inviato a {0}: il tunnel riparte con questo. Lo stato è nel Riepilogo al prossimo rapporto (entro 5 minuti).'
+  VpnErrTooBig           = 'il file supera 256 KB: non è un profilo OpenVPN'
+  VpnErrNotProfile       = 'non è un profilo client OpenVPN (manca la riga remote o client)'
+  VpnErrCommands         = "il profilo esegue comandi o scrive file ('{0}'): togliere quella riga"
+  VpnErrOldVersion       = 'la postazione ha una versione senza VPN: aggiornarla prima (0.1.14 o successiva)'
 }

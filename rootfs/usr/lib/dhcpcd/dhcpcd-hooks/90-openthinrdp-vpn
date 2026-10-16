@@ -1,0 +1,2 @@
+# OpenThinRDP: after DHCP wrote resolv.conf (hook 20-resolv.conf), the DNS of the VPN tunnel in front again
+if [ -x /opt/openthinrdp/vpn.sh ]; then /opt/openthinrdp/vpn.sh dns >/dev/null 2>&1 || true; fi

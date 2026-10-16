@@ -5,6 +5,12 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
+- **VPN: WireGuard and OpenVPN** ([#44](https://github.com/OpenThinRdp/openthinrdp/issues/44)). A device outside
+  the office reaches the broker, the management folder and the DNS of the office through its own tunnel
+  (`VPN=wireguard|openvpn`); inside WireGuard the session keeps UDP. The WireGuard key is made on the device and only
+  its public key is reported (the manager copies the `[Peer]` block for the server); the OpenVPN profile and its
+  password go to the device from the manager over SSH, as secrets. A password the server refuses is not retried for
+  an hour, so that the account is not locked.
 - **RD Gateway: `RDP_GATEWAY`** ([#42](https://github.com/OpenThinRdp/openthinrdp/issues/42)). Devices outside the
   office connect through the Remote Desktop Gateway of the deployment, over HTTPS, with the credentials of the
   session; `RDP_GATEWAY_USE=detect` reaches a server on the local network straight. Through a gateway the session

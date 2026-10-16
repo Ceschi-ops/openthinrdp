@@ -173,4 +173,8 @@ if [ "$1" = now ]; then
 elif [ "$1" = boot ]; then
   for i in $ADDED; do setsid ifup "$i" 9>&- >/dev/null 2>&1 < /dev/null & done
 fi
+
+# --- VPN (VPN=wireguard|openvpn|off): in the background, the server's name may need the network just restarted;
+# report.sh (vpn.sh check) tries again every 5 minutes
+setsid "$OTR/vpn.sh" apply 9>&- >/dev/null 2>&1 < /dev/null &
 exit 0

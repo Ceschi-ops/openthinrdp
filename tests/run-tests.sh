@@ -125,6 +125,9 @@ $OTR/central-apply.sh
 ok "central applied" 'grep -q "^applied" $OTR_LIB/central-status'
 ok "values stored normalized" 'grep -qx "USB_MODE=disks" $OTR_CONF && grep -qx "USB_REDIRECT=1eaf:0009 346d:5678" $OTR_CONF'
 ok "HOSTNAME ignored in common.conf" '! grep -q "^HOSTNAME" $OTR_CONF && [ "$(hostname)" != not-allowed-here ]'
+printf 'VPN_ADDRESS=10.8.0.99/24\r\n' >> $OTR_LIB/central-common.conf; $OTR/central-apply.sh
+ok "VPN_ADDRESS ignored in common.conf (one per device)" '! grep -q "^VPN_ADDRESS" $OTR_CONF'
+sed -i '/^VPN_ADDRESS/d' $OTR_LIB/central-common.conf; $OTR/central-apply.sh
 $OTR/central-apply.sh
 ok "second run: in line, no loop" 'grep -q "^in line" $OTR_LIB/central-status'
 N=$(grep -c "central configuration applied" $OTR_EVENTS)
@@ -309,6 +312,42 @@ ok "connect with RDP_GATEWAY: through it, same credentials, no UDP offered" 'gre
 ok "connect with RDP_GATEWAY_USE=detect: the gateway only when needed" 'grep -qx "/gateway:g:rdg.example.test:8443,type:auto,usage-method:detect" /tmp/frdp.detect && ! grep -qx -- "-multitransport" /tmp/frdp.detect && grep -qx "/network:auto" /tmp/frdp.detect'
 ok "through a gateway the VM is not probed after a drop" 'grep -qx "not asked" /tmp/frdp.vm'
 rm -f /tmp/frdp.* /tmp/conf.save /tmp/kiosk.vm
+
+# --- VPN (vpn.sh): validation, the DNS of the tunnel in front of resolv.conf and back, the OpenVPN profile and password
+WGK=xZdCoEDtS1ifk4PSADylZOMj2EMm3Ik7bFRPoRxrxAo=
+ok "VPN: WireGuard settings accepted, wg and ovpn as aliases" 'check x "$(printf "VPN=WG\nVPN_SERVER=vpn.example.com\nVPN_SERVER_KEY=%s\nVPN_ADDRESS=10.8.0.15/24\nVPN_ROUTES=192.168.0.0/23, 10.1.0.0/16\nVPN_DNS=192.168.1.10" $WGK)" && printf "VPN=WG\nVPN_ROUTES=192.168.0.0/23, 10.1.0.0/16\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "VPN=wireguard" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "VPN_ROUTES=192.168.0.0/23 10.1.0.0/16" && printf "VPN=ovpn\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "VPN=openvpn"'
+ok "VPN: anything else is off" 'printf "VPN=yes\n" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "VPN=off"'
+ok "VPN: a bad server, key, address, route or DNS is refused" '! check x "VPN_SERVER=vpn example" && ! check x "VPN_SERVER=vpn.example.com:0" && ! check x "VPN_SERVER_KEY=abc=" && ! check x "VPN_SERVER_KEY=${WGK%??}B=" && ! check x "VPN_ADDRESS=10.8.0.15" && ! check x "VPN_ADDRESS=10.8.0.15/33" && ! check x "VPN_ROUTES=192.168.0.0" && ! check x "VPN_DNS=dc1"'
+ok "VPN: WireGuard without its settings is no error (the address comes per device)" 'check x "VPN=wireguard"'
+(
+  RUN=/tmp/vpnrun; RES=/tmp/vpnres; OURS='# OpenThinRDP VPN (vpn.sh)'; DOM=example.test; mkdir -p $RUN
+  eval "$(sed -n '/^res_write(){/,/^}/p; /^dns_on(){/,/^}/p; /^dns_off(){/,/^}/p' $OTR/vpn.sh)"
+  printf 'search lan\nnameserver 192.0.2.1\nnameserver 192.0.2.2\n' > $RES; cp $RES /tmp/vpnres.orig
+  dns_on 10.8.0.1 192.0.2.2; cp $RES /tmp/vpnres.on; cp $RUN/resolv.before /tmp/vpnres.before1
+  dns_on 10.8.0.1 192.0.2.2; cmp -s $RES /tmp/vpnres.on && cmp -s $RUN/resolv.before /tmp/vpnres.before1 && echo same > /tmp/vpnres.again
+  dns_off; cp $RES /tmp/vpnres.off
+  printf 'nameserver 192.0.2.1\n' > $RES; dns_on 10.8.0.1; printf 'nameserver 198.51.100.1\n' > $RES; dns_on 10.8.0.1; cp $RES /tmp/vpnres.dhcp; dns_off; cp $RES /tmp/vpnres.dhcpoff
+  dns_on; cp $RES /tmp/vpnres.none
+)
+ok "VPN DNS: the tunnel's first, the earlier ones after (no duplicate), the domain before the local search" '[ "$(grep ^nameserver /tmp/vpnres.on | tr "\n" " ")" = "nameserver 10.8.0.1 nameserver 192.0.2.2 nameserver 192.0.2.1 " ] && grep -qx "search example.test lan" /tmp/vpnres.on && head -1 /tmp/vpnres.on | grep -qx "# OpenThinRDP VPN (vpn.sh)"'
+ok "VPN DNS: applied again, nothing changes and the saved file stays the original" '[ -f /tmp/vpnres.again ]'
+ok "VPN DNS: the tunnel down, resolv.conf exactly as before" 'cmp -s /tmp/vpnres.off /tmp/vpnres.orig'
+ok "VPN DNS: DHCP rewrote it: the new servers after the tunnel's, and back to them at the end" 'grep -qx "nameserver 198.51.100.1" /tmp/vpnres.dhcp && [ "$(grep -m1 ^nameserver /tmp/vpnres.dhcp)" = "nameserver 10.8.0.1" ] && [ "$(cat /tmp/vpnres.dhcpoff)" = "nameserver 198.51.100.1" ]'
+ok "VPN DNS: no DNS of the tunnel, resolv.conf untouched" '[ "$(cat /tmp/vpnres.none)" = "nameserver 198.51.100.1" ]'
+rm -rf /tmp/vpnrun /tmp/vpnres*
+P='client\r\ndev tun\r\nremote vpn.example.com 1194\r\nauth-user-pass\r\n<key>\r\nKEY\r\n</key>\r\n'
+ok "VPN profile: one that runs a command is refused, nothing stored" 'printf "${P}up /tmp/x.sh\r\n" | $OTR/vpn.sh profile | grep -q "^ERROR=" && printf "${P}  Script-Security 2\n" | $OTR/vpn.sh profile | grep -q "^ERROR=" && [ ! -e $OTR_ETC/vpn/openvpn.conf ]'
+ok "VPN profile: a file that is no client profile is refused" 'echo hello | $OTR/vpn.sh profile | grep -q "^ERROR=not an OpenVPN"'
+ok "VPN profile: stored root-only, without the Windows line ends and the UTF-8 mark" 'printf "\xef\xbb\xbf$P" | $OTR/vpn.sh profile | grep -qx OK=profile && [ "$(stat -c %a $OTR_ETC/vpn/openvpn.conf)" = 600 ] && head -1 $OTR_ETC/vpn/openvpn.conf | grep -qx client && ! grep -q $'"'"'\r'"'"' $OTR_ETC/vpn/openvpn.conf'
+ok "VPN password: two lines needed, stored root-only without the UTF-8 mark" '! printf "user\n" | $OTR/vpn.sh auth >/dev/null && printf "\xef\xbb\xbfmario\r\npass word\r\n" | $OTR/vpn.sh auth | grep -qx OK=auth && [ "$(head -1 $OTR_ETC/vpn/openvpn.auth)" = mario ] && [ "$(sed -n 2p $OTR_ETC/vpn/openvpn.auth)" = "pass word" ] && [ "$(stat -c %a $OTR_ETC/vpn/openvpn.auth)" = 600 ]'
+mkdir -p /usr/local/bin; printf '#!/bin/bash\necho "$*" > /tmp/ovpn.args\necho "AUTH: Received control message: AUTH_FAILED"\n' > /usr/local/bin/openvpn; chmod 755 /usr/local/bin/openvpn
+echo VPN_ROUTES=192.168.0.0/23 >> $OTR_CONF; : > $OTR_EVENTS
+ok "VPN OpenVPN: profile, password, routes and the scripts of vpn.sh on the command line" '$OTR/vpn.sh openvpn-run >/dev/null; grep -q -- "--config $OTR_ETC/vpn/openvpn.conf --auth-user-pass $OTR_ETC/vpn/openvpn.auth --route 192.168.0.0 255.255.254.0" /tmp/ovpn.args && grep -q -- "--auth-retry none" /tmp/ovpn.args && grep -q -- "--up /opt/openthinrdp/vpn.sh openvpn-up" /tmp/ovpn.args'
+ok "VPN OpenVPN: a refused password is not tried again at once (account lockout)" '[ -f /run/openthinrdp/vpn/openvpn.authfail ] && grep -q "refused by the server: next try in an hour" $OTR_EVENTS'
+ok "VPN OpenVPN: new credentials from the manager clear the wait" 'printf "mario\nnew\n" | $OTR/vpn.sh auth >/dev/null && [ ! -e /run/openthinrdp/vpn/openvpn.authfail ]'
+sed -i '/^VPN_ROUTES=/d' $OTR_CONF; rm -rf /usr/local/bin/openvpn /tmp/ovpn.args $OTR_ETC/vpn /run/openthinrdp/vpn
+ok "VPN: status off when off; WireGuard without its settings says what is missing" '[ "$($OTR/vpn.sh status)" = off ] && echo VPN=wireguard >> $OTR_CONF && $OTR/vpn.sh apply && $OTR/vpn.sh status | grep -q "VPN_SERVER, VPN_SERVER_KEY and VPN_ADDRESS are needed"'
+sed -i '/^VPN=/d' $OTR_CONF; $OTR/vpn.sh apply; rm -rf /run/openthinrdp/vpn
 
 # --- Kerberos: a server's own name instead of an alias shared by two brokers, or an address
 printf '%s\n' '10.9.9.1 broker1.example.test broker1' '10.9.9.2 broker2.example.test broker2' \

@@ -16,6 +16,9 @@ declare -A OTR_SECRET_FILES=(
   [ssh_host_ed25519_key]=/etc/ssh/ssh_host_ed25519_key
   [ssh_host_ecdsa_key]=/etc/ssh/ssh_host_ecdsa_key
   [ssh_host_rsa_key]=/etc/ssh/ssh_host_rsa_key
+  [vpn-wg.key]=$OTR_ETC/vpn/wg.key
+  [vpn-openvpn.conf]=$OTR_ETC/vpn/openvpn.conf
+  [vpn-openvpn.auth]=$OTR_ETC/vpn/openvpn.auth
 )
 OTR_SECRET_LINKED="smb.cred wifi.conf"
 

@@ -24,7 +24,9 @@ if [ -f packages.list ]; then
   if [ -n "${MISSING// /}" ]; then
     log "installing missing packages: $MISSING"
     apt-get -o DPkg::Lock::Timeout=300 update -q >/dev/null 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q $MISSING >/dev/null 2>&1 || log "WARNING: some packages could not be installed: $MISSING"
+    # without the recommended packages, as the image is built: wireguard-tools recommends wireguard-modules, which on
+    # a device without a Debian kernel package would bring a second kernel
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q --no-install-recommends $MISSING >/dev/null 2>&1 || log "WARNING: some packages could not be installed: $MISSING"
   fi
 fi
 

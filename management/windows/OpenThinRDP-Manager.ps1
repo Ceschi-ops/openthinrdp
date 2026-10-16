@@ -202,7 +202,7 @@ $script:MarkSet = Get-Text 'MarkSet'
 $script:Utf8 = New-Object System.Text.UTF8Encoding $false
 $script:StaleMinutes = 15     # same threshold as SUMMARY.csv written by the devices: over it = off or offline
 # keys that identify a device: central-apply.sh ignores them in common.conf
-$script:HostOnly = @('HOSTNAME', 'DEFAULT_USER', 'NETMODE', 'IPADDR')
+$script:HostOnly = @('HOSTNAME', 'DEFAULT_USER', 'NETMODE', 'IPADDR', 'VPN_ADDRESS')
 $script:SettingsFile = Join-Path $env:APPDATA 'OpenThinRDP\manager.json'
 
 function Set-ManagementFolder([string]$path) {
@@ -259,6 +259,12 @@ $script:Settings = @(
   (New-Setting 'DNS1'                'ip'         '')
   (New-Setting 'DNS2'                'ip'         '')
   (New-Setting 'NTP'                 'names'      '')
+  (New-Setting 'VPN'                 'choice'     'off' @('off', 'wireguard', 'openvpn'))
+  (New-Setting 'VPN_SERVER'          'hostport'   '')
+  (New-Setting 'VPN_SERVER_KEY'      'wgkey'      '')
+  (New-Setting 'VPN_ADDRESS'         'cidr'       '')
+  (New-Setting 'VPN_ROUTES'          'cidrs'      '')
+  (New-Setting 'VPN_DNS'             'ips'        '')
   (New-Setting 'WIFI'                'choice'     'off' @('off', 'on'))
   (New-Setting 'WIFI_SSID'           'ssid'       '')
   (New-Setting 'WIFI_COUNTRY'        'country'    '')
@@ -316,6 +322,7 @@ $script:Rx = @{
   Logo       = '^(/[A-Za-z0-9._/-]+\.png)?$'
   Color      = '^#[0-9a-fA-F]{6}$'
   Hex64      = '^[0-9a-fA-F]{64}$'
+  WgKey      = '^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$'
   SshKey     = '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( .*)?$'
 }
 function Test-Ip([string]$s) {
@@ -323,6 +330,8 @@ function Test-Ip([string]$s) {
   foreach ($i in 1..4) { if ([int]$Matches[$i] -gt 255) { return $false } }
   $true
 }
+# a network or an address with its prefix: 192.168.0.0/23 (as cidrok in save-config.sh)
+function Test-Cidr([string]$s) { ($s -cmatch '^([0-9.]+)/([0-9]{1,2})$') -and (Test-Ip $Matches[1]) -and [int]$Matches[2] -le 32 }
 function ConvertTo-IpNumber([string]$s) { $p = $s.Split('.'); [uint64]$p[0] * 16777216 + [uint64]$p[1] * 65536 + [uint64]$p[2] * 256 + [uint64]$p[3] }
 function Test-Mask([string]$s) {
   if (-not (Test-Ip $s)) { return $false }
@@ -347,6 +356,10 @@ function Test-SettingValue([string]$key, [string]$v) {
     # a name or an address, optionally :port (as save-config.sh on the device)
     'hostport'   { if ($v -ne '') { $h = $v; $p = 443; if ($v -match '^(.+):(\d{1,5})$') { $h = $Matches[1]; $p = [int]$Matches[2] }
                    if ((-not (Test-Ip $h) -and $h -cnotmatch $script:Rx.Name) -or $p -lt 1 -or $p -gt 65535) { return (Get-Text 'ErrHostPort' $L) } } }
+    'wgkey'      { if ($v -ne '' -and $v -cnotmatch $script:Rx.WgKey) { return (Get-Text 'ErrWgKey' $L) } }
+    'cidr'       { if ($v -ne '' -and -not (Test-Cidr $v)) { return (Get-Text 'ErrCidr' $L) } }
+    'cidrs'      { foreach ($t in (Split-List $v)) { if (-not (Test-Cidr $t)) { return (Get-Text 'ErrCidrValue' $L $t) } } }
+    'ips'        { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t)) { return (Get-Text 'ErrListValue' $L $t) } } }
     'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrListValue' $L $t) } } }
     'collection' { if ($v -cnotmatch $script:Rx.Collection) { return (Get-Text 'ErrCollection') } }
     'repo'       { if ($v -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { return (Get-Text 'ErrRepo') } }
@@ -387,7 +400,7 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
     $l = $v.ToLower()
     if ($s.Choices -contains $l) { return $l }
     $alias = @{ NETMODE = @{ statico = 'static' }; USB_MODE = @{ dischi = 'disks' }; WEB_BUTTON = @{ portale = 'app'; portal = 'app'; chrome = 'browser'; chromium = 'browser' }
-      RDP_GATEWAY_USE = @{ rileva = 'detect'; auto = 'detect' } }
+      RDP_GATEWAY_USE = @{ rileva = 'detect'; auto = 'detect' }; VPN = @{ wg = 'wireguard'; ovpn = 'openvpn' } }
     if ($key -in 'WIFI', 'SSH', 'REMOTE_SCREEN', 'SECURITY_UPDATES', 'TPM_SECRETS') { if ($l -in 'yes', 'true', '1', 'si') { return 'on' }; return 'off' }
     if ($alias.ContainsKey($key) -and $alias[$key].ContainsKey($l)) { return $alias[$key][$l] }
     return $s.Choices[0]
@@ -395,6 +408,10 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
   switch ($s.Type) {
     'names'     { return (Split-List $v) -join ' ' }
     'urls'      { return (Split-List $v) -join ' ' }
+    'cidrs'     { return (Split-List $v) -join ' ' }
+    'ips'       { return (Split-List $v) -join ' ' }
+    'wgkey'     { return $v -replace '\s', '' }
+    'cidr'      { return $v -replace '\s', '' }
     'usb'       { return ((Split-List $v) -join ' ').ToLower() }
     'country'   { return $v.ToUpper() }
     'lang'      { return $v.ToLower() }
@@ -662,6 +679,51 @@ function Invoke-DeviceSsh([string]$ip, [string]$command, [string]$key, [string]$
   $ErrorActionPreference = 'Continue'
   $out = & ssh.exe -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 @(Get-HostKeyArgs $name) "otradmin@$ip" $command 2>&1
   @{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
+}
+# the same with $data on its standard input: secrets (a VPN profile with its private key, a password) never go on a
+# command line, which every account of the device can read (ps) while it runs
+function Invoke-DeviceSshInput([string]$ip, [string]$command, [string]$key, [string]$name, [string]$data) {
+  $q = { param($a) if ($a -match '[\s"]') { '"' + ($a -replace '"', '\"') + '"' } else { $a } }
+  $psi = New-Object System.Diagnostics.ProcessStartInfo 'ssh.exe'
+  $psi.Arguments = (@('-i', $key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8') + @(Get-HostKeyArgs $name) + @("otradmin@$ip", $command) |
+    ForEach-Object { & $q $_ }) -join ' '
+  $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+  $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+  # the input of ssh.exe in the encoding of the console: without the UTF-8 mark .NET would otherwise write first
+  $ie = $null; try { $ie = [Console]::InputEncoding; [Console]::InputEncoding = $script:Utf8 } catch { }
+  try { $pr = [System.Diagnostics.Process]::Start($psi) } finally { if ($ie) { try { [Console]::InputEncoding = $ie } catch { } } }
+  $o = $pr.StandardOutput.ReadToEndAsync(); $e = $pr.StandardError.ReadToEndAsync()
+  $b = $script:Utf8.GetBytes($data); $pr.StandardInput.BaseStream.Write($b, 0, $b.Length); $pr.StandardInput.Close()
+  if (-not $pr.WaitForExit(60000)) { try { $pr.Kill() } catch { } }
+  $pr.WaitForExit()
+  @{ Code = $pr.ExitCode; Text = (($o.Result + "`n" + $e.Result).Trim()) }
+}
+# An OpenVPN profile as vpn.sh will take it ($null = good, else the reason): a client profile, and nothing in it that
+# runs commands or writes files on the device
+function Test-OvpnProfile([string]$text) {
+  if ($text.Length -gt 262144) { return (Get-Text 'VpnErrTooBig') }
+  if ($text -notmatch '(?m)^[ \t]*(remote|client)([ \t]|\r?$)') { return (Get-Text 'VpnErrNotProfile') }
+  if ($text -match '(?mi)^[ \t]*(script-security|up|down|route-up|route-pre-down|ipchange|tls-verify|auth-user-pass-verify|client-connect|client-disconnect|learn-address|plugin|management|daemon|log|log-append|writepid|cd|chroot|status)([ \t]|\r?$)') {
+    return (Get-Text 'VpnErrCommands' $Matches[1]) }
+  $null
+}
+# Profile and/or user and password to one device over SSH (vpn.sh profile / auth); $null = done, else the reason
+function Send-VpnFiles($d, [string]$sshKey, [string]$profileText, [string]$user, [string]$password) {
+  $ip = ([string]$d.S['IP']) -replace '/.*$', ''
+  if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return (Get-Text 'ErrRemoteNoIp') }
+  if ($d.S['CFG_SSH'] -ne 'on') { return (Get-Text 'SendKeyNoSsh') }
+  $jobs = @()
+  if ($profileText) { $jobs += ,@('profile', $profileText) }
+  if ($user) { $jobs += ,@('auth', "$user`n$password`n") }
+  foreach ($j in $jobs) {
+    $r = Invoke-DeviceSshInput $ip "test -x /opt/openthinrdp/vpn.sh || { echo ERROR=old; exit 1; }; sudo /opt/openthinrdp/vpn.sh $($j[0])" $sshKey $d.Name $j[1]
+    if ($r.Text -match "(?m)^OK=$($j[0])") { continue }
+    if (Test-HostKeyChanged $r.Text) { return (Get-Text 'SendKeyHostChanged') }
+    if ($r.Text -match '(?m)^ERROR=old') { return (Get-Text 'VpnErrOldVersion') }
+    if ($r.Text -match '(?m)^ERROR=(.+)$') { return $Matches[1] }
+    $x = $r.Text.Trim(); if ($x) { return $x } else { return "ssh $($r.Code)" }
+  }
+  $null
 }
 # The SSH host keys of the devices are kept by device NAME (HostKeyAlias), in a file of this tool: DHCP may give a
 # device the address another device had, and a key stored by address would then belong to the wrong one.
@@ -1443,7 +1505,7 @@ $script:KindSoft = @{ ok = New-Color '#dcfce7'; off = New-Color '#f1f2f4'; error
 $script:IconFont = @('Segoe Fluent Icons', 'Segoe MDL2 Assets') | Where-Object { $n = $_; @([System.Drawing.FontFamily]::Families | Where-Object Name -eq $n).Count } | Select-Object -First 1
 $script:Glyph = @{ Refresh = 'E72C'; Folder = 'E838'; Download = 'E896'; Shield = 'EA18'; Devices = 'E977'; Settings = 'E713'; Key = 'E8D7'; Warning = 'E7BA'
   Screen = 'E7F4'; Picture = 'E91B'; Save = 'E74E'; Undo = 'E7A7'; Delete = 'E74D'; Add = 'E710'; Search = 'E721'; Document = 'E8A5'
-  Lock = 'E72E'; Unlock = 'E785'; Certificate = 'EB95' }
+  Lock = 'E72E'; Unlock = 'E785'; Certificate = 'EB95'; Vpn = 'E705' }
 function New-Glyph([string]$name, $color, [int]$size = 16) {
   if (-not $script:IconFont -or -not $script:Glyph.ContainsKey($name)) { return $null }
   $bmp = New-Object System.Drawing.Bitmap($size, $size)
@@ -1813,16 +1875,19 @@ $devActions = New-Object System.Windows.Forms.FlowLayoutPanel; $devActions.AutoS
 $devActions.FlowDirection = 'RightToLeft'; $devActions.BackColor = $Theme.Card; $devActions.Anchor = 'Top, Right'
 $btnRemoteDev = New-ActionButton 'BtnRemoteScreen' 'Screen' 'primary'
 $btnBrandDev = New-ActionButton 'BtnBranding' 'Picture' 'secondary'
-foreach ($b in @($btnRemoteDev, $btnBrandDev)) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $devActions.Controls.Add($b) }
-$tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen'))
+# only on a device with VPN=openvpn: its profile does not go through the folder
+$btnVpnDev = New-ActionButton 'BtnVpnProfile' 'Vpn' 'secondary'; $btnVpnDev.Visible = $false
+foreach ($b in @($btnRemoteDev, $btnBrandDev, $btnVpnDev)) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $devActions.Controls.Add($b) }
+$tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen')); $tips.SetToolTip($btnVpnDev, (Get-Text 'TipVpnProfile'))
 $devHead.Controls.AddRange(@($lblDevName, $lblDevState, $lblDevInfo, $devActions))
 # the actions in the top right corner, over the first line only: the line under the name keeps the whole width
 # the actions keep only their icons when the name and state of the device leave too little room for their text
 $script:DevActionsCompact = $false
 function Set-DeviceActionsFit {
   $left = [Math]::Max($lblDevName.Right, $(if ($lblDevState.Visible) { $lblDevState.Right } else { 0 }))
-  $compact = ($devHead.ClientSize.Width - 16 - $left - 24) -lt (Get-FullWidth @($btnRemoteDev, $btnBrandDev))
-  if ($compact -ne $script:DevActionsCompact) { $script:DevActionsCompact = $compact; Set-CompactButtons @($btnRemoteDev, $btnBrandDev) $compact }
+  $shown = @($btnRemoteDev, $btnBrandDev, $btnVpnDev | Where-Object { $_.Visible })
+  $compact = ($devHead.ClientSize.Width - 16 - $left - 24) -lt (Get-FullWidth $shown)
+  if ($compact -ne $script:DevActionsCompact) { $script:DevActionsCompact = $compact; Set-CompactButtons @($btnRemoteDev, $btnBrandDev, $btnVpnDev) $compact }
   $devActions.Location = New-Object System.Drawing.Point(($devHead.ClientSize.Width - $devActions.Width - 16), 14)
   # the line under the name ends with ... when it does not fit; the whole of it in the tooltip
   $lblDevInfo.AutoSize = $false; $lblDevInfo.AutoEllipsis = $true; $lblDevInfo.Height = 24
@@ -1846,6 +1911,10 @@ $lvSummary = New-Object System.Windows.Forms.ListView
 $lvSummary.Dock = 'Fill'; $lvSummary.View = 'Details'; $lvSummary.HeaderStyle = 'None'; $lvSummary.BorderStyle = 'None'; $lvSummary.FullRowSelect = $true
 $lvSummary.ShowGroups = $true; $lvSummary.Font = $fontBase
 [void]$lvSummary.Columns.Add('', 230); [void]$lvSummary.Columns.Add('', 600)
+$script:CopySummary = { if ($lvSummary.SelectedItems.Count -eq 1 -and $lvSummary.SelectedItems[0].Tag) {
+  [System.Windows.Forms.Clipboard]::SetText([string]$lvSummary.SelectedItems[0].Tag); $barText.Text = Get-Text 'SumCopied' $lvSummary.SelectedItems[0].Text } }
+$lvSummary.add_KeyDown({ param($s, $e) if ($e.Control -and $e.KeyCode -eq 'C') { & $script:CopySummary; $e.Handled = $true } })
+$lvSummary.add_DoubleClick({ & $script:CopySummary })
 $lvSummary.add_Resize({ param($s, $e) $s.Columns[1].Width = [Math]::Max(200, $s.ClientSize.Width - $s.Columns[0].Width - 4) })
 $tabSummary.Controls.Add($lvSummary); $tabSummary.Padding = New-Object System.Windows.Forms.Padding(8)
 
@@ -2151,7 +2220,7 @@ function Update-DeviceList {
 function Update-DeviceHeader($d) {
   if (-not $d) {
     $lblDevName.Text = Get-Text 'NoDevice'; $lblDevState.Visible = $false; $lblDevInfo.Text = ''
-    $btnRemoteDev.Enabled = $false; $btnBrandDev.Enabled = $false; return
+    $btnRemoteDev.Enabled = $false; $btnBrandDev.Enabled = $false; $btnVpnDev.Visible = $false; return
   }
   $s = $d.S
   $lblDevName.Text = $d.Name
@@ -2164,17 +2233,27 @@ function Update-DeviceHeader($d) {
   $u = Get-SessionUser $s
   $parts += if ($u -and $u -eq (Get-Text 'UserKiosk') -and $s['SESSION'] -in $null, '', 'none') { Get-Text 'DevKioskPage' } elseif ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
   $lblDevInfo.Text = $parts -join $dot
-  $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true
+  $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true; $btnVpnDev.Visible = ($s['CFG_VPN'] -eq 'openvpn')
   Set-DeviceActionsFit
 }
 
+# the [Peer] of a device for the configuration of the WireGuard server: its public key and its address in the tunnel
+function Get-WgPeerBlock($d) {
+  $a = [string]$d.S['CFG_VPN_ADDRESS']; if (-not $a) { $a = [string](Read-ConfFile (Get-HostFile $d.Name))['VPN_ADDRESS'] }
+  $a = $a -replace '/.*$', ''
+  "# $($d.Name)`r`n[Peer]`r`nPublicKey = $($d.S['VPN_PUBLIC_KEY'])`r`nAllowedIPs = $(if ($a) { "$a/32" } else { '<VPN_ADDRESS>/32' })`r`n"
+}
 function Update-Summary($d) {
   $s = $d.S
+  $net = @(@('ColIp', $s['IP']), @('ColMac', $s['MAC']), @('ColNetwork', $s['NETWORK']), @('ColWifi', $s['WIFI_STATUS']))
+  # the VPN (0.1.14 and later); the WireGuard key is copied as the [Peer] block the server needs for this device
+  if ($s['VPN'] -and $s['VPN'] -ne 'off') { $net += , @('SumVpn', $s['VPN']) }
+  if ($s['VPN_PUBLIC_KEY']) { $net += , @('SumVpnKey', $s['VPN_PUBLIC_KEY'], (Get-WgPeerBlock $d)) }
   $lvSummary.BeginUpdate(); $lvSummary.Items.Clear(); $lvSummary.Groups.Clear()
   $groups = [ordered]@{
     SumSession = @(@('ColSession', $s['SESSION']), @('ColDefaultUser', $s['DEFAULT_USER']), @('ColTransport', $s['TRANSPORT']), @('ColWebButton', $(
       $w = [string]$s['CFG_WEB_BUTTON']; if ($s['CFG_POWER_ON_TIME'] -or $s['CFG_POWER_OFF_TIME']) { $w += "   ($($s['CFG_POWER_ON_TIME'])-$($s['CFG_POWER_OFF_TIME']))" }; $w)))
-    SumNetwork = @(@('ColIp', $s['IP']), @('ColMac', $s['MAC']), @('ColNetwork', $s['NETWORK']), @('ColWifi', $s['WIFI_STATUS']))
+    SumNetwork = $net
     SumSoftware = @(@('ColSoftware', $s['SOFTWARE']), @('ColFreeRdp', $s['FREERDP']), @('ColShareUpdate', $s['SHARE_UPDATE']), @('SumUpdateKeys', $(
       # where the updates come from, which signature they need, and the site key the device has (0.1.13 and later)
       if ($s['UPDATE_KEY']) { Get-Text 'SumUpdateKeysValue' $s['UPDATE_FROM'] $s['UPDATE_KEY'] $(if ($s['SITE_KEY'] -match '^[0-9A-F]{40}$') { ($s['SITE_KEY'] -replace '(.{4})', '$1 ').Trim() } else { Get-Text 'SumSiteKeyNone' }) }
@@ -2188,6 +2267,7 @@ function Update-Summary($d) {
       $val = [string]$row[1]; if (-not $val) { $val = [string][char]0x2014 }
       $it = New-Object System.Windows.Forms.ListViewItem((Get-Text $row[0]), $grp); $it.ForeColor = $Theme.Muted; $it.UseItemStyleForSubItems = $false
       $sub = $it.SubItems.Add($val); $sub.ForeColor = $Theme.Text
+      $it.Tag = if ($row.Count -gt 2) { $row[2] } else { [string]$row[1] }
       [void]$lvSummary.Items.Add($it)
     }
   }
@@ -2721,6 +2801,63 @@ function Start-RemoteScreen($d) {
   [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key $name)
 }
 
+# ---------------- VPN profile ----------------
+# The OpenVPN profile of a device (.ovpn, as the VPN provider or the firewall gives it) and the user and password it
+# asks for, over SSH with the key of the vault. They are secrets of the device (in its TPM when it has one): they never
+# go through the management folder, which every device can read.
+function Show-VpnProfileDialog($d) {
+  $name = $d.Name
+  if (-not (Get-Command ssh.exe -ErrorAction SilentlyContinue)) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'ErrRemoteNoSshExe'); return }
+  if ($d.S['CFG_SSH'] -ne 'on') { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'ErrRemoteNoSsh'); return }
+  if (-not (Request-VaultOpen)) { return }
+  $key = Get-VaultKeyFile
+  if (-not $key) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'ErrRemoteNoVaultKey'); Select-Page 4; return }
+  $dlg = New-Object System.Windows.Forms.Form; Set-WindowIcon $dlg
+  $dlg.Text = Get-Text 'VpnTitle' $name; $dlg.Font = $fontBase; $dlg.FormBorderStyle = 'FixedDialog'; $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
+  $dlg.StartPosition = 'CenterParent'; $W = 600
+  $note = New-Object System.Windows.Forms.Label; $note.Text = (Get-Text 'VpnNote') + "`r`n" + (Get-Text 'VpnNow' $(if ($d.S['VPN']) { $d.S['VPN'] } else { [char]0x2014 }))
+  $note.MaximumSize = New-Object System.Drawing.Size(($W - 28), 0); $note.AutoSize = $true; $note.Location = New-Object System.Drawing.Point(14, 12)
+  $dlg.Controls.Add($note); $y = 12 + $note.GetPreferredSize((New-Object System.Drawing.Size(($W - 28), 0))).Height + 14
+  $lp = New-Object System.Windows.Forms.Label; $lp.Text = Get-Text 'VpnProfile'; $lp.AutoSize = $true; $lp.Location = New-Object System.Drawing.Point(14, ($y + 4))
+  $tp = New-Object System.Windows.Forms.TextBox; $tp.SetBounds(150, $y, ($W - 150 - 14 - 110), 26); $tp.ReadOnly = $true
+  $bp = New-Button 'BtnChoose' 100 27; $bp.Location = New-Object System.Drawing.Point(($W - 14 - 100), ($y - 1)); $y += 38
+  $lu = New-Object System.Windows.Forms.Label; $lu.Text = Get-Text 'VpnUser'; $lu.AutoSize = $true; $lu.Location = New-Object System.Drawing.Point(14, ($y + 4))
+  $tu = New-Object System.Windows.Forms.TextBox; $tu.SetBounds(150, $y, 240, 26); $y += 34
+  $lw = New-Object System.Windows.Forms.Label; $lw.Text = Get-Text 'VpnPassword'; $lw.AutoSize = $true; $lw.Location = New-Object System.Drawing.Point(14, ($y + 4))
+  $tw = New-Object System.Windows.Forms.TextBox; $tw.SetBounds(150, $y, 240, 26); $tw.UseSystemPasswordChar = $true; $y += 34
+  $hint = New-Object System.Windows.Forms.Label; $hint.Text = Get-Text 'VpnAuthHint'; $hint.ForeColor = $Theme.Muted
+  $hint.MaximumSize = New-Object System.Drawing.Size(($W - 164), 0); $hint.AutoSize = $true; $hint.Location = New-Object System.Drawing.Point(150, $y)
+  $y += $hint.GetPreferredSize((New-Object System.Drawing.Size(($W - 164), 0))).Height + 16
+  $ok = New-Button 'BtnVpnSend' 120 28; $ok.Location = New-Object System.Drawing.Point(($W - 14 - 120 - 8 - 100), $y)
+  $cancel = New-Button 'BtnCancel' 100 28; $cancel.Location = New-Object System.Drawing.Point(($W - 14 - 100), $y); $cancel.DialogResult = 'Cancel'
+  $dlg.Controls.AddRange(@($lp, $tp, $bp, $lu, $tu, $lw, $tw, $hint, $ok, $cancel)); $dlg.CancelButton = $cancel; $dlg.AcceptButton = $ok
+  $dlg.ClientSize = New-Object System.Drawing.Size($W, ($y + 42))
+  $st = @{ Text = '' }
+  $bp.add_Click({
+    $ofd = New-Object System.Windows.Forms.OpenFileDialog; $ofd.Title = Get-Text 'VpnChooseTitle'; $ofd.Filter = 'OpenVPN (*.ovpn;*.conf)|*.ovpn;*.conf|*.*|*.*'
+    if ($ofd.ShowDialog() -ne 'OK') { return }
+    try { $x = [IO.File]::ReadAllText($ofd.FileName) } catch { Show-Message (Get-Text 'VpnTitle' $name) $_.Exception.Message 'Error'; return }
+    $why = Test-OvpnProfile $x
+    if ($why) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'VpnProfileRefused' $ofd.FileName $why) 'Error'; return }
+    $st.Text = $x; $tp.Text = $ofd.FileName
+    # a profile with auth-user-pass and no file after it asks for a user and a password
+    if ($x -match '(?m)^[ \t]*auth-user-pass[ \t]*\r?$') { $tu.Focus() } })
+  $ok.add_Click({
+    $u = $tu.Text.Trim()
+    if (-not $st.Text -and -not $u) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'VpnNothing'); return }
+    if ($u -and ($u -match '[\r\n]' -or $tw.Text -match '[\r\n]' -or -not $tw.Text)) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'VpnErrAuth'); return }
+    if ($st.Text -match '(?m)^[ \t]*auth-user-pass[ \t]*\r?$' -and -not $u -and -not (Confirm-Action (Get-Text 'VpnTitle' $name) (Get-Text 'VpnNoAuthConfirm') 'Button2')) { return }
+    $dlg.Cursor = 'WaitCursor'
+    try { $why = Send-VpnFiles $d $key $st.Text $u $tw.Text } finally { $dlg.Cursor = 'Default' }
+    $what = @($(if ($st.Text) { Split-Path -Leaf $tp.Text }), $(if ($u) { Get-Text 'VpnLogAuth' $u }) | Where-Object { $_ }) -join ', '
+    if ($why) { Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'VpnFailed' $why) 'Error'; return }
+    Add-ChangeLog (Get-Text 'LogVpnProfile' $name $what)
+    Show-Message (Get-Text 'VpnTitle' $name) (Get-Text 'VpnDone' $name) 'Information'
+    $dlg.DialogResult = 'OK' })
+  [void]$dlg.ShowDialog($form)
+  $tw.Text = ''; $st.Text = ''; $dlg.Dispose()
+}
+
 $btnProbRefresh.add_Click({ Update-ProblemView })
 $btnSaveDev.add_Click({ Save-Device })
 $btnReloadDev.add_Click({ Update-DeviceGrid })
@@ -2729,6 +2866,7 @@ $btnSaveCom.add_Click({ Save-Common })
 $btnReloadCom.add_Click({ Update-CommonGrid })
 $btnBrandDev.add_Click({ if ($script:Selected) { Show-BrandingDialog $script:Selected } })
 $btnRemoteDev.add_Click({ if ($script:Selected) { Start-RemoteScreen $script:Selected } })
+$btnVpnDev.add_Click({ if ($script:Selected) { Show-VpnProfileDialog $script:Selected } })
 $btnBrandCom.add_Click({ Show-BrandingDialog $null })
 $btnSaveKeys.add_Click({ Save-Keys })
 $btnReloadKeys.add_Click({ Update-KeysView })

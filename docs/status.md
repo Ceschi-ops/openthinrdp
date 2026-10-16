@@ -41,12 +41,15 @@ production fleet does not use them, so test them in your environment first:
 - Static addressing (the fleet uses DHCP).
 - Web button in free browsing mode (`WEB_BUTTON=browser`).
 - `RDP_CERT=verify` with your own certificate authority.
+- Devices outside the office: the RD Gateway (`RDP_GATEWAY`), tested against a Windows Server RD Gateway, and the
+  VPN (`VPN=wireguard|openvpn`), tested against WireGuard and OpenVPN servers (tunnel, routes, DNS, a refused
+  password). No device of the fleet works outside the office yet.
 
 ## Not available yet
 
 - Citrix, VMware/Omnissa Horizon or any protocol other than RDP.
 - ARM devices.
-- VPN (WireGuard, OpenVPN), RD Gateway, 802.1X, network boot (PXE).
+- 802.1X, network boot (PXE).
 - Disk encryption, signed central configuration.
 
 Tell us what you need first in the [discussions](https://github.com/OpenThinRdp/openthinrdp/discussions).
