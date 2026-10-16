@@ -559,4 +559,6 @@
   SendKeyConfirm         = "Inviare la chiave pubblica del sito {0} a queste postazioni, via SSH con la chiave del gestore?`r`n`r`n{1}`r`n`r`nPostazioni spente ora: {2} (inviatela di nuovo quando sono accese). Dalla cassaforte non esce niente di segreto: solo la parte pubblica."
   SendKeyRunning         = 'Chiave del sito a {0}...'
   SendKeyDone            = 'Chiave del sito {0}: le postazioni la dichiarano entro 5 minuti (Riepilogo, Firma aggiornamenti). Postazioni spente: {1}.'
+  RemoteHostKeyChanged   = "{0} ({1}) risponde con una chiave SSH dell'host diversa da quella che il gestore conosce. È normale se la postazione è stata reinstallata; altrimenti al suo posto potrebbe rispondere un'altra macchina.`r`n`r`nDimenticare la vecchia chiave e accettare la nuova?"
+  SendKeyHostChanged     = "la sua chiave SSH dell'host è cambiata (reinstallata?): aprite una volta il suo Schermo remoto per confermare la nuova chiave"
 }

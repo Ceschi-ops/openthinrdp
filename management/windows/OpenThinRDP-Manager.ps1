@@ -134,6 +134,11 @@ public static class OtrCrypto {
 }
 # Ed25519, OpenPGP signatures and the vault (.NET Framework has no Ed25519): OtrVault.cs next to this file
 if (-not ('OtrVault' -as [type])) { Add-Type -ReferencedAssemblies System.Numerics -Path (Join-Path $PSScriptRoot 'OtrVault.cs') }
+# the OpenThinRDP icon of every window (title bar, taskbar, Alt+Tab): openthinrdp.ico next to this file
+$script:AppIcon = $null
+$icoFile = Join-Path $PSScriptRoot 'openthinrdp.ico'
+if (Test-Path -LiteralPath $icoFile) { try { $script:AppIcon = New-Object System.Drawing.Icon($icoFile) } catch { } }
+function Set-WindowIcon($w) { if ($script:AppIcon) { $w.Icon = $script:AppIcon } }
 
 # ---------------------------------------------------------------------------------------------
 # Language: lang\en.psd1 has every text of the window, lang\<xx>.psd1 replaces the ones it translates
@@ -647,10 +652,29 @@ function Remove-VaultKeyFile {
 }
 # a command on a device as otradmin with the key of the vault ($key = Get-VaultKeyFile) and no other: the keys in
 # the profile of this account are not offered (IdentitiesOnly)
-function Invoke-DeviceSsh([string]$ip, [string]$command, [string]$key) {
+function Invoke-DeviceSsh([string]$ip, [string]$command, [string]$key, [string]$name) {
   $ErrorActionPreference = 'Continue'
-  $out = & ssh.exe -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "otradmin@$ip" $command 2>&1
+  $out = & ssh.exe -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 @(Get-HostKeyArgs $name) "otradmin@$ip" $command 2>&1
   @{ Code = $LASTEXITCODE; Text = (@($out) -join "`n") }
+}
+# The SSH host keys of the devices are kept by device NAME (HostKeyAlias), in a file of this tool: DHCP may give a
+# device the address another device had, and a key stored by address would then belong to the wrong one.
+$script:KnownHosts = Join-Path $env:LOCALAPPDATA 'OpenThinRDP\known_hosts'
+function Get-HostKeyArgs([string]$name) {
+  if (-not (Test-Path -LiteralPath $script:KnownHosts)) {
+    New-Item -ItemType Directory -Path (Split-Path $script:KnownHosts) -Force | Out-Null
+    [IO.File]::WriteAllText($script:KnownHosts, '')
+  }
+  # ssh reads the value of UserKnownHostsFile as a list split at spaces: the short 8.3 form of a path with spaces
+  $f = $script:KnownHosts
+  if ($f -match ' ') { $f = (New-Object -ComObject Scripting.FileSystemObject).GetFile($f).ShortPath }
+  @('-o', "UserKnownHostsFile=$($f -replace '\\', '/')", '-o', "HostKeyAlias=otr-$($name.ToLower())", '-o', 'StrictHostKeyChecking=accept-new')
+}
+# the device answered with another host key than the one known for its name (reinstalled, or not the same device)
+function Test-HostKeyChanged([string]$text) { $text -match 'REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed' }
+function Remove-HostKey([string]$name) {
+  $ErrorActionPreference = 'Continue'
+  & ssh-keygen.exe -R "otr-$($name.ToLower())" -f $script:KnownHosts 2>&1 | Out-Null
 }
 # the public half of a private key file, from ssh-keygen -y: fails on a key protected by a passphrase (ssh.exe could
 # not use it without asking) and on anything that is not a private key
@@ -716,8 +740,9 @@ function Send-SiteKey($d, [string]$sshKey, [string]$armored) {
   if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return (Get-Text 'ErrRemoteNoIp') }
   if ($d.S['CFG_SSH'] -ne 'on') { return (Get-Text 'SendKeyNoSsh') }
   $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($armored))
-  $r = Invoke-DeviceSsh $ip "test -x /opt/openthinrdp/site-key.sh || { echo ERROR=old; exit 1; }; echo $b64 | base64 -d | sudo /opt/openthinrdp/site-key.sh install" $sshKey
+  $r = Invoke-DeviceSsh $ip "test -x /opt/openthinrdp/site-key.sh || { echo ERROR=old; exit 1; }; echo $b64 | base64 -d | sudo /opt/openthinrdp/site-key.sh install" $sshKey $d.Name
   if ($r.Text -match '(?m)^OK=([0-9A-F]{40})') { return $null }
+  if (Test-HostKeyChanged $r.Text) { return (Get-Text 'SendKeyHostChanged') }
   if ($r.Text -match '(?m)^ERROR=old') { return (Get-Text 'SendKeyOldVersion') }
   if ($r.Text -match '(?m)^ERROR=(.+)$') { return $Matches[1] }
   $t = $r.Text.Trim(); if ($t) { $t } else { "ssh $($r.Code)" }
@@ -1299,7 +1324,7 @@ function Confirm-Action($title, $text, $default = 'Button1') {
 # (600000 rounds): the window says so meanwhile.
 function Show-CodeDialog([ValidateSet('Open', 'Create', 'Change')][string]$mode, $owner = $null) {
   $font = New-Object System.Drawing.Font('Segoe UI', 9.75); $Width = 500
-  $w = New-Object System.Windows.Forms.Form
+  $w = New-Object System.Windows.Forms.Form; Set-WindowIcon $w
   $w.Text = Get-Text "Vault${mode}Title"; $w.Font = $font; $w.FormBorderStyle = 'FixedDialog'; $w.MaximizeBox = $false; $w.MinimizeBox = $false
   $w.StartPosition = if ($owner) { 'CenterParent' } else { 'CenterScreen' }; $w.ShowInTaskbar = -not $owner; $w.TopMost = -not $owner
   $note = New-Object System.Windows.Forms.Label; $note.Text = Get-Text "Vault${mode}Text" $script:VaultFile $script:VaultMinCode
@@ -1499,20 +1524,83 @@ function New-SearchBox([string]$cueKey, [int]$width) {
   $t.add_HandleCreated({ param($s, $e) [void][OtrNative]::SendMessage($s.Handle, 0x1501, [IntPtr]1, [string]$s.Tag) })
   $t
 }
-# a bar of buttons: left = the actions of the page, right = the one that removes something
+# a bar of buttons: left = the actions of the page, right = the one that removes something. On a narrow window the
+# buttons wrap to a second line and the bar grows, instead of running out of the window.
 function New-ActionBar($left, $right = @()) {
   $p = New-Panel 'Bottom' $Theme.Card 56; Add-Line $p 'Top'
   $p.Padding = New-Object System.Windows.Forms.Padding(12, 12, 12, 10)
-  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.Dock = 'Left'; $fl.AutoSize = $true; $fl.WrapContents = $false; $fl.BackColor = $Theme.Card
-  foreach ($b in $left) { $fl.Controls.Add($b) }
+  # placed by Set-FlowHeight (not docked): docked, a tab page left it at the old height when the bar grew
+  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.WrapContents = $true; $fl.BackColor = $Theme.Card
+  foreach ($b in $left) { if ($b -is [System.Windows.Forms.Button]) { $b.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 8) }; $fl.Controls.Add($b) }
   $p.Controls.Add($fl)
   if (@($right).Count) {
     $fr = New-Object System.Windows.Forms.FlowLayoutPanel; $fr.Dock = 'Right'; $fr.AutoSize = $true; $fr.WrapContents = $false; $fr.FlowDirection = 'RightToLeft'; $fr.BackColor = $Theme.Card
     foreach ($b in $right) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $fr.Controls.Add($b) }
     $p.Controls.Add($fr)
   }
+  $p.Tag = @{ Line = 'Top'; Flow = $fl; Right = $fr }
+  # The buttons are placed when the bar lays itself out; its height is changed only once the window has finished
+  # laying itself out (Request-BarFit): changed in the middle, the container keeps the bar where the old height put
+  # it and the second row ends up out of the window.
+  [void]$script:Bars.Add($p)
+  $p.add_Layout({ param($s, $e) [void](Set-FlowHeight $s); Request-BarFit })
   $p
 }
+# the height the controls of a wrapping flow need at a width: counted here, row by row, as the flow places them
+function Get-FlowHeight($fl, [int]$width) {
+  $x = 0; $rows = 0; $row = 0; $total = 0
+  foreach ($c in $fl.Controls) {
+    if (-not $c.Visible -and $c.Parent.Visible) { continue }
+    $w = $c.Width + $c.Margin.Horizontal; $h = $c.Height + $c.Margin.Vertical
+    if ($rows -eq 0) { $rows = 1 }
+    elseif ($x + $w -gt $width -and $x -gt 0) { $total += $row; $row = 0; $x = 0; $rows++ }
+    $x += $w; $row = [Math]::Max($row, $h)
+  }
+  $total + $row
+}
+# A bar of buttons: its left buttons placed in the room the right ones leave, on as many rows as they need, and
+# the bar as high as those rows
+# places the buttons of a bar; $true = the bar needs another height (Request-BarFit sets it)
+function Set-FlowHeight($bar) {
+  $fl = $bar.Tag.Flow; if (-not $fl) { return $false }
+  $pad = $bar.Padding
+  # the button on the right keeps only its icon when, with its text, the widest button on the left would not fit
+  if ($bar.Tag.Right) {
+    $rb = @($bar.Tag.Right.Controls)
+    $widest = (@($fl.Controls | ForEach-Object { $_.Width + $_.Margin.Horizontal }) + 0 | Measure-Object -Maximum).Maximum
+    $compact = ($bar.ClientSize.Width - $pad.Horizontal - (Get-FullWidth $rb) - 8) -lt $widest
+    if ($compact -ne [bool]$bar.Tag.RightCompact) { $bar.Tag.RightCompact = $compact; Set-CompactButtons $rb $compact; $bar.Tag.Right.PerformLayout() }
+  }
+  $right = if ($bar.Tag.Right) { $bar.Tag.Right.Width + 8 } else { 0 }
+  $w = $bar.ClientSize.Width - $pad.Horizontal - $right; if ($w -lt 50) { return $false }
+  $h = Get-FlowHeight $fl $w
+  $fl.SetBounds($pad.Left, $pad.Top, $w, [Math]::Max(34, $h))
+  $bar.Tag.Need = [Math]::Max(56, $h + $pad.Vertical - 8)
+  $bar.Height -ne $bar.Tag.Need
+}
+$script:Bars = New-Object System.Collections.ArrayList
+$script:BarFitPending = $false
+function Request-BarFit {
+  if ($script:BarFitPending -or -not $form.IsHandleCreated) { return }
+  $script:BarFitPending = $true
+  [void]$form.BeginInvoke([System.Windows.Forms.MethodInvoker]{
+    $script:BarFitPending = $false
+    foreach ($b in $script:Bars) {
+      if ($b.Tag.Need -and $b.Height -ne $b.Tag.Need) { $b.Height = $b.Tag.Need; if ($b.Parent) { $b.Parent.PerformLayout() } }
+    }
+  })
+}
+# Buttons that keep only their icon when the room is short (their text becomes the tooltip): the top bar and the
+# actions of a device. Buttons without an icon (no symbol font) keep their text.
+function Set-CompactButtons($buttons, [bool]$compact) {
+  foreach ($b in $buttons) {
+    if (-not ($b.Tag -is [hashtable]) -or -not $b.Tag.ContainsKey('Full')) { $b.Tag = @{ Full = $b.Text; Width = $b.Width; Tip = $tips.GetToolTip($b); Pad = $b.Padding } }
+    if (-not $b.Image) { continue }
+    if ($compact) { $b.Text = ''; $b.Width = 40; $b.Padding = New-Object System.Windows.Forms.Padding(12, 0, 0, 0); $tips.SetToolTip($b, $(if ($b.Tag.Tip) { "$($b.Tag.Full): $($b.Tag.Tip)" } else { $b.Tag.Full })) }
+    else { $b.Text = $b.Tag.Full; $b.Width = $b.Tag.Width; $b.Padding = $b.Tag.Pad; $tips.SetToolTip($b, $b.Tag.Tip) }
+  }
+}
+function Get-FullWidth($buttons) { $w = 0; foreach ($b in $buttons) { $w += $(if ($b.Tag -is [hashtable] -and $b.Tag.ContainsKey('Width')) { $b.Tag.Width } else { $b.Width }) + $b.Margin.Horizontal }; $w }
 # title and explanation on top of a page; the explanation wraps and the header grows with it
 function New-PageHeader([string]$title, [string]$text) {
   $p = New-Panel 'Top' $Theme.Page 80
@@ -1537,6 +1625,12 @@ function New-HelpPanel([string]$default) {
   $b = New-Label $default $fontBase $Theme.Muted; $b.AutoSize = $false; $b.Dock = 'Fill'
   $p.Controls.Add($b); $p.Controls.Add($t)
   $p.Tag = @{ Line = 'Top'; Title = $t; Body = $b; Default = $default }
+  # on a low window the help gives its room to the list: at most a fifth of the page, from 60 to 104 points
+  $p.add_ParentChanged({ param($q, $e)
+    if ($q.Parent) { $q.Parent.add_SizeChanged({ param($c, $e)
+      foreach ($h in $c.Controls) { if ($h.Tag -is [hashtable] -and $h.Tag.ContainsKey('Body')) {
+        $need = [Math]::Max(60, [Math]::Min(104, [int]($c.ClientSize.Height / 5)))
+        if ($h.Height -ne $need) { $h.Height = $need } } } }) } })
   $p
 }
 function Show-Help($panel, $s) {
@@ -1547,14 +1641,34 @@ function Show-Help($panel, $s) {
 # ---------------------------------------------------------------------------------------------
 # The window: dark bar on top (folder actions), pages on the left, status bar
 # ---------------------------------------------------------------------------------------------
-$form = New-Object System.Windows.Forms.Form
+$form = New-Object System.Windows.Forms.Form; Set-WindowIcon $form
 $form.Text = Get-Text 'WindowTitle' $script:Folder
-$form.Size = New-Object System.Drawing.Size(1440, 880)
-$form.MinimumSize = New-Object System.Drawing.Size(1100, 680)
+# small enough for a laptop with display scaling: the bars wrap and the buttons keep only their icons
+$form.MinimumSize = New-Object System.Drawing.Size(860, 560)
 $form.StartPosition = 'CenterScreen'
 $form.Font = $fontBase; $form.BackColor = $Theme.Page
-$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+# 85% of the screen it opens on, at least 1440x880: a large screen gives the lists their room; a screen smaller than
+# that gets the window maximized
+$wa = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).WorkingArea
+$form.Size = New-Object System.Drawing.Size([Math]::Max(1440, [int]($wa.Width * 0.85)), [Math]::Max(880, [int]($wa.Height * 0.85)))
 if ($wa.Width -lt $form.Width -or $wa.Height -lt $form.Height) { $form.WindowState = 'Maximized' }
+# The columns of a list share its width: each as wide as its title and samples need while there is room, all of
+# them narrower in proportion when there is not (never behind a horizontal scroll bar); the last takes the rest.
+# The first column (the name) keeps its width as long as it can: the others give up their room first.
+function Set-ListFit($lv) {
+  $ideal = @($lv.Tag.Ideal); if ($ideal.Count -ne $lv.Columns.Count -or $lv.ClientSize.Width -lt 100) { return }
+  $avail = $lv.ClientSize.Width - 8; $total = ($ideal | Measure-Object -Sum).Sum
+  $first = [Math]::Min($ideal[0], [int]($avail * 0.4)); $rest = $total - $ideal[0]
+  $scale = if ($total -gt $avail) { [Math]::Max(0.1, ($avail - $first) / $rest) } else { 1 }
+  if ($scale -eq 1) { $first = $ideal[0] }
+  # inside Begin/EndUpdate: the list works out its scroll bar again (it keeps a stale horizontal one otherwise)
+  $lv.BeginUpdate()
+  try {
+    $lv.Columns[0].Width = $first; $used = $first
+    for ($k = 1; $k -lt $ideal.Count - 1; $k++) { $w = [Math]::Max(30, [int]($ideal[$k] * $scale)); $lv.Columns[$k].Width = $w; $used += $w }
+    $lv.Columns[$ideal.Count - 1].Width = [Math]::Max(30, $avail - $used)
+  } finally { $lv.EndUpdate() }
+}
 
 $root = New-Panel 'Fill' $Theme.Page
 $bar = New-Object System.Windows.Forms.StatusStrip
@@ -1565,7 +1679,10 @@ $barText.Spring = $true; $barText.TextAlign = 'MiddleLeft'; $barText.ForeColor =
 
 # top bar: name, folder, actions on the folder
 $header = New-Panel 'Top' $Theme.Shell 56
-$lblApp = New-Label (Get-Text 'AppName') $fontApp $Theme.ShellText; $lblApp.Location = New-Object System.Drawing.Point(18, 15)
+# the logo before the name (the same icon, 32 pixels)
+$picLogo = New-Object System.Windows.Forms.PictureBox; $picLogo.SetBounds(16, 12, 32, 32); $picLogo.SizeMode = 'Zoom'; $picLogo.BackColor = $Theme.Shell
+if ($script:AppIcon) { $picLogo.Image = (New-Object System.Drawing.Icon($script:AppIcon, 32, 32)).ToBitmap() } else { $picLogo.Visible = $false }
+$lblApp = New-Label (Get-Text 'AppName') $fontApp $Theme.ShellText; $lblApp.Location = New-Object System.Drawing.Point($(if ($picLogo.Visible) { 56 } else { 18 }), 15)
 $lblFolder = New-Label $script:Folder $fontSmall $Theme.ShellMuted; $lblFolder.Location = New-Object System.Drawing.Point(($lblApp.Left + (Get-TextWidth $lblApp.Text $fontApp) + 14), 21)
 $tools = New-Object System.Windows.Forms.FlowLayoutPanel; $tools.Dock = 'Right'; $tools.AutoSize = $true; $tools.WrapContents = $false
 $tools.FlowDirection = 'RightToLeft'; $tools.BackColor = $Theme.Shell; $tools.Padding = New-Object System.Windows.Forms.Padding(0, 12, 10, 0)
@@ -1578,10 +1695,18 @@ $btnVaultTool.Width = (@('VaultToolClosed', 'VaultToolOpen', 'VaultToolNone') | 
 foreach ($b in @($btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
 $tips = New-Object System.Windows.Forms.ToolTip
 $tips.SetToolTip($btnRefresh, (Get-Text 'NoteDevices')); $tips.SetToolTip($lblFolder, $script:Folder)
-$header.Controls.AddRange(@($lblApp, $lblFolder, $tools))
+$header.Controls.AddRange(@($picLogo, $lblApp, $lblFolder, $tools))
 # a long folder path ends with ... before the actions
 $lblFolder.AutoSize = $false; $lblFolder.AutoEllipsis = $true; $lblFolder.Height = 20
-$header.add_Resize({ param($s, $e) $lblFolder.Width = [Math]::Max(40, $s.ClientSize.Width - $tools.Width - $lblFolder.Left - 16) })
+# the actions on the folder keep only their icons when the window is too narrow for their text
+$script:ToolbarCompact = $false
+function Set-ToolbarFit {
+  $buttons = @($btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)
+  $compact = (Get-FullWidth $buttons) + 10 -gt ($header.ClientSize.Width - $lblApp.Right - 24 - 120)
+  if ($compact -ne $script:ToolbarCompact) { $script:ToolbarCompact = $compact; Set-CompactButtons $buttons $compact }
+  $lblFolder.Width = [Math]::Max(40, $header.ClientSize.Width - $tools.Width - $lblFolder.Left - 16)
+}
+$header.add_Resize({ Set-ToolbarFit })
 
 # pages on the left: a dark column, the selected page marked by a line in the accent colour
 $nav = New-Panel 'Left' $Theme.Shell 0 210
@@ -1621,6 +1746,14 @@ $split = New-Object System.Windows.Forms.SplitContainer
 $split.Dock = 'Fill'; $split.Orientation = 'Vertical'; $split.BackColor = $Theme.Page; $split.SplitterWidth = 10
 $split.Panel1.Padding = New-Object System.Windows.Forms.Padding(12, 12, 0, 12); $split.Panel2.Padding = New-Object System.Windows.Forms.Padding(0, 12, 12, 12)
 $split.FixedPanel = 'Panel1'
+# the list takes about 40% of the width, between 260 and 500 points: on a narrow window the device keeps its room
+function Set-SplitFit {
+  $w = $split.Width; if ($w -lt 300) { return }
+  $d = [Math]::Min(500, [Math]::Max(260, [int]($w * 0.4)))
+  if ($w - $d -lt 360) { $d = [Math]::Max(220, $w - 360) }
+  if ($split.SplitterDistance -ne $d) { $split.SplitterDistance = $d }
+}
+$split.add_SizeChanged({ Set-SplitFit })
 
 # list card: search, counts, the list, a note on how often it changes
 $listCard = New-Panel 'Fill' $Theme.Card; Add-Line $listCard 'Box'; $listCard.Padding = New-Object System.Windows.Forms.Padding(1)
@@ -1636,12 +1769,12 @@ $list = New-Object System.Windows.Forms.ListView
 $list.Dock = 'Fill'; $list.View = 'Details'; $list.FullRowSelect = $true; $list.MultiSelect = $false; $list.HideSelection = $false
 $list.BorderStyle = 'None'; $list.SmallImageList = $imgDots; $list.ShowItemToolTips = $true; $list.Font = $fontBase
 # the last column takes the rest of the width: no horizontal scroll bar for a few pixels
-$list.add_Resize({ param($s, $e) if ($s.Columns.Count -lt 2) { return }; $w = 0; for ($k = 0; $k -lt $s.Columns.Count - 1; $k++) { $w += $s.Columns[$k].Width }
-  $s.Columns[$s.Columns.Count - 1].Width = [Math]::Max(60, $s.ClientSize.Width - $w - 2) })
+$list.add_Resize({ param($s, $e) Set-ListFit $s })
+$list.Tag = @{ Ideal = @() }
 foreach ($c in @(@('ColDevice', 105), @('ColState', 110), @('ColUser', 80), @('ColVersion', 52), @('ColLastReport', 64))) {
   # room for the sort arrow too
-  $title = Get-Text $c[0]
-  [void]$list.Columns.Add($title, (Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14))
+  $title = Get-Text $c[0]; $w = Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14
+  [void]$list.Columns.Add($title, $w); $list.Tag.Ideal += $w
 }
 # click on a header = sort by that column, second click = reverse; the arrow shows which.
 # The chosen order stays when the list refreshes by itself.
@@ -1678,7 +1811,18 @@ foreach ($b in @($btnRemoteDev, $btnBrandDev)) { $b.Margin = New-Object System.W
 $tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen'))
 $devHead.Controls.AddRange(@($lblDevName, $lblDevState, $lblDevInfo, $devActions))
 # the actions in the top right corner, over the first line only: the line under the name keeps the whole width
-$devHead.add_Resize({ param($s, $e) $devActions.Location = New-Object System.Drawing.Point(($s.ClientSize.Width - $devActions.Width - 16), 14) })
+# the actions keep only their icons when the name and state of the device leave too little room for their text
+$script:DevActionsCompact = $false
+function Set-DeviceActionsFit {
+  $left = [Math]::Max($lblDevName.Right, $(if ($lblDevState.Visible) { $lblDevState.Right } else { 0 }))
+  $compact = ($devHead.ClientSize.Width - 16 - $left - 24) -lt (Get-FullWidth @($btnRemoteDev, $btnBrandDev))
+  if ($compact -ne $script:DevActionsCompact) { $script:DevActionsCompact = $compact; Set-CompactButtons @($btnRemoteDev, $btnBrandDev) $compact }
+  $devActions.Location = New-Object System.Drawing.Point(($devHead.ClientSize.Width - $devActions.Width - 16), 14)
+  # the line under the name ends with ... when it does not fit; the whole of it in the tooltip
+  $lblDevInfo.AutoSize = $false; $lblDevInfo.AutoEllipsis = $true; $lblDevInfo.Height = 24
+  $lblDevInfo.Width = [Math]::Max(100, $devHead.ClientSize.Width - $lblDevInfo.Left - 16); $tips.SetToolTip($lblDevInfo, $lblDevInfo.Text)
+}
+$devHead.add_Resize({ Set-DeviceActionsFit })
 
 $detail = New-Object System.Windows.Forms.TabControl
 $detail.Dock = 'Fill'; $detail.Padding = New-Object System.Drawing.Point(16, 6); $detail.Font = $fontBase
@@ -1715,9 +1859,15 @@ function New-Grid {
   $g.add_DataError({ param($s, $e) $e.ThrowException = $false })
   $g
 }
+# Every text column shares the width of the grid (Fill), in proportion to the width its title and samples would need:
+# on any screen all the columns stay in view, narrower when the window is, never behind a horizontal scroll bar
 function Add-TextColumn($g, $titleKey, $width, $readOnly, $samples = @(), $boldSamples = @()) {
   $col = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $col.HeaderText = Get-Text $titleKey; $col.ReadOnly = $readOnly; $col.SortMode = 'NotSortable'
-  if ($width) { $col.Width = Get-FitWidth (Get-FitWidth (Get-FitWidth $width $col.HeaderText $fontSmallBold 20) $samples $fontBase 18) $boldSamples $fontBold 18 } else { $col.AutoSizeMode = 'Fill'; $col.MinimumWidth = 130 }
+  $col.AutoSizeMode = 'Fill'
+  if ($width) {
+    $ideal = Get-FitWidth (Get-FitWidth (Get-FitWidth $width $col.HeaderText $fontSmallBold 20) $samples $fontBase 18) $boldSamples $fontBold 18
+    $col.FillWeight = $ideal; $col.MinimumWidth = [Math]::Min($ideal, 60)
+  } else { $col.FillWeight = 220; $col.MinimumWidth = 80 }
   [void]$g.Columns.Add($col)
 }
 function Add-CheckColumn($g, $titleKey, $width) {
@@ -1827,8 +1977,10 @@ $probSplit.Panel1.BackColor = $Theme.Card; $probSplit.Panel2.BackColor = $Theme.
 $probList = New-Object System.Windows.Forms.ListView
 $probList.Dock = 'Fill'; $probList.View = 'Details'; $probList.FullRowSelect = $true; $probList.MultiSelect = $false; $probList.HideSelection = $false; $probList.BorderStyle = 'None'
 $probList.SmallImageList = $imgDots; $probList.Font = $fontBase
+$probList.Tag = @{ Ideal = @() }
 foreach ($c in @(@('ColProblem', 330), @('ColWhere', 180), @('ColTimes', 60), @('ColDevicesN', 230), @('ColUsers', 200), @('ColFirstTime', 100), @('ColLastTime', 100))) {
-  [void]$probList.Columns.Add((Get-Text $c[0]), (Get-FitWidth $c[1] (Get-Text $c[0]) -pad 14)) }
+  $w = Get-FitWidth $c[1] (Get-Text $c[0]) -pad 14; [void]$probList.Columns.Add((Get-Text $c[0]), $w); $probList.Tag.Ideal += $w }
+$probList.add_Resize({ param($s, $e) Set-ListFit $s })
 $probText = New-TextView
 $probPad = New-Panel 'Fill' $Theme.Card; $probPad.Padding = New-Object System.Windows.Forms.Padding(10, 8, 6, 6); $probPad.Controls.Add($probText)
 $probSplit.Panel1.Controls.Add($probList); $probSplit.Panel2.Controls.Add($probPad)
@@ -1847,10 +1999,11 @@ function New-VaultBlock([string]$titleKey, [string]$glyph, $buttons) {
   $img = New-Glyph $glyph $Theme.Accent 18; if ($img) { $t.Image = $img; $t.ImageAlign = 'MiddleLeft'; $t.Text = '      ' + (Get-Text $titleKey) }
   $t.TextAlign = 'MiddleLeft'
   $n = New-Label '' $fontBase $Theme.Muted; $n.AutoSize = $false; $n.Dock = 'Fill'; $n.Padding = New-Object System.Windows.Forms.Padding(0, 4, 0, 0)
-  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.Dock = 'Bottom'; $fl.Height = 34; $fl.WrapContents = $false; $fl.BackColor = $Theme.Card
-  foreach ($b in $buttons) { $fl.Controls.Add($b) }
+  # the buttons wrap on a narrow window: Set-VaultHeights gives the block the rows they need
+  $fl = New-Object System.Windows.Forms.FlowLayoutPanel; $fl.Dock = 'Bottom'; $fl.Height = 34; $fl.WrapContents = $true; $fl.BackColor = $Theme.Card
+  foreach ($b in $buttons) { $b.Margin = New-Object System.Windows.Forms.Padding(0, 0, 8, 8); $fl.Controls.Add($b) }
   $p.Controls.Add($n); $p.Controls.Add($fl); $p.Controls.Add($t)
-  $p.Tag = @{ Line = 'Bottom'; Note = $n }
+  $p.Tag = @{ Line = 'Bottom'; Note = $n; Flow = $fl }
   $p.add_Paint({ param($s, $e) $pen = New-Object System.Drawing.Pen($Theme.Line); $e.Graphics.DrawLine($pen, 0, $s.Height - 1, $s.Width, $s.Height - 1); $pen.Dispose() })
   $p
 }
@@ -1875,8 +2028,12 @@ $vaultWrap.Controls.Add($vaultCard)
 $pageVault.Controls.Add($vaultWrap); $pageVault.Controls.Add((New-PageHeader (Get-Text 'NavVault') (Get-Text 'PageVaultNote')))
 # each block as high as its text
 function Set-VaultHeights {
+  $inner = $vaultCard.ClientSize.Width - 2 - 36
+  if ($inner -lt 100) { return }
   foreach ($b in @($blkVault, $blkSsh, $blkSign)) {
-    $need = 14 + 28 + 4 + (Measure-Note $b.Tag.Note.Text ($vaultCard.ClientSize.Width - 40)) + 10 + 34 + 14
+    $fh = Get-FlowHeight $b.Tag.Flow $inner
+    if ($b.Tag.Flow.Height -ne $fh) { $b.Tag.Flow.Height = $fh }
+    $need = 14 + 28 + 4 + (Measure-Note $b.Tag.Note.Text $inner) + 10 + $fh + 6
     if ($b.Height -ne $need) { $b.Height = $need }
   }
 }
@@ -2002,6 +2159,7 @@ function Update-DeviceHeader($d) {
   $parts += if ($u -and $u -eq (Get-Text 'UserKiosk') -and $s['SESSION'] -in $null, '', 'none') { Get-Text 'DevKioskPage' } elseif ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
   $lblDevInfo.Text = $parts -join $dot
   $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true
+  Set-DeviceActionsFit
 }
 
 function Update-Summary($d) {
@@ -2226,7 +2384,9 @@ function Test-VaultKeyListed {
 function Update-VaultView {
   $open = Test-VaultOpen; $exists = Test-VaultFile
   $state = if ($open) { 'Open' } elseif ($exists) { 'Closed' } else { 'None' }
-  $btnVaultTool.Text = Get-Text "VaultTool$state"
+  $t = Get-Text "VaultTool$state"
+  if ($btnVaultTool.Tag -is [hashtable] -and $btnVaultTool.Tag.ContainsKey('Full')) { $btnVaultTool.Tag.Full = $t }
+  if ($script:ToolbarCompact) { $btnVaultTool.Text = ''; $tips.SetToolTip($btnVaultTool, $t) } else { $btnVaultTool.Text = $t }
   $btnVaultTool.Image = New-Glyph $(if ($open) { 'Unlock' } else { 'Lock' }) $(if ($state -eq 'None') { $script:KindColor.warn } else { $Theme.ShellText }) 16
   $blkVault.Tag.Note.Text = Get-Text "VaultState$state" $script:VaultFile
   $btnVaultOpen.Text = Get-Text $(if ($open) { 'BtnVaultClose' } elseif ($exists) { 'BtnVaultOpen' } else { 'BtnVaultCreate' })
@@ -2347,7 +2507,7 @@ function Show-BrandingDialog($d) {
   $bgKey = { param($k, $def) $v = if ($d -and $d.S["CFG_$k"]) { $d.S["CFG_$k"] } elseif ($common[$k]) { $common[$k] } else { $def }
              try { [System.Drawing.ColorTranslator]::FromHtml($v) } catch { [System.Drawing.ColorTranslator]::FromHtml($def) } }
   $top = & $bgKey 'BG_TOP' '#1b2733'; $bottom = & $bgKey 'BG_BOTTOM' '#000000'
-  $dlg = New-Object System.Windows.Forms.Form
+  $dlg = New-Object System.Windows.Forms.Form; Set-WindowIcon $dlg
   $dlg.Text = if ($d) { Get-Text 'BrandTitleDevice' $hostName } else { Get-Text 'BrandTitleCommon' }
   $dlg.Font = $fontBase; $dlg.FormBorderStyle = 'FixedDialog'; $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
   $dlg.StartPosition = 'CenterParent'; $dlg.ClientSize = New-Object System.Drawing.Size(700, 600)
@@ -2514,7 +2674,13 @@ function Start-RemoteScreen($d) {
   if (-not $key) { Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteNoVaultKey'); Select-Page 4; return }
   $form.Cursor = 'WaitCursor'; $barText.Text = Get-Text 'RemoteStarting' $name; [System.Windows.Forms.Application]::DoEvents()
   try {
-    $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start' $key
+    $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start' $key $name
+    # a new host key for this name: only the administrator can tell whether the device was reinstalled
+    if (Test-HostKeyChanged $r.Text) {
+      if (-not (Confirm-Action (Get-Text 'RemoteTitle' $name) (Get-Text 'RemoteHostKeyChanged' $name $ip) 'Button2')) { return }
+      Remove-HostKey $name
+      $r = Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh start' $key $name
+    }
     $pw = if ($r.Text -match '(?m)^PASSWORD=(\S+)') { $Matches[1] } else { '' }
     if (-not $pw) {
       $why = if ($r.Text -match '(?m)^ERROR=(.+)$') { $Matches[1] } else { $r.Text.Trim() }
@@ -2523,22 +2689,22 @@ function Start-RemoteScreen($d) {
     # a free local port, then the tunnel to the viewer on the device (127.0.0.1:6080 there)
     $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l.Start(); $port = $l.LocalEndpoint.Port; $l.Stop()
     # Start-Process joins the arguments with spaces: the path of the key in quotes
-    $tunnel = Start-Process ssh.exe -WindowStyle Hidden -PassThru -ArgumentList @('-N', '-i', "`"$key`"", '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-L', "${port}:127.0.0.1:6080", "otradmin@$ip")
+    $tunnel = Start-Process ssh.exe -WindowStyle Hidden -PassThru -ArgumentList (@('-N', '-i', "`"$key`"", '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes') + @(Get-HostKeyArgs $name) + @(
+      '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15', '-L', "${port}:127.0.0.1:6080", "otradmin@$ip"))
     $ok = $false
     for ($i = 0; $i -lt 40 -and -not $tunnel.HasExited; $i++) {
       try { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $port); $c.Close(); $ok = $true; break } catch { Start-Sleep -Milliseconds 250 }
     }
     if (-not $ok) {
       if (-not $tunnel.HasExited) { $tunnel.Kill() }
-      [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key)
+      [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key $name)
       Show-Message (Get-Text 'RemoteTitle' $name) (Get-Text 'ErrRemoteFailed' (Get-Text 'ErrRemoteTunnel')); return
     }
     Start-Process "http://127.0.0.1:$port/vnc_lite.html?password=$pw&scale=true"
     Add-ChangeLog (Get-Text 'LogRemoteScreen' $name)
   } finally { $form.Cursor = 'Default'; $barText.Text = '' }
   # while this window is open the remote screen stays on; closing it ends it on the device too
-  $w = New-Object System.Windows.Forms.Form
+  $w = New-Object System.Windows.Forms.Form; Set-WindowIcon $w
   $w.Text = Get-Text 'RemoteTitle' $name; $w.Font = $fontBase; $w.StartPosition = 'CenterParent'; $w.FormBorderStyle = 'FixedDialog'
   $w.MinimizeBox = $false; $w.MaximizeBox = $false; $w.ClientSize = New-Object System.Drawing.Size(460, 130)
   $t = New-Object System.Windows.Forms.Label; $t.Text = Get-Text 'RemoteRunning' $name; $t.SetBounds(14, 12, 432, 70)
@@ -2546,7 +2712,7 @@ function Start-RemoteScreen($d) {
   $b.add_Click({ $w.Close() }); $w.AcceptButton = $b; $w.Controls.AddRange(@($t, $b))
   [void]$w.ShowDialog($form)
   if (-not $tunnel.HasExited) { $tunnel.Kill() }
-  [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key)
+  [void](Invoke-DeviceSsh $ip 'sudo /opt/openthinrdp/remote-screen.sh stop' $key $name)
 }
 
 $btnProbRefresh.add_Click({ Update-ProblemView })
@@ -2581,7 +2747,7 @@ $timer.Interval = 60000
 $timer.add_Tick({ Update-DeviceList })      # the list and the header only: grids being edited are left alone
 
 $form.add_Shown({
-  $split.SplitterDistance = [Math]::Max(400, [Math]::Min(500, [int]($split.Width * 0.38)))
+  Set-SplitFit
   Select-Page 0
   Update-DeviceList; Update-CommonGrid; Update-KeysView
   if ($list.Items.Count) { $list.Items[0].Selected = $true } else { Show-Device $null }
@@ -2608,9 +2774,11 @@ if ($env:OTR_MANAGER_SCREENSHOT) {   # test: draws the window into a PNG instead
     }
     # Windows clamps a window to the screen: the contents are drawn at the intended size instead (child controls
     # are not clamped), without the title bar
+    # OTR_MANAGER_SIZE = <width>x<height> (default 1440x840): the window at another size, to check how it fits
     $w = 1440; $h = 840
+    if ($env:OTR_MANAGER_SIZE -match '^(\d{3,4})x(\d{3,4})$') { $w = [int]$Matches[1]; $h = [int]$Matches[2] }
     $root.Dock = 'None'; $root.SetBounds(0, 0, $w, $h)
-    $split.SplitterDistance = 470; $form.Refresh(); [System.Windows.Forms.Application]::DoEvents()
+    Set-SplitFit; $form.Refresh(); [System.Windows.Forms.Application]::DoEvents()
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $root.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $w, $h)))
     $bmp.Save($env:OTR_MANAGER_SCREENSHOT, [System.Drawing.Imaging.ImageFormat]::Png)

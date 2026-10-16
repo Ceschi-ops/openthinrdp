@@ -567,4 +567,6 @@
   SendKeyConfirm         = "Send the public site key {0} to these devices, over SSH with the key of the manager?`r`n`r`n{1}`r`n`r`nDevices off now: {2} (send it again when they are on). Nothing secret leaves the vault: only the public half."
   SendKeyRunning         = 'Site key to {0}...'
   SendKeyDone            = 'Site key {0}: the devices report it within 5 minutes (Summary, Update signatures). Devices off: {1}.'
+  RemoteHostKeyChanged   = "{0} ({1}) answers with an SSH host key different from the one this manager knows for it. That is normal after the device was reinstalled; otherwise another machine may be answering in its place.`r`n`r`nForget the old key and accept the new one?"
+  SendKeyHostChanged     = 'its SSH host key changed (reinstalled?): open its Remote screen once to confirm the new key'
 }

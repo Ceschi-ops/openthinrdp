@@ -5,3 +5,6 @@ vault.otr
 vault.otr.new
 out/
 *.iso
+# the launcher of the manager, built by management/windows/build-launcher.ps1 (and its arguments)
+management/windows/*.exe
+management/windows/*.args
