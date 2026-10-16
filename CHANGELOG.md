@@ -3,6 +3,19 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
+## Unreleased
+
+- **The manager fits every screen** ([#38](https://github.com/OpenThinRdp/openthinrdp/issues/38)). The columns of
+  the lists and grids share the width (the Exception column was behind a scroll bar even on large screens), rows of
+  buttons wrap instead of running out of the window, the top bar and the device actions keep only their icons when
+  the room is short, the window opens at 85% of the screen and can be made as small as 860×560.
+- **SSH host keys by device name.** After DHCP gave the devices new addresses, a device answering at an address
+  another one had was refused (remote screen, sending the site key). The manager now keeps the host keys by device
+  name in its own `known_hosts`, and says so when a device really presents a new key.
+- **The OpenThinRDP icon** on the windows of the manager (title bar, taskbar) and in its top bar, and
+  `build-launcher.ps1`: an `OpenThinRDP-Manager.exe` with the icon that starts the manager without a console window,
+  its arguments in a `.args` file next to it.
+
 ## 0.1.13 (2026-10-15)
 
 - **A vault in the manager for the SSH key and the signing key** ([#35](https://github.com/OpenThinRdp/openthinrdp/issues/35)).

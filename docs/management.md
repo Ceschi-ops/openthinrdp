@@ -104,6 +104,27 @@ under the list; the search box finds a setting by name, key or help text.
 It is available in English and Italian: it follows the Windows display language (English for any language
 without a file in `management/windows/lang/`), or `-Language en` / `-Language it` chooses one.
 
+The window opens at 85% of the screen (at least 1440×880, maximized on a smaller screen) and works down to 860×560:
+the columns of every list and grid share the width instead of hiding behind a scroll bar, the rows of buttons wrap,
+and the buttons of the top bar and of the device header keep only their icon (their text in the tooltip) when the
+room is short.
+
+**A program to pin.** `build-launcher.ps1` builds `OpenThinRDP-Manager.exe` next to the script, with the
+OpenThinRDP icon, from `Launcher.cs` and the C# compiler that comes with Windows: it starts the manager with no
+console window. Its arguments can live next to it, so a shortcut needs none:
+
+```
+.\build-launcher.ps1 -Name Thin-clients -Folder \\fileserver\thinclients -Language en
+```
+
+writes `Thin-clients.exe` and `Thin-clients.args`. Copy the `.exe` with the other files of the manager (it is not
+signed: an antivirus that holds back unknown programs may want it allowed).
+
+The manager keeps the SSH host keys of the devices by device **name** in its own file
+(`%LOCALAPPDATA%\OpenThinRDP\known_hosts`, `HostKeyAlias`), not by address: DHCP may give a device the address
+another device had. A device that presents another key under its name (reinstalled) is reported, and the remote
+screen asks whether to forget the old key.
+
 ## Logo and background picture
 
 `logo.png` is the logo of the dialogs and of the sign-in form; `splash.png` is the background picture, shown
