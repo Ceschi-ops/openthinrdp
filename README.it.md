@@ -191,6 +191,14 @@ che si vede sono i file della cartella.
   GitHub e la rifirma con quella chiave ([dettagli](docs/management.md#a-fleet-on-its-own-key)).
 - **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
   copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
+- **Si adatta a qualsiasi schermo**, da un monitor da 27" a un portatile con il ridimensionamento dello schermo:
+  tutte le colonne restano in vista, le righe di pulsanti vanno a capo, la barra in alto tiene solo le icone quando
+  lo spazio è poco. `build-launcher.ps1` crea un `.exe` con l'icona di OpenThinRDP da aggiungere alla barra delle
+  applicazioni, che avvia il gestore senza finestre di console ([dettagli](docs/management.md#central-settings)).
+
+<p align="center">
+<img src="docs/screenshots/manager-vault.png" alt="Pagina Cassaforte del gestore: il codice di accesso, la chiave SSH del gestore, la chiave che firma gli aggiornamenti" width="70%">
+</p>
 
 Ogni modifica finisce in un registro delle modifiche nella cartella. Guida: [docs/management.md](docs/management.md).
 
