@@ -120,6 +120,16 @@ console window. Its arguments can live next to it, so a shortcut needs none:
 writes `Thin-clients.exe` and `Thin-clients.args`. Copy the `.exe` with the other files of the manager (it is not
 signed: an antivirus that holds back unknown programs may want it allowed).
 
+With the manager on a file share, a shortcut to the `.exe` on the share shows a blank icon: Windows reads the icon
+of a shortcut's program only from a local disk. On each PC that starts the manager, run once from the share:
+
+```
+\\fileserver\it\manager\build-launcher.ps1 -Name "Thin clients" -Folder \\fileserver\thinclients -Install
+```
+
+It builds the `.exe` in `%ProgramData%\OpenThinRDP` with a `.script` file that points to the manager on the share
+(one copy of the manager for everybody), and puts a shortcut with the icon on the desktop.
+
 The manager keeps the SSH host keys of the devices by device **name** in its own file
 (`%LOCALAPPDATA%\OpenThinRDP\known_hosts`, `HostKeyAlias`), not by address: DHCP may give a device the address
 another device had. A device that presents another key under its name (reinstalled) is reported, and the remote
