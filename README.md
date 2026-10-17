@@ -169,43 +169,22 @@ What the device needs: [Requirements](#requirements).
 on the shared folder the devices report to. No server, no agent, no database: what you see is the files in the folder.
 
 <p align="center">
-<img src="docs/screenshots/manager-devices.png" alt="Manager: every device, its settings and the Remote screen button" width="49%">
-<img src="docs/screenshots/remote-screen.png" alt="Remote screen of a device in the browser, with the notice on the device" width="49%">
+<img src="docs/screenshots/manager-devices.png" alt="Manager: every device, its state, user and version, and its settings" width="49%">
+<img src="docs/screenshots/manager-updates.png" alt="Manager, Updates page: all devices on one version, a pilot device on the newest" width="49%">
 </p>
 
-- **Every device at a glance**: a list with the state of each device as a coloured dot, who is signed in, the
-  version and the last report, with a search box; the selected device shows its address, a readable summary
-  (network, software, FreeRDP, UDP or TCP in use, Wi-Fi, secrets) and its event log.
-- **Settings for all devices or one**: for each setting, the value in use on the device, where it comes from (the
-  device itself, the common settings or an exception for that device) and, in orange, a new value still on its way;
-  the help of the selected setting in full under the list. Checked before saving (a device rejects a whole
-  configuration with a wrong value, the manager stops it first).
-- **Remote screen**: one click shows the screen of a device in your browser and lets you use it, to help a user
-  ("what does it say?") or to sign in once to a dashboard on a hall screen. It goes through SSH only, with the
-  key of the manager and a one-time password: nothing new listens on the network, and nothing is installed on your
-  PC (the `ssh.exe` that comes with Windows and your browser). The device shows *Remote assistance active* while it
-  lasts and records it in its events; it ends when you close the window, or by itself after 2 hours, and
-  `REMOTE_SCREEN=off` turns it off ([details](docs/management.md#remote-screen)).
-- **Problems across the fleet**: the event logs of every device read together and grouped, so "six devices could not
-  reach the broker this morning" is one line instead of six logs.
-- **A vault with an access code** for the two keys that rule the fleet: the SSH key that opens the screens and the
-  key that signs the update packages. Every administrator of the manager opens it with the same code; without it
-  no screen opens and nothing is signed. Update packages are signed in the manager, so the signing key never sits
-  on a build machine ([details](docs/management.md#vault)). With `UPDATE_KEY=site` your devices accept only the key
-  of your site: the manager checks each GitHub release and signs it again with that key
-  ([details](docs/management.md#a-fleet-on-its-own-key)).
-- **Logo and background picture**, for all devices or one; **SSH keys** of the administrators; **releases** from
-  GitHub copied into the folder for devices that update from it; a **permissions check** of the folder.
-- **Fits any screen**, from a 27" monitor down to a laptop with display scaling: every column stays in view, rows
-  of buttons wrap, the top bar keeps only its icons when the room is short. `build-launcher.ps1` makes an `.exe`
-  with the OpenThinRDP icon to pin to the taskbar, which starts the manager without a console window
-  ([details](docs/management.md#central-settings)).
+- **Every device at a glance**: state, user, version, last report, a readable summary and the event log of each.
+- **Settings for all devices or one**, checked before saving, with the value in use on each device and what is
+  still on its way.
+- **A new version on a few devices first, then on all**: *Release from GitHub* asks *pilot devices only* or *all
+  devices*; the others stay where they are until *Release to all devices*.
+- **Back to an earlier version when something breaks**, for the whole fleet or one device, FreeRDP included: one
+  click on the Updates page.
+- **Remote screen** of any device in your browser, over SSH only, with a notice on the device.
+- **Problems across the fleet** grouped from every event log; a **vault** for the SSH key and the signing key; your
+  fleet on **its own signing key**; logo and background; and the manager **updates itself** from the signed releases.
 
-<p align="center">
-<img src="docs/screenshots/manager-vault.png" alt="Vault page of the manager: the access code, the SSH key of the manager, the key that signs the updates" width="70%">
-</p>
-
-Every change is written to a change log in the folder. Guide: [docs/management.md](docs/management.md).
+**Everything it does, page by page, with the steps for a pilot group and for going back: [docs/manager.md](docs/manager.md).**
 
 ## Screens that only show a web page
 
@@ -291,6 +270,7 @@ The result is `out/openthinrdp-<version>.iso`. See [docs/building.md](docs/build
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 - [docs/status.md](docs/status.md): what is in production, what is only tested, what does not exist yet.
 - [docs/configuration.md](docs/configuration.md): every setting.
+- [docs/manager.md](docs/manager.md): the Windows manager, page by page: devices, settings, pilot devices and going back.
 - [docs/management.md](docs/management.md): the management folder, central settings, SSH keys, signed updates.
 - [docs/building.md](docs/building.md): building and customizing the image.
 - [docs/security.md](docs/security.md): security model and known limits.
