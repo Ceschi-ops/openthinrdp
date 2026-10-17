@@ -5,12 +5,13 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
 
 ## Unreleased
 
-- **FreeRDP `063d70f`: sessions start 5 seconds sooner, the newest UDP transport**
+- **FreeRDP `dda5414`: sessions start 5 seconds sooner, the newest UDP transport**
   ([#47](https://github.com/OpenThinRdp/openthinrdp/issues/47)). FreeRDP 3.32.2 with the UDP pull request
-  [#13608](https://github.com/FreeRDP/FreeRDP/pull/13608) at its 53 commits (acknowledgements as the specification
-  asks, about 40% less CPU per UDP packet, fixes for Windows Server 2016) and nine fixes of FreeRDP master. With UDP
+  [#13608](https://github.com/FreeRDP/FreeRDP/pull/13608) at its 58 commits (acknowledgements as the specification
+  asks, about 40% less CPU per UDP packet, no more connections that Windows 11 ended in their first second, fixes for
+  Windows Server 2016) and nine fixes of FreeRDP master. With UDP
   (`/network:auto`) Windows started every session 5 s late, because the client did not count the header of the
-  bandwidth measurement: from the broker's redirect to the desktop now takes 0.13–0.18 s instead of 5.1 s. With
+  bandwidth measurement: from the broker's redirect to the desktop now takes 0.13–0.21 s instead of 5.1 s. With
   `RDP_GATEWAY_USE=detect` a server reached straight keeps UDP. The microphone no longer stops and restarts when
   Windows changes only its bit rate. RD Gateway and USB fixes. See [docs/udp.md](docs/udp.md#the-freerdp-in-the-image).
 

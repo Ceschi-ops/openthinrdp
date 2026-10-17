@@ -265,7 +265,7 @@ connect(){
   # RD Gateway: the broker and the VM through it, over HTTPS, with the credentials of the session (FreeRDP's
   # default). FreeRDP carries no UDP through a gateway: with always no UDP is offered at all (-multitransport); with
   # detect FreeRDP declines it by itself when the connection goes through the gateway, and keeps it when the server
-  # is reached straight (FreeRDP 063d70f; the earlier one declined it as soon as a gateway was set).
+  # is reached straight (FreeRDP dda5414; the earlier one declined it as soon as a gateway was set).
   # /network:auto stays: the server adapts frame rate and quality to the line, which matters most from outside.
   v=$(cfg RDP_GATEWAY)
   if [ -n "$v" ]; then

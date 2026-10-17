@@ -88,10 +88,10 @@ author fixed the root cause there (the client now skips channel sequence 0 like 
 
 ## The FreeRDP in the image
 
-`image/freerdp/freerdp.conf` names the exact source: commit `063d70f` on branch
-[`openthinrdp-udp-3.32.2-pr53`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2-pr53) of a
-FreeRDP fork, which is the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the 53 commits of pull
-request #13608, the UDP transport, at its head `66534e316`, applied unchanged. Several of those commits came from our
+`image/freerdp/freerdp.conf` names the exact source: commit `dda5414` on branch
+[`openthinrdp-udp-3.32.2-pr58`](https://github.com/Ceschi-ops/FreeRDP/tree/openthinrdp-udp-3.32.2-pr58) of a
+FreeRDP fork, which is the **FreeRDP 3.32.2** release (the security release of 2026-10-12) with the 58 commits of pull
+request #13608, the UDP transport, at its head `f54ad1d36`, applied unchanged. Several of those commits came from our
 tests: no false "stream is stuck" on lossy lines (see above), ten SYN attempts instead of four (SYN and SYN+ACK are
 padded to the MTU, the first packets a bad line loses), run-length ACK vectors, reconnecting through the broker after
 its one-time token, and UDP declined only when the connection really goes through an RD Gateway.
