@@ -296,7 +296,9 @@ stay, and any package a device is kept on (`UPDATE_TO`, below); a package remove
 `0.1.16`, installed also when it is older than the installed one, and kept until the setting changes. In
 `common.conf` it is the version of every device, in `<hostname>.conf` of one device. A device kept on a version
 reads `updates\versions\<version>.txt` and its signature (with `UPDATE_FROM=github`, the release with tag
-`v<version>`). Devices with a version that does not know `UPDATE_TO` ignore it and install the newest.
+`v<version>`). Devices with a version that does not know `UPDATE_TO` ignore it and install the newest. For the
+same reason a device goes back only to **0.1.16 or later**: an older version would bring back an updater that does
+not know `UPDATE_TO` and goes straight up again. The device refuses it and says so in its status.
 
 - **Pilot devices.** **Software version...** in the header of a device makes it a pilot (`UPDATE_TO=latest` of its
   own); the list marks it *(pilot)*. **Release from GitHub...** then asks: *all devices*, or *pilot devices only*.
