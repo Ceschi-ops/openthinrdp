@@ -397,6 +397,7 @@ ok "Kerberos: an address becomes its server's name" '[ "$(krb_host 10.9.9.2)" = 
 ok "Kerberos: an address with no name stays" '[ "$(krb_host 10.9.9.9)" = 10.9.9.9 ]'
 ok "Kerberos: an unknown name stays" '[ "$(krb_host nowhere.example.test)" = nowhere.example.test ]'
 
+ok "the secrets unit never pulls tpm2.target (on Debian it waits 90 s for a TPM a device may not have)" '! grep -q "^Wants=.*tpm2.target" /src/rootfs/etc/systemd/system/openthinrdp-secrets.service && grep -q "acpi/tables/TPM2" $OTR/secrets.sh'
 # --- secrets in the TPM (lib/secrets.sh, secrets.sh). A fake TPM: systemd-creds "seals" with base64 while
 # /tmp/faketpm exists (and gives back something else while /tmp/fakebad exists); systemd-analyze has-tpm2 answers
 # like a full TPM then, like "partial" (16) otherwise
