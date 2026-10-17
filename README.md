@@ -18,9 +18,10 @@ for Windows Remote Desktop, RDS and VDI: FreeRDP with the UDP transport that ups
 
 OpenThinRDP turns small PCs and old thin clients into kiosks that boot straight into a sign-in form and connect
 to Windows: through an RD Connection Broker to the user's desktop or VM, or straight to a session host or to any
-Windows PC with Remote Desktop turned on. They are managed from a shared folder with a small Windows manager: status
-of every device, central settings, logo, signed updates, and the screen of any device in your browser. No agent,
-no management server, no cloud, no licence per device.
+Windows PC with Remote Desktop turned on, **on premises or in the cloud** (Azure, AWS, any provider). They are
+managed from a shared folder with a small Windows manager: status of every device, central settings, logo, signed
+updates, and the screen of any device in your browser. No agent, no management server, no cloud service to depend
+on, no licence per device.
 
 > **Not openthinclient.** OpenThinRDP is a new, independent project, not affiliated with openthinclient: the names
 > sound alike, nothing else is shared. openthinclient is an older project whose devices boot over the network (PXE)
@@ -33,8 +34,9 @@ Clients connected to a Windows 11 VDI on Hyper-V, where the system it comes from
 > **Status: in production every day.** It runs the whole thin client fleet of the company it comes from: 14 Dell
 > OptiPlex 3000 Thin Clients at desks, tills, a laboratory, weighing stations and a wall screen on Wi-Fi, on a
 > Windows 11 VDI on Hyper-V behind two RD Connection Brokers, signing in with Kerberos and NTLM as fallback. The
-> devices were converted in place from the system they ran before and take every release straight from the GitHub
-> releases, signed, installed during sessions and applied when the session is over. FreeRDP security releases reach OpenThinRDP [within 7 days](SECURITY.md#freerdp-security-fixes)
+> devices were converted in place from the system they ran before and take every release through their management
+> folder (the manager checks each GitHub release and signs it again with the key of the site), installed during
+> sessions and applied when the session is over. FreeRDP security releases reach OpenThinRDP [within 7 days](SECURITY.md#freerdp-security-fixes)
 > (3.32.2: four hours). The ISO is tested in QEMU/KVM with Secure Boot at every release and the system tests run on
 > every commit ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). What is in production,
 > what is only tested and what does not exist yet:
@@ -70,6 +72,10 @@ numbers: [docs/udp.md](docs/udp.md#on-a-lossy-line).
   its name instead of the broker), e.g. a reception desk that works on the PC in the office. Devices outside the
   office go through the **RD Gateway** over HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)) or their own
   **VPN**, WireGuard or OpenVPN ([`VPN`](docs/configuration.md#vpn)).
+- Your desktops are **in the cloud**: an RDS deployment or Windows virtual machines in Azure, AWS, Google Cloud
+  or with any provider, reached through the RD Gateway or a VPN, with UDP through a VPN
+  ([details](docs/configuration.md#desktops-in-the-cloud)). Azure Virtual Desktop and Windows 365 are not supported
+  yet (they need a Microsoft Entra ID sign-in).
 - You have **x86-64 PCs or thin clients with UEFI** (Secure Boot works) and want to keep them useful without a
   licence per device.
 - You want to **try RDP over UDP** on real clients, or help bring it into FreeRDP.
@@ -89,7 +95,7 @@ PCs without UEFI.
 | Storage | 8 GB to install it (eMMC, SSD or disk); nothing to try it live from a USB stick |
 | Network | cable, Wi-Fi (WPA2 personal) or a USB Ethernet adapter |
 | TPM 2.0 | optional: with one, the device's secrets (management folder password, Wi-Fi key, SSH host keys) are kept encrypted in it ([security](docs/security.md)); without one it works the same |
-| Windows side | an RD Connection Broker (RDS session hosts or a Hyper-V VDI collection), or any Windows PC or server that accepts Remote Desktop (Pro, Enterprise, Server) |
+| Windows side | an RD Connection Broker (RDS session hosts or a Hyper-V VDI collection), or any Windows PC or server that accepts Remote Desktop (Pro, Enterprise, Server), on premises or in any cloud |
 
 Tested hardware and firmware settings: [docs/hardware.md](docs/hardware.md).
 
@@ -135,6 +141,8 @@ What the device needs: [Requirements](#requirements).
   for all devices or one, and the **remote screen** of any device ([the manager](#the-manager-the-whole-fleet-from-one-window)).
 - **Signed updates** that never interrupt a session: from GitHub releases (checked every 3 hours, installed in
   the background, applied when the session is over), or from your folder when you decide.
+  **Try a version on a few devices first**, and **go back** to an earlier one when something breaks
+  ([`UPDATE_TO`](docs/configuration.md#management)): FreeRDP goes back with it.
   Debian security updates install by themselves.
 - **Settings dialog on the device** (optionally behind a PIN): broker or PC, network (DHCP, static, Wi-Fi),
   management folder and its account, USB mode, web button, power schedule, language. A new device names itself

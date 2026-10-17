@@ -12,8 +12,9 @@ not exist yet, so you know what to test before rolling it out.
   handful of session hosts.
 - Every device was **converted in place** from the system it ran before, by an update package, with its settings
   carried over; none was reinstalled by hand.
-- Updates reach them **straight from the GitHub releases**, signed, installed in the background during sessions
-  and applied when the session is over. A release published here is the update of that fleet.
+- Updates reach them from the **management folder, signed with the key of the site**: the manager checks each GitHub
+  release (project signature and hash) and signs it again with that key. Installed in the background during sessions
+  and applied when the session is over. Until October 2026 the devices took the GitHub releases straight.
 
 ## In production every day
 
@@ -28,7 +29,7 @@ not exist yet, so you know what to test before rolling it out.
 | Smart cards | Readers through the smart card channel (pcscd) |
 | Touch | Touch screens at the tills, as real touch in Windows |
 | Management | Status and events of every device, central settings (common and per device), logo and background, Windows manager |
-| Updates | Signed packages **from the GitHub releases** (`UPDATE_FROM=github`; the management folder before, same packages); Debian security updates by themselves |
+| Updates | Signed packages from the **management folder** with the **site key** (`UPDATE_FROM=share`, `UPDATE_KEY=site`), the GitHub releases checked and signed again by the manager; straight from GitHub (`UPDATE_FROM=github`) before. Debian security updates by themselves |
 | Power | Shutdown at the end of the session, Wake-on-LAN (also from the BIOS), **power on and off on a schedule** (the wall screen: RTC wake alarm) |
 
 ## Available, not exercised by that fleet
@@ -44,10 +45,17 @@ production fleet does not use them, so test them in your environment first:
 - Devices outside the office: the RD Gateway (`RDP_GATEWAY`), tested against a Windows Server RD Gateway, and the
   VPN (`VPN=wireguard|openvpn`), tested against WireGuard and OpenVPN servers (tunnel, routes, DNS, a refused
   password). No device of the fleet works outside the office yet.
+- **A pilot group and going back** (`UPDATE_TO`): a version on a few devices first, the others kept where they are,
+  and back to an earlier version with its FreeRDP. In the system tests (management folder and GitHub, going back with
+  the packages of that version), new in 0.1.16.
+- **The manager updating itself** from the signed releases, new in 0.1.16.
+- **Desktops in the cloud** (Azure, AWS, any provider): the same RDP, through an RD Gateway or a VPN, but we have
+  no cloud deployment to test on ([what to know](configuration.md#desktops-in-the-cloud)).
 
 ## Not available yet
 
 - Citrix, VMware/Omnissa Horizon or any protocol other than RDP.
+- Azure Virtual Desktop and Windows 365 (Microsoft Entra ID sign-in and Microsoft's gateway).
 - ARM devices.
 - 802.1X, network boot (PXE).
 - Disk encryption, signed central configuration.

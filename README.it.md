@@ -18,10 +18,10 @@ per Desktop remoto Windows, RDS e VDI: FreeRDP con il trasporto UDP che la versi
 
 OpenThinRDP trasforma piccoli PC e vecchi thin client in postazioni che si accendono direttamente sul form di
 accesso e si collegano a Windows: tramite il broker RDS al desktop o alla VM dell'utente, oppure direttamente a
-un host di sessione o a qualsiasi PC Windows con Desktop remoto attivo. Si gestiscono da una cartella condivisa con un
-piccolo gestore Windows: stato di ogni postazione, configurazione centrale, logo, aggiornamenti firmati, e lo schermo
-di qualsiasi postazione nel browser. Niente agenti, niente server di gestione, niente cloud, nessuna licenza per
-postazione.
+un host di sessione o a qualsiasi PC Windows con Desktop remoto attivo, **in sede o nel cloud** (Azure, AWS,
+qualsiasi fornitore). Si gestiscono da una cartella condivisa con un piccolo gestore Windows: stato di ogni
+postazione, configurazione centrale, logo, aggiornamenti firmati, e lo schermo di qualsiasi postazione nel browser.
+Niente agenti, niente server di gestione, nessun servizio cloud da cui dipendere, nessuna licenza per postazione.
 
 > **Non è openthinclient.** OpenThinRDP è un progetto nuovo e indipendente, senza alcun legame con openthinclient: i
 > nomi si somigliano, nient'altro è in comune. openthinclient è un progetto più vecchio in cui le postazioni si avviano
@@ -34,8 +34,9 @@ Client collegati a una VDI Windows 11 su Hyper-V, dove il sistema da cui deriva 
 > **Stato: in produzione ogni giorno.** Fa girare tutti i thin client dell'azienda da cui nasce: 14 Dell OptiPlex
 > 3000 Thin Client in ufficio, alle casse, in laboratorio, alle pese e uno schermo a parete in Wi-Fi, con una
 > VDI Windows 11 su Hyper-V dietro due RD Connection Broker, con accesso Kerberos e NTLM di riserva. Le postazioni
-> sono state convertite sul posto dal sistema che avevano prima e ricevono ogni versione direttamente dalle release
-> GitHub, firmata, installata durante le sessioni e applicata quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
+> sono state convertite sul posto dal sistema che avevano prima e ricevono ogni versione dalla loro cartella di
+> gestione (il gestore controlla ogni release di GitHub e la firma di nuovo con la chiave del sito), installata
+> durante le sessioni e applicata quando la sessione finisce. Gli aggiornamenti di sicurezza di FreeRDP arrivano in OpenThinRDP
 > [entro 7 giorni](SECURITY.md#freerdp-security-fixes) (la 3.32.2: in quattro ore). La ISO è provata in QEMU/KVM
 > con Secure Boot a ogni versione e i test di sistema girano a ogni commit
 > ([CI](https://github.com/OpenThinRdp/openthinrdp/actions/workflows/tests.yml)). Cosa è in produzione, cosa è solo
@@ -72,6 +73,10 @@ Per arrivarci è servita una correzione al trasporto UDP di FreeRDP, che abbiamo
   Hyper-V. Oppure non c'è nessun broker: ogni postazione si collega a un PC o server Windows (al posto del broker
   si mette il suo nome), per esempio una reception che lavora sul PC dell'ufficio. Le postazioni fuori sede passano
   dall'**RD Gateway** in HTTPS ([`RDP_GATEWAY`](docs/configuration.md#rd-gateway)).
+- I vostri desktop sono **nel cloud**: un deployment RDS o macchine virtuali Windows in Azure, AWS, Google Cloud o da
+  qualsiasi fornitore, raggiunti tramite RD Gateway o VPN, con UDP attraverso la VPN
+  ([dettagli](docs/configuration.md#desktops-in-the-cloud)). Azure Virtual Desktop e Windows 365 non sono ancora
+  supportati (richiedono l'accesso con Microsoft Entra ID).
 - Avete **PC o thin client x86-64 con UEFI** (Secure Boot funziona) e volete tenerli in servizio senza una licenza
   per postazione.
 - Volete **provare RDP in UDP** su client veri, o aiutarlo a entrare in FreeRDP.
@@ -91,7 +96,7 @@ ARM, PC senza UEFI.
 | Spazio | 8 GB per installarlo (eMMC, SSD o disco); nessuno per provarlo in live da una chiavetta |
 | Rete | cavo, Wi-Fi (WPA2 personale) o un adattatore Ethernet USB |
 | TPM 2.0 | facoltativo: se c'è, i segreti del dispositivo (password della cartella di gestione, chiave Wi-Fi, chiavi SSH) restano cifrati dentro il TPM ([sicurezza](docs/security.md)); senza, funziona uguale |
-| Lato Windows | un broker RDS (host di sessione o raccolta VDI su Hyper-V), oppure qualsiasi PC o server Windows che accetti il Desktop remoto (Pro, Enterprise, Server) |
+| Lato Windows | un broker RDS (host di sessione o raccolta VDI su Hyper-V), oppure qualsiasi PC o server Windows che accetti il Desktop remoto (Pro, Enterprise, Server), in sede o in qualsiasi cloud |
 
 Hardware provato e impostazioni del firmware: [docs/hardware.md](docs/hardware.md).
 
@@ -138,7 +143,9 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
   impostazioni per tutte le postazioni o per una, e lo **schermo remoto** di qualsiasi postazione
   ([il gestore](#il-gestore-tutto-il-parco-in-una-finestra)).
 - **Aggiornamenti firmati** che non interrompono mai una sessione: dalle release di GitHub (controllate ogni 3
-  ore, installati in background, applicati quando la sessione finisce), o dalla vostra cartella quando decidete voi. Gli aggiornamenti di sicurezza Debian si installano da soli.
+  ore, installati in background, applicati quando la sessione finisce), o dalla vostra cartella quando decidete voi.
+  **Una versione si prova prima su poche postazioni**, e si **torna indietro** a una precedente se qualcosa non va
+  ([`UPDATE_TO`](docs/configuration.md#management)): FreeRDP torna indietro con lei. Gli aggiornamenti di sicurezza Debian si installano da soli.
 - **Configurazione sulla postazione** (anche protetta da PIN): broker o PC, rete (DHCP, statica, Wi-Fi), cartella
   di gestione e il suo account, modalità USB, pulsante web, orari, lingua. Una postazione nuova prende il nome
   dalla propria scheda di rete (`thinclient-1a2b3c`).
