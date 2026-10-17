@@ -297,7 +297,7 @@ ok "share, an index under the name of another version is ignored" 'grep -q "^IGN
 release 0.3.3 p@example.invalid /tmp/r; version_index 0.3.3; to 0.3.3; $OTR/auto-update.sh check /tmp/share
 ok "UPDATE_TO the installed version: up to date, nothing newer" 'grep -q "^up to date: 0.3.3 (share, UPDATE_TO=0.3.3" $U/status'
 to 0.1.5; $OTR/auto-update.sh check /tmp/share
-ok "UPDATE_TO below the first version that knows it: refused" 'grep -q "^IGNORED: UPDATE_TO=0.1.5, going back is possible to 0.1.16 or later" $U/status'
+ok "UPDATE_TO below the first version that knows it: refused" 'grep -q "^IGNORED: UPDATE_TO=0.1.5, going back is possible to 0.2.0 or later" $U/status'
 export OTR_UPDATE_TAG_URL=file:///tmp/otr-tags/v%s
 release 0.3.1 p@example.invalid /tmp/otr-tags/v0.3.1; release 0.4.0 p@example.invalid /tmp/otr-release
 to ""; gh; rm -rf $U/pkg-* $U/attempts-*

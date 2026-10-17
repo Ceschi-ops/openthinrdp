@@ -1,6 +1,6 @@
 # Status: what you can deploy today
 
-OpenThinRDP is numbered 0.1, but it is not a prototype: it runs a company's whole thin client fleet every day.
+OpenThinRDP is numbered 0.x, but it is not a prototype: it runs a company's whole thin client fleet every day.
 This page says what is used in production, what is available but not exercised by that fleet, and what does
 not exist yet, so you know what to test before rolling it out.
 
@@ -47,8 +47,8 @@ production fleet does not use them, so test them in your environment first:
   password). No device of the fleet works outside the office yet.
 - **A pilot group and going back** (`UPDATE_TO`): a version on a few devices first, the others kept where they are,
   and back to an earlier version with its FreeRDP. In the system tests (management folder and GitHub, going back with
-  the packages of that version), new in 0.1.16.
-- **The manager updating itself** from the signed releases, new in 0.1.16.
+  the packages of that version), new in 0.2.0.
+- **The manager updating itself** from the signed releases, new in 0.2.0.
 - **Desktops in the cloud** (Azure, AWS, any provider): the same RDP, through an RD Gateway or a VPN, but we have
   no cloud deployment to test on ([what to know](configuration.md#desktops-in-the-cloud)).
 

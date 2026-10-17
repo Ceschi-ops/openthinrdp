@@ -619,8 +619,8 @@
 
   # ---- versions of the devices: pilot devices, going back (UPDATE_TO) ----
   Label_UPDATE_TO        = 'Version to install'
-  Help_UPDATE_TO         = 'latest = the newest published version (updates\LATEST.txt of the management folder, or the latest GitHub release); a version, e.g. 0.1.16 = exactly that one, installed also when it is older than the installed one (to go back) and kept until this changes. Pilot devices: latest of their own while all devices stay on a version (Updates page). A device with a version that does not know this setting installs the newest.'
-  ErrUpdateTo            = 'Version to install: latest, or a version such as 0.1.16 (letters, digits, dot, dash, underscore; without the v of the GitHub tag)'
+  Help_UPDATE_TO         = 'latest = the newest published version (updates\LATEST.txt of the management folder, or the latest GitHub release); a version, e.g. 0.2.0 = exactly that one, installed also when it is older than the installed one (to go back) and kept until this changes. Pilot devices: latest of their own while all devices stay on a version (Updates page). A device with a version that does not know this setting installs the newest.'
+  ErrUpdateTo            = 'Version to install: latest, or a version such as 0.2.0 (letters, digits, dot, dash, underscore; without the v of the GitHub tag)'
   NoteUpdateToMissing    = 'Version to install {0}: updates\versions\{0}.txt (with its signature and package) is not in the management folder. The devices that update from the folder stay on what they have until it is there (Updates page, Version from GitHub...).'
   NavUpdates             = 'Updates'
   PageUpdatesNote        = 'The versions of OpenThinRDP in updates\ of the management folder, which one the devices install, and this manager. A new release can go to the pilot devices first and to all devices later; any version in updates\versions\ can be chosen again, to go back.'

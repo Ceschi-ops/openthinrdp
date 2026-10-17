@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.2.0 (2026-10-17)
 
 - **Pilot devices first, and going back to an earlier version** ([#50](https://github.com/OpenThinRdp/openthinrdp/issues/50)).
   New setting `UPDATE_TO`: `latest` (the default), or a version that a device installs also when it is older than its
@@ -12,7 +12,7 @@ Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/
   where every published version now has its signed index in `updates\versions\`. In the manager, **Release from
   GitHub** asks *all devices* or *pilot devices only*; a device can be made a pilot or set to a version of its own; the
   new **Updates** page shows what the fleet is on, the pilots and the versions in the folder, with **Release to all
-  devices**, **Version for all devices...** and **Version from GitHub...**. A device goes back only to 0.1.16 or later.
+  devices**, **Version for all devices...** and **Version from GitHub...**. A device goes back only to 0.2.0 or later.
 - **The manager updates itself** ([#51](https://github.com/OpenThinRdp/openthinrdp/issues/51)). Every release carries
   `openthinrdp-manager-<version>.zip`, named and hashed in the signed `LATEST.txt`. At start the manager checks the
   latest release in the background and shows *Manager X available*; **Update the manager** checks signature and hash,

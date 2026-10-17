@@ -189,7 +189,7 @@ own to test on. Reports are welcome in the [Discussions](https://github.com/Open
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `UPDATE_KEY` | `any` | signature an update from the management folder needs: `any` (project key or site key) or `site` (only the site key, once the device has it), see [management.md](management.md#a-fleet-on-its-own-key) |
-| `UPDATE_TO` | `latest` | `latest` = the newest version published; a version (e.g. `0.1.16`) = exactly that one, also an older one (going back, FreeRDP included), and nothing newer until it changes. A pilot group: the current version in `common.conf`, `latest` for the pilot devices. Going back works to 0.1.16 or later. See [management.md](management.md#signed-updates) |
+| `UPDATE_TO` | `latest` | `latest` = the newest version published; a version (e.g. `0.2.0`) = exactly that one, also an older one (going back, FreeRDP included), and nothing newer until it changes. A pilot group: the current version in `common.conf`, `latest` for the pilot devices. Going back works to 0.2.0 or later. See [management.md](management.md#signed-updates) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 | `REMOTE_SCREEN` | `on` | `off` = no remote screen from the manager ([management.md](management.md#remote-screen)); it needs `SSH=on` |
 

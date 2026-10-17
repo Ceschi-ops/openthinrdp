@@ -611,8 +611,8 @@
 
   # ---- versioni delle postazioni: postazioni pilota, tornare indietro (UPDATE_TO) ----
   Label_UPDATE_TO        = 'Versione da installare'
-  Help_UPDATE_TO         = 'latest = la versione più nuova pubblicata (updates\LATEST.txt della cartella di gestione, o l''ultima release di GitHub); una versione, es. 0.1.16 = proprio quella, installata anche se più vecchia di quella installata (per tornare indietro) e tenuta finché questa non cambia. Postazioni pilota: latest come eccezione mentre tutte le postazioni restano su una versione (pagina Aggiornamenti). Una postazione con una versione che non conosce questa impostazione installa la più nuova.'
-  ErrUpdateTo            = 'Versione da installare: latest, o una versione come 0.1.16 (lettere, cifre, punto, trattino, trattino basso; senza la v del tag di GitHub)'
+  Help_UPDATE_TO         = 'latest = la versione più nuova pubblicata (updates\LATEST.txt della cartella di gestione, o l''ultima release di GitHub); una versione, es. 0.2.0 = proprio quella, installata anche se più vecchia di quella installata (per tornare indietro) e tenuta finché questa non cambia. Postazioni pilota: latest come eccezione mentre tutte le postazioni restano su una versione (pagina Aggiornamenti). Una postazione con una versione che non conosce questa impostazione installa la più nuova.'
+  ErrUpdateTo            = 'Versione da installare: latest, o una versione come 0.2.0 (lettere, cifre, punto, trattino, trattino basso; senza la v del tag di GitHub)'
   NoteUpdateToMissing    = 'Versione da installare {0}: updates\versions\{0}.txt (con firma e pacchetto) non è nella cartella di gestione. Le postazioni che si aggiornano dalla cartella restano su quella che hanno finché non c''è (pagina Aggiornamenti, Versione da GitHub...).'
   NavUpdates             = 'Aggiornamenti'
   PageUpdatesNote        = 'Le versioni di OpenThinRDP in updates\ della cartella di gestione, quale installano le postazioni, e questo gestore. Una nuova release può andare prima alle postazioni pilota e poi a tutte; ogni versione in updates\versions\ si può scegliere di nuovo, per tornare indietro.'

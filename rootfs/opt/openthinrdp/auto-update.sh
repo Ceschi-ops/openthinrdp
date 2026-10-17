@@ -102,7 +102,7 @@ verify(){
 
 # UPDATE_TO: latest, or the one version to have. Going back below the first version that knows this setting would
 # bring back an updater that ignores it and goes straight up again: refused.
-MIN_TO=0.1.16
+MIN_TO=0.2.0
 TO=$(cfg UPDATE_TO); [ -z "$TO" ] && TO=latest
 IDX=LATEST.txt
 if [ "$TO" != latest ]; then
