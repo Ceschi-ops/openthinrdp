@@ -319,6 +319,15 @@ ok "the manager carries the same project key as the devices" 'cmp -s /src/manage
 rm -rf /tmp/mu; cp -a /src /tmp/mu; rm -rf /tmp/mu/out
 ok "make-update without -k: LATEST.txt to sign in the manager, no signature" '/tmp/mu/management/publish/make-update.sh -v 9.0.1 >/tmp/mu.log 2>&1 && grep -q "NOT signed yet" /tmp/mu.log && grep -qx "version=9.0.1" /tmp/mu/out/update-9.0.1/LATEST.txt && [ -f /tmp/mu/out/update-9.0.1/openthinrdp-update-9.0.1.tar.gz ] && [ ! -e /tmp/mu/out/update-9.0.1/LATEST.txt.sig ]'
 ok "make-update without -k does not publish into a management folder" '! /tmp/mu/management/publish/make-update.sh -v 9.0.2 -o /tmp/mu-share >/dev/null 2>&1 && [ ! -e /tmp/mu-share/updates ]'
+# with -k and -o: the manager of the same version in the release, the index of the version, pinned packages kept
+mkdir -p /tmp/mu-share/updates /tmp/mu-share/config; printf 'UPDATE_TO=9.0.1\n' > /tmp/mu-share/config/thinclient-a.conf
+for p in 8.0.0:4 9.0.1:3 9.0.0:2 9.0.2:1; do touch -d "-${p#*:} days" /tmp/mu-share/updates/openthinrdp-update-${p%:*}.tar.gz; done
+/tmp/mu/management/publish/make-update.sh -v 9.0.3 -k p@example.invalid -o /tmp/mu-share >/tmp/mu.log 2>&1
+MZ=/tmp/mu/out/update-9.0.3/openthinrdp-manager-9.0.3.zip
+ok "make-update: the manager zip, named and hashed in the signed LATEST.txt" 'grep -qx "manager=openthinrdp-manager-9.0.3.zip" /tmp/mu-share/updates/LATEST.txt && grep -qx "manager_sha256=$(sha256sum < $MZ | cut -c1-64)" /tmp/mu-share/updates/LATEST.txt && sqv --keyring $OTR/keys/openthinrdp-release.asc /tmp/mu-share/updates/LATEST.txt.sig /tmp/mu-share/updates/LATEST.txt >/dev/null 2>&1'
+ok "make-update: the zip has the manager and its VERSION, no .exe" 'python3 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); n=z.namelist(); sys.exit(not (\"OpenThinRDP-Manager.ps1\" in n and \"lang/en.psd1\" in n and z.read(\"VERSION\").strip()==b\"9.0.3\" and not any(x.endswith(\".exe\") for x in n)))" $MZ'
+ok "make-update -o: the index of the version in updates/versions" 'cmp -s /tmp/mu-share/updates/LATEST.txt /tmp/mu-share/updates/versions/9.0.3.txt && cmp -s /tmp/mu-share/updates/LATEST.txt.sig /tmp/mu-share/updates/versions/9.0.3.txt.sig'
+ok "make-update -o: the last 3 packages and the ones devices are set to are kept" '[ ! -e /tmp/mu-share/updates/openthinrdp-update-8.0.0.tar.gz ] && [ -e /tmp/mu-share/updates/openthinrdp-update-9.0.1.tar.gz ] && [ -e /tmp/mu-share/updates/openthinrdp-update-9.0.3.tar.gz ]'
 rm -rf /tmp/mu /tmp/mu-share /tmp/mu.log
 
 # --- RD Gateway: validation, and the options connect() of the kiosk gives FreeRDP (FreeRDP replaced by a stub)
