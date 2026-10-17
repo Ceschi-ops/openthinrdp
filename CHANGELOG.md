@@ -3,7 +3,7 @@
 Every release, newest first. **Security** marks what every device should get at once.
 Downloads and signed update packages: [releases](https://github.com/OpenThinRdp/openthinrdp/releases).
 
-## Unreleased
+## 0.1.15 (2026-10-17)
 
 - **FreeRDP `dda5414`: sessions start 5 seconds sooner, the newest UDP transport**
   ([#47](https://github.com/OpenThinRdp/openthinrdp/issues/47)). FreeRDP 3.32.2 with the UDP pull request
