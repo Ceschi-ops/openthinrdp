@@ -3159,6 +3159,12 @@ function Start-ReleaseImport {
     $sel = if ($stay -and ($st.Pinned -or $st.Pilots.Count)) { 1 } else { 0 }
     $pick = Show-PickDialog (Get-Text 'RelTitle') (Get-Text 'RelConfirm' $rel.Version (Get-PublishedUpdate) $sg.Text) $opts $sel -okKey 'BtnPublish'
     if (-not $pick) { return }
+    # Devices before 0.2.0 do not know UPDATE_TO (their report has no UPDATE_TO line): on the folder they take the new
+    # LATEST.txt whatever common.conf says, so pilot only would not hold them back. Said before anything is written.
+    if ($pick.Option -eq 1) {
+      $old = @($script:Devices | Where-Object { -not $_.S.ContainsKey('UPDATE_TO') -and $st.Pilots -notcontains $_.Name } | ForEach-Object Name | Sort-Object)
+      if ($old.Count -and -not (Confirm-Action (Get-Text 'RelTitle') (Get-Text 'RelPilotOldDevices' $old.Count ($old -join ', ') $rel.Version) 'Button2')) { return }
+    }
     try {
       if ($pick.Option -eq 1 -and -not $st.Pinned) {
         $v = Initialize-VersionIndex

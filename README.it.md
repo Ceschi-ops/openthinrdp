@@ -167,48 +167,30 @@ Cosa serve al dispositivo: [Requisiti](#requisiti).
 
 ## Il gestore: tutto il parco in una finestra
 
-`OpenThinRDP-Manager` è un solo script PowerShell per Windows 10/11 (italiano e inglese, niente da installare) che
-lavora sulla cartella condivisa in cui le postazioni scrivono il loro stato. Niente server, agenti o database: quello
-che si vede sono i file della cartella.
+`OpenThinRDP-Manager` è un unico script PowerShell per Windows 10/11 (in italiano e in inglese, niente da installare)
+che lavora sulla cartella condivisa dove le postazioni scrivono il loro stato. Niente server, niente agenti, niente
+database: quello che vedete sono i file della cartella.
 
 <p align="center">
-<img src="docs/screenshots/manager-devices.png" alt="Gestore: ogni postazione, le sue impostazioni e il pulsante Schermo remoto" width="49%">
-<img src="docs/screenshots/remote-screen.png" alt="Schermo remoto di una postazione nel browser, con l'avviso sulla postazione" width="49%">
+<img src="docs/screenshots/manager-devices.png" alt="Gestore: ogni postazione con stato, utente e versione, e le sue impostazioni" width="49%">
+<img src="docs/screenshots/manager-updates.png" alt="Gestore, pagina Aggiornamenti: tutte le postazioni su una versione, una postazione pilota sulla più nuova" width="49%">
 </p>
 
-- **Ogni postazione a colpo d'occhio**: un elenco con lo stato di ogni postazione come pallino colorato, chi è
-  collegato, la versione e l'ultimo invio, con una casella di ricerca; la postazione scelta mostra l'indirizzo, un
-  riepilogo leggibile (rete, software, FreeRDP, UDP o TCP in uso, Wi-Fi, segreti) e il suo registro eventi.
-- **Impostazioni per tutte le postazioni o per una**: per ogni impostazione il valore in uso sulla postazione, da dove
-  arriva (la postazione stessa, le impostazioni comuni o un'eccezione per quella postazione) e, in arancione, un valore
-  nuovo ancora in arrivo; la spiegazione dell'impostazione scelta per intero sotto l'elenco. Controllate prima di
-  salvarle (una postazione rifiuta tutta la configurazione se c'è un valore sbagliato: il gestore lo ferma prima).
-- **Schermo remoto**: con un clic lo schermo di una postazione si apre nel browser e si può usare, per aiutare un
-  utente ("cosa c'è scritto?") o per accedere una volta a una dashboard su uno schermo della hall. Passa solo da SSH,
-  con la chiave del gestore e una password monouso: niente di nuovo in ascolto sulla rete e niente da
-  installare sul PC (lo `ssh.exe` di Windows e il browser). La postazione mostra *Assistenza remota attiva* finché
-  dura e lo registra nei suoi eventi; finisce chiudendo la finestra, o da sola dopo 2 ore, e `REMOTE_SCREEN=off` la
-  spegne ([dettagli](docs/management.md#remote-screen)).
-- **Problemi di tutto il parco**: i registri eventi di tutte le postazioni letti insieme e raggruppati, così "sei
-  postazioni stamattina non raggiungevano il broker" è una riga invece di sei registri.
-- **Una cassaforte con codice di accesso** per le due chiavi che comandano il parco: la chiave SSH che apre gli
-  schermi e la chiave che firma i pacchetti di aggiornamento. Tutti gli amministratori del gestore la aprono con lo
-  stesso codice; senza codice non si apre nessuno schermo e non si firma niente. I pacchetti si firmano nel gestore,
-  così la chiave di firma non sta mai su una macchina di compilazione ([dettagli](docs/management.md#vault)). Con
-  `UPDATE_KEY=site` le postazioni accettano solo la chiave del vostro sito: il gestore controlla ogni release di
-  GitHub e la rifirma con quella chiave ([dettagli](docs/management.md#a-fleet-on-its-own-key)).
-- **Logo e immagine di sfondo**, per tutte o per una; **chiavi SSH** degli amministratori; **release** di GitHub
-  copiate nella cartella per le postazioni che si aggiornano da lì; un **controllo dei permessi** della cartella.
-- **Si adatta a qualsiasi schermo**, da un monitor da 27" a un portatile con il ridimensionamento dello schermo:
-  tutte le colonne restano in vista, le righe di pulsanti vanno a capo, la barra in alto tiene solo le icone quando
-  lo spazio è poco. `build-launcher.ps1` crea un `.exe` con l'icona di OpenThinRDP da aggiungere alla barra delle
-  applicazioni, che avvia il gestore senza finestre di console ([dettagli](docs/management.md#central-settings)).
+- **Ogni postazione a colpo d'occhio**: stato, utente, versione, ultimo rapporto, un riepilogo leggibile e il
+  registro degli eventi di ciascuna.
+- **Impostazioni per tutte le postazioni o per una**, controllate prima di salvare, con il valore in uso su ogni
+  postazione e quello ancora in arrivo.
+- **Una versione nuova prima su poche postazioni, poi su tutte**: *Release da GitHub* chiede *solo le postazioni
+  pilota* o *tutte*; le altre restano dove sono fino a *Rilascia a tutte*.
+- **Ritorno a una versione precedente se qualcosa non va**, per tutto il parco o per una postazione, FreeRDP
+  compreso: un clic nella pagina Aggiornamenti.
+- **Schermo remoto** di qualsiasi postazione nel browser, solo via SSH, con un avviso sulla postazione.
+- **Problemi di tutto il parco** raggruppati da tutti i registri; una **cassaforte** per la chiave SSH e la chiave di
+  firma; il parco sulla **sua chiave di firma**; logo e sfondo; e il gestore **si aggiorna da solo** dalle release
+  firmate.
 
-<p align="center">
-<img src="docs/screenshots/manager-vault.png" alt="Pagina Cassaforte del gestore: il codice di accesso, la chiave SSH del gestore, la chiave che firma gli aggiornamenti" width="70%">
-</p>
-
-Ogni modifica finisce in un registro delle modifiche nella cartella. Guida: [docs/management.md](docs/management.md).
+**Tutto quello che fa, pagina per pagina, con i passi per un gruppo pilota e per tornare indietro (in inglese):
+[docs/manager.md](docs/manager.md).**
 
 ## Schermi che mostrano solo una pagina web
 
@@ -301,6 +283,7 @@ La documentazione è in inglese nella cartella [docs](docs/).
 - [CHANGELOG.md](CHANGELOG.md): le novità di ogni versione.
 - [docs/status.md](docs/status.md): cosa è in produzione, cosa è solo provato, cosa non c'è ancora.
 - [docs/configuration.md](docs/configuration.md): tutte le impostazioni.
+- [docs/manager.md](docs/manager.md): il gestore Windows pagina per pagina: postazioni, impostazioni, postazioni pilota e ritorno indietro (in inglese).
 - [docs/management.md](docs/management.md): la cartella di gestione, la configurazione centrale, le chiavi SSH, gli
   aggiornamenti firmati.
 - [docs/building.md](docs/building.md): costruire e personalizzare l'immagine.

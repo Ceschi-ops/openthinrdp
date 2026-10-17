@@ -640,6 +640,7 @@
   RelNoPilots            = 'nessuna ancora'
   RelDonePilot           = 'Release {0} pubblicata in updates\. La installano le postazioni pilota; tutte le altre restano sulla {1} fino a Rilascia a tutte (pagina Aggiornamenti).'
   RelPilotNoIndex        = 'Manca updates\LATEST.txt o la sua firma: le altre postazioni non avrebbero una versione su cui restare. Non è stato copiato niente.'
+  RelPilotOldDevices     = '{0} postazioni non sono pilota ma hanno una versione precedente alla 0.2.0, che non conosce UPDATE_TO: {1}. Installerebbero comunque la {2}, appena arriva nella cartella. Pubblicare lo stesso solo per le postazioni pilota?'
   RelWrongVersion        = 'La release con tag v{0} dice versione {1} nel suo LATEST.txt: non è stato copiato niente.'
   FetchTitle             = 'Versione da GitHub'
   FetchAsk               = 'Versione da prendere dalle release GitHub di {0}, es. 0.1.15 (la release con tag v0.1.15):'
