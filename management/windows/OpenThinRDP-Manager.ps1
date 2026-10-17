@@ -371,7 +371,7 @@ function Test-SettingValue([string]$key, [string]$v) {
     'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrListValue' $L $t) } } }
     'collection' { if ($v -cnotmatch $script:Rx.Collection) { return (Get-Text 'ErrCollection') } }
     'repo'       { if ($v -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { return (Get-Text 'ErrRepo') } }
-    # latest, or a version as the index files name it: v0.1.16 is the GitHub tag, and updates\versions\v0.1.16.txt never exists
+    # latest, or a version as the index files name it: v0.2.0 is the GitHub tag, and updates\versions\v0.2.0.txt never exists
     'updateto'   { if ($v -ne '' -and ($v -cnotmatch $script:Rx.Version -or $v -cmatch '^[vV][0-9]')) { return (Get-Text 'ErrUpdateTo') } }
     'choice'     { if ($s.Choices -notcontains $v) { return (Get-Text 'ErrChoice' $L ($s.Choices -join ', ')) } }
     'gfx'        { if ($v -cnotmatch $script:Rx.Gfx) { return (Get-Text 'ErrGfx' $L) } }
@@ -566,7 +566,7 @@ function Compare-Version([string]$a, [string]$b) {
   0
 }
 # the index of an update package: version, package file, its SHA-256; Ok = all three in the format the devices accept.
-# Manager, ManagerHash: the zip of the manager of the same release (since 0.1.16, under the same signature);
+# Manager, ManagerHash: the zip of the manager of the same release (since 0.2.0, under the same signature);
 # ManagerOk = both there and named after the version
 function Read-LatestFile([string]$file) {
   $l = Read-Lines $file
@@ -2218,7 +2218,7 @@ foreach ($c in @(@('ColDevice', 105), @('ColState', 110), @('ColUser', 80), @('C
   # room for the sort arrow too
   $title = Get-Text $c[0]; $w = Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14
   # a pilot device says so after its version
-  if ($c[0] -eq 'ColVersion') { $w = Get-FitWidth $w (Get-Text 'ListPilot' '0.1.16') -pad 14 }
+  if ($c[0] -eq 'ColVersion') { $w = Get-FitWidth $w (Get-Text 'ListPilot' '0.2.0') -pad 14 }
   [void]$list.Columns.Add($title, $w); $list.Tag.Ideal += $w
 }
 # click on a header = sort by that column, second click = reverse; the arrow shows which.
@@ -3196,7 +3196,7 @@ function Invoke-FetchVersion {
 }
 # the versions that can be chosen: in updates\versions\, signed, with their package (newest first)
 function Get-ChoosableVersions { @(Get-PublishedVersions | Where-Object Usable | ForEach-Object Version) }
-# "the newest (0.1.16)" or a version, for the texts
+# "the newest (0.2.0)" or a version, for the texts
 function Format-Target([string]$t, $st) { if ($t -eq 'latest') { Get-Text 'TrackNewest' $(if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' }) } else { $t } }
 # a version older than the newest published: the devices go back to it
 function Get-BackText([string]$v, $st) { if ($v -ne 'latest' -and $st.Latest -and (Compare-Version $v $st.Latest) -lt 0) { "`r`n`r`n" + (Get-Text 'VerBack' $v $st.Latest) } else { '' } }
