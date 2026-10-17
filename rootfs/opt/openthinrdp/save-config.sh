@@ -150,6 +150,8 @@ case "$(low "$(get UPDATE_FROM)")" in share|cartella|folder) V[UPDATE_FROM]=shar
 [ "${V[UPDATE_FROM]}" = share ] && [ -z "${V[MGMT_SHARE]}" ] && err "$V_UPDATE_SHARE"
 V[UPDATE_GITHUB]=$(get UPDATE_GITHUB); [[ ${V[UPDATE_GITHUB]} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || err "$V_UPDATE_GITHUB"
 case "$(low "$(get UPDATE_KEY)")" in site|sito) V[UPDATE_KEY]=site ;; *) V[UPDATE_KEY]=any ;; esac
+V[UPDATE_TO]=$(low "$(get UPDATE_TO)")
+case "${V[UPDATE_TO]}" in ''|latest|ultima|ultimo) V[UPDATE_TO]=latest ;; *) [[ ${V[UPDATE_TO]} =~ ^[0-9a-z._-]+$ ]] || err "$V_UPDATE_TO" ;; esac
 V[SSH]=$(onoff "$(get SSH)")
 V[REMOTE_SCREEN]=$(onoff "$(get REMOTE_SCREEN)")
 

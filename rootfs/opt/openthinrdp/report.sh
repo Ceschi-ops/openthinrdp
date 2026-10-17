@@ -65,6 +65,7 @@ HOME=${HOME:-/root} xfreerdp3 --buildconfig 2>/dev/null | grep -q 'WITH_RDPEUDP=
   # which signatures the updates from the folder need, and the site key this device has (its fingerprint): the
   # manager shows which devices have not got the site key yet
   echo "UPDATE_KEY=$(cfg UPDATE_KEY)"
+  echo "UPDATE_TO=$(cfg UPDATE_TO)"
   echo "SITE_KEY=$(key_fingerprint "$OTR_ETC/update-key.asc" 2>/dev/null || echo none)"
   # the VPN: its state, and the WireGuard public key to add as a peer on the server (never the private one)
   echo "VPN=$("$OTR/vpn.sh" status 2>/dev/null)"
