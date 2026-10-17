@@ -84,7 +84,7 @@
   RelBadHash             = 'Il pacchetto {0} non corrisponde all''hash di LATEST.txt (download incompleto?): non è stato copiato niente.'
   RelSigChecked          = 'Firma della chiave del progetto: verificata.'
   RelSigNotChecked       = 'Firma non controllata qui (openthinrdp-release.asc non è accanto a questo programma): ogni postazione la controlla prima di installare.'
-  RelConfirm             = "Copiare la release {0} in updates\ della cartella di gestione?`r`nOra pubblicato: {1}.`r`n{2}`r`n`r`nLe postazioni con UPDATE_FROM = share la installano entro 5 minuti, mai durante una sessione."
+  RelConfirm             = "Copiare la release {0} in updates\ della cartella di gestione?`r`nOra pubblicato: {1}.`r`n{2}`r`n`r`nQuali postazioni la installano? (UPDATE_FROM = share: entro 5 minuti, mai durante una sessione)"
   RelDone                = 'Release {0} pubblicata in updates\. Le postazioni la mostrano nella colonna dell''aggiornamento software man mano che la installano.'
   RelCopyFailed          = "Copia in updates\ non riuscita:`r`n{0}"
 
@@ -608,4 +608,104 @@
   VpnErrNotProfile       = 'non è un profilo client OpenVPN (manca la riga remote o client)'
   VpnErrCommands         = "il profilo esegue comandi o scrive file ('{0}'): togliere quella riga"
   VpnErrOldVersion       = 'la postazione ha una versione senza VPN: aggiornarla prima (0.1.14 o successiva)'
+
+  # ---- versioni delle postazioni: postazioni pilota, tornare indietro (UPDATE_TO) ----
+  Label_UPDATE_TO        = 'Versione da installare'
+  Help_UPDATE_TO         = 'latest = la versione più nuova pubblicata (updates\LATEST.txt della cartella di gestione, o l''ultima release di GitHub); una versione, es. 0.1.16 = proprio quella, installata anche se più vecchia di quella installata (per tornare indietro) e tenuta finché questa non cambia. Postazioni pilota: latest come eccezione mentre tutte le postazioni restano su una versione (pagina Aggiornamenti). Una postazione con una versione che non conosce questa impostazione installa la più nuova.'
+  ErrUpdateTo            = 'Versione da installare: latest, o una versione come 0.1.16 (lettere, cifre, punto, trattino, trattino basso; senza la v del tag di GitHub)'
+  NoteUpdateToMissing    = 'Versione da installare {0}: updates\versions\{0}.txt (con firma e pacchetto) non è nella cartella di gestione. Le postazioni che si aggiornano dalla cartella restano su quella che hanno finché non c''è (pagina Aggiornamenti, Versione da GitHub...).'
+  NavUpdates             = 'Aggiornamenti'
+  PageUpdatesNote        = 'Le versioni di OpenThinRDP in updates\ della cartella di gestione, quale installano le postazioni, e questo gestore. Una nuova release può andare prima alle postazioni pilota e poi a tutte; ogni versione in updates\versions\ si può scegliere di nuovo, per tornare indietro.'
+  UpdBlockTitle          = 'Versioni delle postazioni'
+  UpdNoteLatest          = 'Più nuova pubblicata (updates\LATEST.txt): {0}'
+  UpdNoteFleetLatest     = 'Tutte le postazioni: la più nuova (UPDATE_TO = latest).'
+  UpdNoteFleetPinned     = 'Tutte le postazioni: {0} (UPDATE_TO in common.conf), fino a Rilascia a tutte.'
+  UpdNotePilots          = 'Postazioni pilota ({0}), sempre sulla più nuova: {1}'
+  UpdNoPilots            = 'Postazioni pilota: nessuna (Versione software... nell''intestazione di una postazione).'
+  UpdNoteOwn             = 'Postazioni con una versione propria: {0}'
+  UpdNoteVersions        = 'Versioni che si possono scegliere (updates\versions\): {0}'
+  UpdNoVersions          = 'updates\versions\ è vuota: si riempie con la prossima release copiata da questo gestore.'
+  UpdNoteInstalled       = 'Installate ora: {0}'
+  UpdOnDevices           = '{0} su {1}'
+  UpdFleetPinned         = '{0} (tutte le postazioni su {1}, pilota: {2})'
+  BtnReleaseAll          = 'Rilascia a tutte'
+  BtnFleetVersion        = 'Versione per tutte...'
+  BtnFetchVersion        = 'Versione da GitHub...'
+  BtnFromGitHub          = 'Da GitHub...'
+  BtnPublish             = 'Pubblica'
+  BtnApply               = 'Applica'
+  RelScopeAll            = 'Tutte le postazioni: installano la {0}'
+  RelScopePilot          = 'Solo le postazioni pilota ({0}: {2}); tutte le altre restano sulla {1}'
+  RelScopePilotNo        = 'Solo le postazioni pilota: non si può, in updates\ non c''è ancora niente di firmato su cui far restare le altre'
+  RelNoPilots            = 'nessuna ancora'
+  RelDonePilot           = 'Release {0} pubblicata in updates\. La installano le postazioni pilota; tutte le altre restano sulla {1} fino a Rilascia a tutte (pagina Aggiornamenti).'
+  RelPilotNoIndex        = 'Manca updates\LATEST.txt o la sua firma: le altre postazioni non avrebbero una versione su cui restare. Non è stato copiato niente.'
+  RelWrongVersion        = 'La release con tag v{0} dice versione {1} nel suo LATEST.txt: non è stato copiato niente.'
+  FetchTitle             = 'Versione da GitHub'
+  FetchAsk               = 'Versione da prendere dalle release GitHub di {0}, es. 0.1.15 (la release con tag v0.1.15):'
+  FetchAlready           = 'La versione {0} è già in updates\versions\.'
+  FetchConfirm           = "Copiare la versione {0} in updates\ e updates\versions\?`r`n{1}`r`n`r`n{2}"
+  FetchOlder             = 'Non è più nuova della più nuova pubblicata ({0}): updates\LATEST.txt non cambia, e nessuna postazione la installa finché non viene scelta come sua versione.'
+  FetchNewer             = 'È più nuova della più nuova pubblicata ({0}): diventa la più nuova, e la prendono le postazioni che installano la più nuova.'
+  AllTitle               = 'Rilascia a tutte'
+  AllConfirm             = "Tutte le postazioni dalla {0} alla {1}, la più nuova pubblicata?`r`n`r`ncommon.conf avrà UPDATE_TO = latest: le postazioni la installano entro 5 minuti, mai durante una sessione."
+  AllNothing             = 'Tutte le postazioni installano già la versione più nuova pubblicata.'
+  AllDone                = 'common.conf: UPDATE_TO = latest. Le postazioni installano la {0} entro 5 minuti.'
+  FleetTitle             = 'Versione per tutte le postazioni'
+  FleetText              = "Quale versione installano tutte le postazioni (UPDATE_TO in common.conf). Ora: {0}.`r`nLe postazioni pilota e quelle con una versione propria tengono la loro."
+  FleetOptLatest         = 'La più nuova pubblicata ({0})'
+  FleetOptVersion        = 'Questa versione (anche più vecchia: ci tornano):'
+  FleetConfirm           = "Tutte le postazioni: {0} -> {1}?{2}`r`n`r`nLa installano entro 5 minuti, mai durante una sessione."
+  VerBack                = 'La {0} è più vecchia della più nuova pubblicata ({1}): le postazioni che ne hanno una più nuova tornano indietro, installandola come ogni aggiornamento.'
+  BtnDeviceVersion       = 'Versione software...'
+  TipDeviceVersion       = 'Quale versione di OpenThinRDP installa questa postazione: come tutte, pilota (sempre la più nuova), o una versione propria.'
+  DevVerTitle            = 'Versione software - {0}'
+  DevVerText             = "{0} ha OpenThinRDP {1} (aggiornamento installato: {2}).`r`nOra installa: {3}."
+  DevOptFleet            = 'Come tutte le postazioni ({0})'
+  DevOptPilot            = 'Postazione pilota: sempre la più nuova pubblicata ({0}), anche mentre tutte le altre restano su una versione'
+  DevOptVersion          = 'Una versione propria (anche più vecchia: ci torna):'
+  DevVerConfirm          = '{0}: {1} -> {2}?'
+  DevPilot               = 'postazione pilota'
+  DevOwnVersion          = 'resta sulla {0}'
+  ListPilot              = '{0} (pilota)'
+  TrackFleet             = 'come tutte: {0}'
+  TrackPilot             = 'pilota: la più nuova ({0})'
+  TrackOwn               = 'versione propria: {0}'
+  TrackNewest            = 'la più nuova ({0})'
+  SumUpdateTo            = 'Versione da installare'
+  SumUpdateToReported    = '(la postazione: UPDATE_TO = {0}, aggiornamento installato: {1})'
+  SumUpdateToOld         = '(la postazione non riporta UPDATE_TO: la sua versione installa la più nuova)'
+
+  # ---- il gestore si aggiorna da solo ----
+  MgrBlockTitle          = 'Questo gestore'
+  MgrNote                = "Versione: {0}   -   cartella: {1}`r`n{2}"
+  MgrDevelopmentShort    = 'copia di sviluppo'
+  MgrStatus_Development  = 'Nessun file VERSION accanto (una copia del repository): non si aggiorna mai da solo.'
+  MgrStatus_Unknown      = 'Non ancora controllato.'
+  MgrStatus_Available    = 'È disponibile la versione {0} del gestore: Aggiorna il gestore sostituisce i file di questa cartella (quelli attuali vanno in previous\) e lo riavvia.'
+  MgrStatus_UpToDate     = 'Aggiornato (l''ultima release è la {0}).'
+  MgrStatus_NoManager    = 'L''ultima release ({0}) non ha il pacchetto del gestore.'
+  MgrStatus_BadSignature = 'Il LATEST.txt dell''ultima release NON è firmato dalla chiave del progetto: non viene proposto niente. Segnalatelo negli avvisi di sicurezza del progetto.'
+  MgrStatus_NoKey        = 'openthinrdp-release.asc non è accanto a questo gestore: un nuovo gestore non si potrebbe verificare, quindi non ne viene proposto nessuno.'
+  MgrChecking            = 'Controllo dell''ultima release...'
+  MgrCheckFailed         = 'Non è stato possibile leggere l''ultima release: {0}'
+  MgrAvailable           = 'Gestore {0} disponibile'
+  BtnUpdateManager       = 'Aggiorna il gestore'
+  BtnCheckManager        = 'Controlla di nuovo'
+  MgrTitle               = 'Aggiorna il gestore'
+  MgrConfirm             = "Aggiornare il gestore dalla {0} alla {1}?`r`n`r`nI file di {2} vengono sostituiti da quelli della release; quelli sostituiti vengono prima copiati in previous\. vault.otr, gli avviatori (.exe, .args, .script) e tutto ciò che non è nella release restano come sono. Poi il gestore si riavvia; gli altri amministratori hanno la nuova versione al prossimo avvio."
+  MgrUnsaved             = "`r`n`r`nLe modifiche non salvate nelle pagine di questa finestra vanno perse."
+  MgrUpdating            = 'Aggiornamento del gestore alla {0}...'
+  MgrNotFound            = "Download non riuscito: {0}`r`n{1}"
+  MgrBadHash             = 'Il pacchetto del gestore {0} non corrisponde all''hash del LATEST.txt firmato: non è cambiato niente.'
+  MgrBadZip              = 'Il pacchetto del gestore contiene un percorso fuori dalla sua cartella ({0}): non è cambiato niente.'
+  MgrNotManager          = 'Il pacchetto del gestore non contiene OpenThinRDP-Manager.ps1 e VERSION {0}: non è cambiato niente.'
+  MgrNotWritable         = "Nella cartella del gestore non si può scrivere: {0}`r`nAggiornatelo come un amministratore che può scriverci: è la copia che avviano tutti i PC."
+  MgrBadCopy             = '{0} non è stato copiato per intero'
+  MgrBackupFailed        = 'Non è stato possibile copiare i file del gestore in previous\ (non è cambiato niente): {0}'
+  MgrRestored            = "L'aggiornamento non è riuscito e i file precedenti sono tornati al loro posto: {0}"
+  MgrRestoreFailed       = "L'aggiornamento non è riuscito ({0}) e questi file non si sono potuti rimettere da previous\: {1}. Ricopiateli a mano."
+  MgrDone                = 'Gestore {0} installato in {1} (i file sostituiti sono in previous\).'
+  MgrLauncherChanged     = 'L''avviatore è cambiato (Launcher.cs): ricostruite il .exe con {0}, con gli stessi -Name, -Folder, -Language (e -Install su ogni PC che ne ha una copia locale). Quello vecchio funziona fino ad allora.'
+  MgrRestart             = 'Il gestore ora si riavvia.'
 }

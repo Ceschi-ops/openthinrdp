@@ -14,6 +14,10 @@
 # the latest release that is not a pre-release).
 # A new version is downloaded, its hash checked, and installed in the background ("install <version>", unit
 # openthinrdp-update). Never an older version than the installed one; at most 3 attempts per version.
+# UPDATE_TO=<version> instead of latest: exactly that version, also an older one (going back: "install <version>
+# downgrade" puts back the FreeRDP of that package too), and nothing newer until the setting changes. Its index is
+# updates\versions\<version>.txt in the folder (the manager writes one for every version it publishes) or
+# LATEST.txt of the release v<version> on GitHub, signed as LATEST.txt is.
 . /opt/openthinrdp/lib/common.sh
 PROJECT_KEY=$OTR/keys/openthinrdp-release.asc
 SITE_KEY=$OTR_ETC/update-key.asc
@@ -29,7 +33,24 @@ if [ "$1" = install ]; then
   echo "installing: $V (since $(date '+%d/%m %H:%M'))" > $ST
   ev "software update $V: installing"
   echo "2 $V" > /run/openthinrdp-update-progress   # percent and version, for the screens (ui.py)
-  ( cd "$P" && timeout 1800 bash ./install.sh ) > "$L" 2>&1; rc=$?
+  : > "$L"
+  # Going back: install.sh installs a .deb only when it is newer than the installed one, and the install.sh of an
+  # older package knows nothing of going back. So the FreeRDP of that version is put back here first (the reason to go
+  # back is often FreeRDP itself), unless FreeRDP is pinned on this device.
+  if [ "$3" = downgrade ] && ls "$P"/debs/*.deb >/dev/null 2>&1; then
+    DG=()
+    for d in "$P"/debs/*.deb; do
+      n=$(dpkg-deb -f "$d" Package); v=$(dpkg-deb -f "$d" Version)
+      [[ $n == *freerdp* || $n == *winpr* ]] && [ -f $OTR_ETC/freerdp-pinned ] && continue
+      [ "$(dpkg-query -W -f '${Version}' "$n" 2>/dev/null)" = "$v" ] || DG+=("$d")
+    done
+    if [ ${#DG[@]} -gt 0 ]; then
+      echo "going back: ${DG[*]##*/}" >> "$L"
+      DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q --allow-downgrades "${DG[@]}" >> "$L" 2>&1 \
+        || { echo "ERROR $V: putting back its packages failed (log $L)" > $ST; ev "software update $V FAILED: putting back its packages"; rm -f /run/openthinrdp-update-progress; exit 1; }
+    fi
+  fi
+  ( cd "$P" && timeout 1800 bash ./install.sh ) >> "$L" 2>&1; rc=$?
   rm -f /run/openthinrdp-update-progress
   if [ $rc = 0 ]; then
     echo "$V" > "$OTR_LIB/update-version"
@@ -79,32 +100,45 @@ verify(){
   elif command -v gpgv >/dev/null; then gpgv "${a[@]}" "$1" "$2" >/dev/null 2>&1; else return 1; fi
 }
 
+# UPDATE_TO: latest, or the one version to have. Going back below the first version that knows this setting would
+# bring back an updater that ignores it and goes straight up again: refused.
+MIN_TO=0.1.16
+TO=$(cfg UPDATE_TO); [ -z "$TO" ] && TO=latest
+IDX=LATEST.txt
+if [ "$TO" != latest ]; then
+  [[ $TO =~ ^[0-9A-Za-z._-]+$ ]] || { echo "IGNORED: UPDATE_TO=$TO is not a version" > $ST; exit 0; }
+  [ "$(printf '%s\n%s\n' "$TO" "$MIN_TO" | sort -V | head -1)" = "$MIN_TO" ] || {
+    echo "IGNORED: UPDATE_TO=$TO, going back is possible to $MIN_TO or later" > $ST; exit 0; }
+fi
 case "$1" in
   check)
     SRC=share; D="$2/updates"; KEYS=("$PROJECT_KEY" "$SITE_KEY")
     [ "$(cfg UPDATE_KEY)" = site ] && [ -s "$SITE_KEY" ] && KEYS=("$SITE_KEY")
-    [ -f "$D/LATEST.txt" ] || { echo "no update published in the management folder" > $ST; exit 0; } ;;
+    [ "$TO" != latest ] && IDX=versions/$TO.txt
+    [ -f "$D/$IDX" ] || { if [ "$TO" = latest ]; then echo "no update published in the management folder" > $ST
+      else echo "UPDATE_TO=$TO: this version is not in the management folder (updates\\versions)" > $ST; fi; exit 0; } ;;
   check-github)
     SRC=github; KEYS=("$PROJECT_KEY")
     REPO=$(cfg UPDATE_GITHUB)
-    BASE=${OTR_UPDATE_BASE_URL:-https://github.com/$REPO/releases/latest/download}
+    if [ "$TO" = latest ]; then BASE=${OTR_UPDATE_BASE_URL:-https://github.com/$REPO/releases/latest/download}
+    else BASE=$(printf "${OTR_UPDATE_TAG_URL:-https://github.com/$REPO/releases/download/v%s}" "$TO"); fi
     # at most every 3 hours once GitHub answered (report.sh runs every 5 minutes: without network, e.g. right
-    # after boot, it simply tries again at the next run)
+    # after boot, it simply tries again at the next run); a changed UPDATE_TO is asked at once
     # (an open offer is not held back: the answer from the device, or the 10 minutes, are waited for)
-    [ -f $W/github-checked ] && [ ! -f $OFFER ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 10800 ] && exit 0 ;;
-  *) echo "usage: $0 check <mounted folder> | check-github | install <version>"; exit 2 ;;
+    [ -f $W/github-checked ] && [ "$(cat $W/github-checked)" = "$TO" ] && [ ! -f $OFFER ] && [ $(( $(date +%s) - $(stat -c %Y $W/github-checked) )) -lt 10800 ] && exit 0 ;;
+  *) echo "usage: $0 check <mounted folder> | check-github | install <version> [downgrade]"; exit 2 ;;
 esac
 [ -s "${KEYS[0]}" ] || [ -s "${KEYS[1]:-}" ] || { echo "updates disabled: no signing key" > $ST; exit 0; }
 systemctl is-active -q openthinrdp-update.service 2>/dev/null && exit 0      # an install is already running
 rm -f $W/LATEST.txt $W/LATEST.txt.sig
-get LATEST.txt $W/LATEST.txt; rc=$?
+get "$IDX" $W/LATEST.txt; rc=$?
 # GitHub answered (also "no release yet"): next question in 3 hours. No answer: at the next run
-[ $SRC = github ] && { [ $rc = 0 ] || [ $rc = 3 ]; } && touch $W/github-checked
+[ $SRC = github ] && { [ $rc = 0 ] || [ $rc = 3 ]; } && echo "$TO" > $W/github-checked
 # the kiosk waits for this at the first start (an answer, whatever it is)
 { [ $rc = 0 ] || [ $rc = 3 ]; } && touch /run/openthinrdp-update-checked
 if [ $rc != 0 ]; then
   echo "no update found ($SRC$([ $SRC = github ] && echo " $REPO$([ $rc = 1 ] && echo ', not reachable')"), $(date '+%d/%m %H:%M'))" > $ST; exit 0; fi
-get LATEST.txt.sig $W/LATEST.txt.sig || : > $W/LATEST.txt.sig
+get "$IDX.sig" $W/LATEST.txt.sig || : > $W/LATEST.txt.sig
 if ! verify $W/LATEST.txt.sig $W/LATEST.txt; then
   S=$(md5sum < $W/LATEST.txt | cut -c1-32)
   [ "$(cat $W/bad-signature 2>/dev/null)" = "$S" ] || { ev "update from $SRC with an INVALID signature: ignored"; echo "$S" > $W/bad-signature; }
@@ -114,11 +148,17 @@ V=$(sed -n 's/^version=//p' $W/LATEST.txt | tr -d '\r' | head -1)
 F=$(sed -n 's/^file=//p' $W/LATEST.txt | tr -d '\r' | head -1)
 H=$(sed -n 's/^sha256=//p' $W/LATEST.txt | tr -d '\r' | head -1)
 { [[ $V =~ ^[0-9A-Za-z._-]+$ ]] && [[ $F =~ ^[0-9A-Za-z._-]+\.tar\.gz$ ]] && [[ $H =~ ^[0-9a-f]{64}$ ]]; } || { echo "IGNORED: LATEST.txt not valid" > $ST; exit 0; }
+[ "$TO" != latest ] && [ "$V" != "$TO" ] && { echo "IGNORED: UPDATE_TO=$TO but the index found is for $V ($SRC)" > $ST; exit 0; }
+PIN=""; [ "$TO" != latest ] && PIN=", UPDATE_TO=$TO"
 # the version installed: the last update, or the image itself when no update was ever installed
 CUR=$(cat "$OTR_LIB/update-version" 2>/dev/null || cat "$OTR/VERSION" 2>/dev/null)
-[ "$V" = "$CUR" ] && { rm -f $OFFER; echo "up to date: $V ($SRC, $(date '+%d/%m %H:%M'))" > $ST; exit 0; }
+[ "$V" = "$CUR" ] && { rm -f $OFFER; echo "up to date: $V ($SRC$PIN, $(date '+%d/%m %H:%M'))" > $ST; exit 0; }
+DOWN=""
 if [ -n "$CUR" ] && [ "$(printf '%s\n%s\n' "$CUR" "$V" | sort -V | tail -1)" = "$CUR" ]; then
-  rm -f $OFFER; echo "up to date: $CUR ($SRC has $V, older: ignored)" > $ST; exit 0; fi
+  # older than the installed one: only when asked for by UPDATE_TO
+  [ "$TO" = latest ] && { rm -f $OFFER; echo "up to date: $CUR ($SRC has $V, older: ignored)" > $ST; exit 0; }
+  DOWN=downgrade
+fi
 N=$(cat "$W/attempts-$V" 2>/dev/null || echo 0)
 [ "$N" -ge 3 ] && { echo "ERROR $V: 3 failed attempts, not retrying (log $OTR_LOG/update-$V.log)" > $ST; exit 0; }
 # at least 10 minutes between attempts: every event line starts report.sh, and without this pause the 3
@@ -144,6 +184,7 @@ if [ ! -f "$OTR_LIB/update-version" ] && [ ! -f /tmp/openthinrdp-update-accepted
 fi
 rm -f $OFFER
 echo $((N + 1)) > "$W/attempts-$V"
-echo "found $V ($SRC): install started" > $ST
-systemd-run --unit=openthinrdp-update --collect --no-block --property=Nice=10 "$OTR/auto-update.sh" install "$V" >/dev/null 2>&1
+if [ -n "$DOWN" ]; then echo "found $V ($SRC$PIN): going back from $CUR, install started" > $ST; ev "software update: going back from $CUR to $V (UPDATE_TO)"
+else echo "found $V ($SRC$PIN): install started" > $ST; fi
+systemd-run --unit=openthinrdp-update --collect --no-block --property=Nice=10 "$OTR/auto-update.sh" install "$V" $DOWN >/dev/null 2>&1
 exit 0

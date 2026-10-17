@@ -152,6 +152,31 @@ when the profile asks for them (`auth-user-pass`).
 The state of the VPN is in the report (`VPN=`), in the manager (Summary, Network) and in the diagnostics of the
 device. Events: *VPN: ...* in the event log.
 
+### Desktops in the cloud
+
+OpenThinRDP connects with RDP to any Windows it can reach, wherever it runs. An RDS deployment (broker, session
+hosts or a VDI collection) or single Windows virtual machines in **Azure, AWS, Google Cloud** or with any other
+provider are set up as on premises: `BROKER` is the broker or the machine, `LOAD_BALANCE_INFO` the collection.
+
+- **How the devices reach it:** through the deployment's [RD Gateway](#rd-gateway) (HTTPS, the usual way to publish
+  RDS in the cloud), through a [VPN](#vpn) to the cloud network (the device's own WireGuard or OpenVPN, or the
+  site-to-site VPN of the office), or straight to a public address (not recommended: Remote Desktop open to the
+  Internet).
+- **UDP** works straight and through a VPN, as on premises: the firewall of the cloud network (security group, NSG)
+  must let UDP 3389 in, besides TCP 3389. Through an RD Gateway the session uses TCP.
+- **Sign-in** with the domain accounts of the deployment (Active Directory in the cloud, or a managed domain such as
+  Microsoft Entra Domain Services), Kerberos or NTLM as on premises. Kerberos needs the domain controllers, so from
+  outside with no VPN use `RDP_AUTH=negotiate` or `ntlm`.
+- **Management folder:** an SMB share the devices can reach, usually on a file server through the VPN. Devices without
+  a management folder work too, set up on the device (settings dialog) and updated from GitHub.
+- **Not supported yet: Azure Virtual Desktop and Windows 365.** Their clients sign in with Microsoft Entra ID and
+  connect through Microsoft's own gateway and broker, which the kiosk does not do (FreeRDP has experimental support,
+  OpenThinRDP does not use it). Services with their own protocol (Citrix, Omnissa Horizon, Amazon WorkSpaces) are
+  not RDP.
+
+OpenThinRDP runs in production on premises; it is the same RDP in the cloud, but we have no cloud deployment of our
+own to test on. Reports are welcome in the [Discussions](https://github.com/OpenThinRdp/openthinrdp/discussions).
+
 ## Management
 
 | Key | Default | Meaning |
@@ -164,6 +189,7 @@ device. Events: *VPN: ...* in the event log.
 | `UPDATE_FROM` | `github` | OpenThinRDP software updates: `github` (signed releases, checked every 3 hours), `share` (`updates\` of the management folder) or `off`, see [management.md](management.md#signed-updates) |
 | `UPDATE_GITHUB` | `OpenThinRdp/openthinrdp` | repository of the releases, `owner/repository` (for a fork) |
 | `UPDATE_KEY` | `any` | signature an update from the management folder needs: `any` (project key or site key) or `site` (only the site key, once the device has it), see [management.md](management.md#a-fleet-on-its-own-key) |
+| `UPDATE_TO` | `latest` | `latest` = the newest version published; a version (e.g. `0.1.16`) = exactly that one, also an older one (going back, FreeRDP included), and nothing newer until it changes. A pilot group: the current version in `common.conf`, `latest` for the pilot devices. Going back works to 0.1.16 or later. See [management.md](management.md#signed-updates) |
 | `SSH` | `off` | `on` = SSH for the `otradmin` account, key login only |
 | `REMOTE_SCREEN` | `on` | `off` = no remote screen from the manager ([management.md](management.md#remote-screen)); it needs `SSH=on` |
 

@@ -283,12 +283,51 @@ ok "site-key.sh: a secret key or anything else is refused, the key in place stay
 $OTR/site-key.sh install < /tmp/s-pub.asc >/dev/null; rm -f /tmp/x-pub.asc /tmp/x-sec.asc /tmp/s-pub.asc
 ok "UPDATE_KEY site or any" '$OTR/save-config.sh "$T" --print >/dev/null 2>&1; printf "UPDATE_KEY=Sito\n" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_KEY=site" && printf "UPDATE_KEY=garbage\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_KEY=any"'
 ok "UPDATE_FROM share needs a management folder" '! check x "$(printf "UPDATE_FROM=share\nMGMT_SHARE=\n")"'
+# UPDATE_TO: one version, also an older one (pilot groups, going back)
+ok "UPDATE_TO latest or a version" 'printf "UPDATE_TO=Ultima\n" > "$T"; $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_TO=latest" && printf "UPDATE_TO=0.1.20\n" > "$T" && $OTR/save-config.sh "$T" --print 2>&1 | grep -qx "UPDATE_TO=0.1.20" && ! check x "UPDATE_TO=0.1 20!"'
+to(){ sed -i '/^UPDATE_TO=/d' $OTR_CONF; [ -n "$1" ] && echo "UPDATE_TO=$1" >> $OTR_CONF; rm -rf $U/pkg-* $U/attempts-*; }
+version_index(){ mkdir -p /tmp/share/updates/versions; cp /tmp/r/LATEST.txt /tmp/share/updates/versions/$1.txt; cp /tmp/r/LATEST.txt.sig /tmp/share/updates/versions/$1.txt.sig; cp /tmp/r/*.tar.gz /tmp/share/updates/; }
+release 0.3.1 p@example.invalid /tmp/r; version_index 0.3.1; echo 0.3.3 > $OTR_LIB/update-version
+to 0.3.1; $OTR/auto-update.sh check /tmp/share
+ok "share, UPDATE_TO older than the installed version: going back" 'grep -q "^found 0.3.1 (share, UPDATE_TO=0.3.1): going back from 0.3.3, install started" $U/status && [ -f $U/pkg-0.3.1/install.sh ] && grep -q "going back from 0.3.3 to 0.3.1" $OTR_EVENTS'
+to 0.3.0; $OTR/auto-update.sh check /tmp/share
+ok "share, UPDATE_TO a version not in the folder: said, nothing installed" 'grep -q "^UPDATE_TO=0.3.0: this version is not in the management folder" $U/status && [ ! -d $U/pkg-0.3.0 ]'
+cp /tmp/share/updates/versions/0.3.1.txt /tmp/share/updates/versions/0.3.0.txt; cp /tmp/share/updates/versions/0.3.1.txt.sig /tmp/share/updates/versions/0.3.0.txt.sig; $OTR/auto-update.sh check /tmp/share
+ok "share, an index under the name of another version is ignored" 'grep -q "^IGNORED: UPDATE_TO=0.3.0 but the index found is for 0.3.1" $U/status && [ ! -d $U/pkg-0.3.1 ]'
+release 0.3.3 p@example.invalid /tmp/r; version_index 0.3.3; to 0.3.3; $OTR/auto-update.sh check /tmp/share
+ok "UPDATE_TO the installed version: up to date, nothing newer" 'grep -q "^up to date: 0.3.3 (share, UPDATE_TO=0.3.3" $U/status'
+to 0.1.5; $OTR/auto-update.sh check /tmp/share
+ok "UPDATE_TO below the first version that knows it: refused" 'grep -q "^IGNORED: UPDATE_TO=0.1.5, going back is possible to 0.1.16 or later" $U/status'
+export OTR_UPDATE_TAG_URL=file:///tmp/otr-tags/v%s
+release 0.3.1 p@example.invalid /tmp/otr-tags/v0.3.1; release 0.4.0 p@example.invalid /tmp/otr-release
+to ""; gh; rm -rf $U/pkg-* $U/attempts-*
+to 0.3.1; $OTR/auto-update.sh check-github
+ok "github: a changed UPDATE_TO is asked at once, the release v<version> is taken" 'grep -q "^found 0.3.1 (github, UPDATE_TO=0.3.1): going back from 0.3.3" $U/status && [ -f $U/pkg-0.3.1/install.sh ]'
+release 0.3.1 s@example.invalid /tmp/otr-tags/v0.3.1; to 0.3.1; gh
+ok "github: the release of one version needs the project signature too" 'grep -q "^IGNORED: invalid signature" $U/status'
+unset OTR_UPDATE_TAG_URL; rm -rf /tmp/otr-tags /tmp/r
+# going back puts back the .deb of that version (install.sh alone installs only newer ones)
+dummy(){ local d; d=$(mktemp -d); mkdir -p $d/DEBIAN; printf 'Package: otr-dummy\nVersion: %s\nArchitecture: all\nMaintainer: t <t@example.invalid>\nDescription: test\n' "$1" > $d/DEBIAN/control; dpkg-deb -b $d "$2" >/dev/null; }
+dummy 2.0 /tmp/otr-dummy-2.deb; dpkg -i /tmp/otr-dummy-2.deb >/dev/null 2>&1
+rm -rf $U/pkg-0.3.1; mkdir -p $U/pkg-0.3.1/debs; printf '#!/bin/bash\nexit 0\n' > $U/pkg-0.3.1/install.sh; dummy 1.0 $U/pkg-0.3.1/debs/otr-dummy_1.0_all.deb
+$OTR/auto-update.sh install 0.3.1 downgrade
+ok "going back: the older .deb of the package is put back, the version recorded" '[ "$(dpkg-query -W -f "\${Version}" otr-dummy)" = 1.0 ] && [ "$(cat $OTR_LIB/update-version)" = 0.3.1 ] && grep -q "^up to date: 0.3.1" $U/status'
+dpkg -r otr-dummy >/dev/null 2>&1; rm -f /tmp/otr-dummy-2.deb; to ""
 ok "UPDATE_GITHUB must be owner/repository" '! check x "UPDATE_GITHUB=not a repo"'
 ok "the manager carries the same project key as the devices" 'cmp -s /src/management/windows/openthinrdp-release.asc /src/rootfs/opt/openthinrdp/keys/openthinrdp-release.asc'
 # make-update.sh without -k: the package and LATEST.txt for the manager to sign (vault), never published unsigned
 rm -rf /tmp/mu; cp -a /src /tmp/mu; rm -rf /tmp/mu/out
 ok "make-update without -k: LATEST.txt to sign in the manager, no signature" '/tmp/mu/management/publish/make-update.sh -v 9.0.1 >/tmp/mu.log 2>&1 && grep -q "NOT signed yet" /tmp/mu.log && grep -qx "version=9.0.1" /tmp/mu/out/update-9.0.1/LATEST.txt && [ -f /tmp/mu/out/update-9.0.1/openthinrdp-update-9.0.1.tar.gz ] && [ ! -e /tmp/mu/out/update-9.0.1/LATEST.txt.sig ]'
 ok "make-update without -k does not publish into a management folder" '! /tmp/mu/management/publish/make-update.sh -v 9.0.2 -o /tmp/mu-share >/dev/null 2>&1 && [ ! -e /tmp/mu-share/updates ]'
+# with -k and -o: the manager of the same version in the release, the index of the version, pinned packages kept
+mkdir -p /tmp/mu-share/updates /tmp/mu-share/config; printf 'UPDATE_TO=9.0.1\n' > /tmp/mu-share/config/thinclient-a.conf
+for p in 8.0.0:4 9.0.1:3 9.0.0:2 9.0.2:1; do touch -d "-${p#*:} days" /tmp/mu-share/updates/openthinrdp-update-${p%:*}.tar.gz; done
+/tmp/mu/management/publish/make-update.sh -v 9.0.3 -k p@example.invalid -o /tmp/mu-share >/tmp/mu.log 2>&1
+MZ=/tmp/mu/out/update-9.0.3/openthinrdp-manager-9.0.3.zip
+ok "make-update: the manager zip, named and hashed in the signed LATEST.txt" 'grep -qx "manager=openthinrdp-manager-9.0.3.zip" /tmp/mu-share/updates/LATEST.txt && grep -qx "manager_sha256=$(sha256sum < $MZ | cut -c1-64)" /tmp/mu-share/updates/LATEST.txt && sqv --keyring $OTR/keys/openthinrdp-release.asc /tmp/mu-share/updates/LATEST.txt.sig /tmp/mu-share/updates/LATEST.txt >/dev/null 2>&1'
+ok "make-update: the zip has the manager and its VERSION, no .exe" 'python3 -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); n=z.namelist(); sys.exit(not (\"OpenThinRDP-Manager.ps1\" in n and \"lang/en.psd1\" in n and z.read(\"VERSION\").strip()==b\"9.0.3\" and not any(x.endswith(\".exe\") for x in n)))" $MZ'
+ok "make-update -o: the index of the version in updates/versions" 'cmp -s /tmp/mu-share/updates/LATEST.txt /tmp/mu-share/updates/versions/9.0.3.txt && cmp -s /tmp/mu-share/updates/LATEST.txt.sig /tmp/mu-share/updates/versions/9.0.3.txt.sig'
+ok "make-update -o: the last 3 packages and the ones devices are set to are kept" '[ ! -e /tmp/mu-share/updates/openthinrdp-update-8.0.0.tar.gz ] && [ -e /tmp/mu-share/updates/openthinrdp-update-9.0.1.tar.gz ] && [ -e /tmp/mu-share/updates/openthinrdp-update-9.0.3.tar.gz ]'
 rm -rf /tmp/mu /tmp/mu-share /tmp/mu.log
 
 # --- RD Gateway: validation, and the options connect() of the kiosk gives FreeRDP (FreeRDP replaced by a stub)

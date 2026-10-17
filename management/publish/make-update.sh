@@ -14,11 +14,13 @@
 #     -s  site folder to ship too (site.conf, logos, ca/, update-key.asc, authorized_keys). Never in a release
 #     -o  management folder (mounted, e.g. /mnt/thinclients): the package goes to <folder>/updates.
 #         Without -o the result stays in out/update-<version>/.
-# A release (UPDATE_FROM=github) = the 3 files of out/update-<version>/ attached to a GitHub release that is not
+# A release (UPDATE_FROM=github) = the 4 files of out/update-<version>/ (package, manager zip, LATEST.txt and its
+# signature) attached to a GitHub release that is not
 # a pre-release, signed with the project key:
 #   make-update.sh -v 0.1.1 -k <project key> -f      (or without -k, then -Sign in the manager)
 #   gh release create v0.1.1 out/update-0.1.1/* --title "OpenThinRDP 0.1.1" --notes "..."
-# Needs: bash, tar, gzip, sha256sum, gpg (Linux, WSL, or Git Bash with Gpg4win).
+# With -o the index also goes to <folder>/updates/versions/<version>.txt (devices set to that version: UPDATE_TO).
+# Needs: bash, tar, gzip, sha256sum, python3 (the zip), gpg (Linux, WSL, or Git Bash with Gpg4win).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/../.." && pwd)
 V=""; KEY=""; DEBS=""; SITE=""; DEST=""; FRDP=""
@@ -60,7 +62,24 @@ chmod 755 "$STAGE/install.sh" "$STAGE"/rootfs/opt/openthinrdp/*.sh
 F="openthinrdp-update-$V.tar.gz"
 tar -czf "$OUT/$F" --owner=0 --group=0 -C "$STAGE" .
 H=$(sha256sum "$OUT/$F" | cut -c1-64)
-printf 'version=%s\nfile=%s\nsha256=%s\n' "$V" "$F" "$H" > "$OUT/LATEST.txt"
+# The manager of the same version, for its own update (Update the manager): the files of management/windows and a
+# VERSION, not the launcher .exe (built on each PC by build-launcher.ps1) nor anything an administrator made there.
+# Its name and hash go into LATEST.txt, so the one signature covers it too.
+MZ="openthinrdp-manager-$V.zip"
+python3 - "$ROOT/management/windows" "$OUT/$MZ" "$V" <<'PY'
+import os, sys, zipfile
+src, dst, ver = sys.argv[1:4]
+skip_ext = ('.exe', '.args', '.old'); skip = {'vault.otr', 'previous', 'VERSION'}
+with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as z:
+    for d, dirs, files in os.walk(src):
+        dirs[:] = sorted(x for x in dirs if x not in skip)
+        for f in sorted(files):
+            if f in skip or f.endswith(skip_ext): continue
+            p = os.path.join(d, f); z.write(p, os.path.relpath(p, src).replace(os.sep, '/'))
+    z.writestr('VERSION', ver + '\n')
+PY
+MH=$(sha256sum "$OUT/$MZ" | cut -c1-64)
+printf 'version=%s\nfile=%s\nsha256=%s\nmanager=%s\nmanager_sha256=%s\n' "$V" "$F" "$H" "$MZ" "$MH" > "$OUT/LATEST.txt"
 if [ -z "$KEY" ]; then
   echo "package ready in $OUT, NOT signed yet: OpenThinRDP-Manager.cmd -Sign <this folder>\\LATEST.txt (key in the vault)"
   exit 0
@@ -73,7 +92,12 @@ mkdir -p "$DEST/updates"
 # package first, then signature and index: a device never sees an index that points to a missing file
 cp "$OUT/$F" "$DEST/updates/"
 [ "$(sha256sum "$DEST/updates/$F" | cut -c1-64)" = "$H" ] || { echo "the copy in $DEST/updates is not intact"; exit 1; }
+# the index of this version too, for the devices set to it (UPDATE_TO=<version>: pilot groups, going back)
+mkdir -p "$DEST/updates/versions"
+cp "$OUT/LATEST.txt.sig" "$DEST/updates/versions/$V.txt.sig"; cp "$OUT/LATEST.txt" "$DEST/updates/versions/$V.txt"
 cp "$OUT/LATEST.txt.sig" "$DEST/updates/"; cp "$OUT/LATEST.txt" "$DEST/updates/"
-# keep the last 3 packages
-ls -t "$DEST"/updates/openthinrdp-update-*.tar.gz | tail -n +4 | xargs -r rm -f
+# keep the last 3 packages, and every package a device is set to (UPDATE_TO in config\)
+KEEP=$(sed -n 's/^UPDATE_TO=\([0-9A-Za-z._-]*\).*/openthinrdp-update-\1.tar.gz/p' "$DEST"/config/*.conf 2>/dev/null | tr -d '\r' | sort -u)
+ls -t "$DEST"/updates/openthinrdp-update-*.tar.gz | tail -n +4 | while read -r p; do
+  grep -qxF "${p##*/}" <<< "$KEEP" || rm -f "$p"; done
 echo "PUBLISHED $V in $DEST/updates"
