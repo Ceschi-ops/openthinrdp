@@ -14,7 +14,8 @@ mounts it every 5 minutes, at boot and at every new event, writes its status and
   config\branding\logo.png, splash.png              logo and background picture for every device (optional)
   config\branding\<hostname>\logo.png, splash.png   for one device (wins over the common ones)
   config\backup\, changes.log  written by the Windows manager
-  updates\LATEST.txt(.sig)     signed update index, and the packages
+  updates\LATEST.txt(.sig)     signed update index of the newest version, and the packages
+  updates\versions\<version>.txt(.sig)   the index of every version that can be chosen (UPDATE_TO)
 ```
 
 ## Account
@@ -94,8 +95,9 @@ The Windows manager (`management/windows/OpenThinRDP-Manager.vbs`, or the `.cmd`
 and edits these files with the same validation, a backup of every file it overwrites and a change log.
 Before saving `common.conf` it lists the devices that would reject it.
 
-The window has five pages on the left: **Devices** (the list, and the selected device with its settings, a summary,
-its events and its full report), **Common settings**, **SSH keys**, **Vault** and **Problems**; the actions on the
+The window has six pages on the left: **Devices** (the list, and the selected device with its settings, a summary,
+its events and its full report), **Common settings**, **Updates** (see [Pilot devices and going back](#pilot-devices-and-going-back)
+and [The manager updates itself](#the-manager-updates-itself)), **SSH keys**, **Vault** and **Problems**; the actions on the
 folder (refresh, open, release from GitHub, check permissions) and the state of the vault are in the bar at the top. In a settings list each row shows
 the value in use on the device, where it comes from (*the device itself*, *common settings*, *this device* for an
 exception) and *on its way* when a saved value has not reached the device yet (it reads the folder every 5 minutes;
@@ -129,6 +131,29 @@ of a shortcut's program only from a local disk. On each PC that starts the manag
 
 It builds the `.exe` in `%ProgramData%\OpenThinRDP` with a `.script` file that points to the manager on the share
 (one copy of the manager for everybody), and puts a shortcut with the icon on the desktop.
+
+### The manager updates itself
+
+Every release carries `openthinrdp-manager-<version>.zip`: the files of `management/windows` (without the launcher
+`.exe`, which is built where it runs) and a `VERSION` file. Its name and SHA-256 are in the release's `LATEST.txt`
+(`manager=`, `manager_sha256=`), under the same project signature as the update package.
+
+- At every start the manager reads `VERSION` next to it, and in the background (the window does not wait) the
+  `LATEST.txt` of the latest GitHub release of `UPDATE_GITHUB`, checked against the project key next to it
+  (`openthinrdp-release.asc`). When that release has a newer manager, the top bar shows *Manager X available*.
+- **Update the manager** (that notice, or **Updates > This manager**) downloads the zip, checks its hash against the
+  signed `LATEST.txt`, checks that it holds `OpenThinRDP-Manager.ps1` and `VERSION` of that version, copies the files
+  it replaces into `previous\` next to the manager (the copy of the update before goes), puts the new ones in place
+  and starts the manager again. `vault.otr`, the launchers (`.exe`, `.args`, `.script`) and anything else that is not
+  in the zip stay as they are. A file in use is renamed to `.old` and removed at the next start. If anything fails,
+  the files of `previous\` go back.
+- The copy that matters is the one the administrators start: on a file share, update it from a PC that can write
+  there (the manager says so when it cannot). PCs with a launcher made by `-Install` start the share copy, so they get
+  the new version at their next start. When `Launcher.cs` changed, the manager asks to build the `.exe` again with
+  `build-launcher.ps1` (the old one keeps working).
+- Without the window, from a console or a script: `OpenThinRDP-Manager.cmd -UpdateManager` (exit code 0 =
+  updated, 1 = error, 2 = nothing to do).
+- A copy without `VERSION` (the repository) is a development copy and never updates itself.
 
 The manager keeps the SSH host keys of the devices by device **name** in its own file
 (`%LOCALAPPDATA%\OpenThinRDP\known_hosts`, `HostKeyAlias`), not by address: DHCP may give a device the address
@@ -254,15 +279,41 @@ Software updates (kiosk, FreeRDP with UDP, fixes) come from where `UPDATE_FROM` 
 The project key is `/opt/openthinrdp/keys/openthinrdp-release.asc`, in the image and in every update
 (fingerprint `8552 734B 5C1B 67D7 C576 F1AB 79B2 3AE6 1CD4 F6AF`, see [SECURITY.md](../SECURITY.md)). A
 device installs a package only if `LATEST.txt` carries a valid signature, the hash of the package matches, and
-the version is newer than the installed one (or than the image, when no update was installed yet).
+the version is newer than the installed one (or than the image, when no update was installed yet), or is the one
+`UPDATE_TO` asks for (see [Pilot devices and going back](#pilot-devices-and-going-back)).
 Installation runs in the background and never interrupts a session: a running kiosk is replaced as soon as the
 session is over.
 Three failed attempts per version at most. The status file shows the source (`UPDATE_FROM`) and the result.
 
-**A fleet you manage**: set `UPDATE_FROM=share` in `config\common.conf` and `UPDATE_FROM=github` in the
-`config\<hostname>.conf` of one or two pilot devices. When the pilots are fine with a release, **Release from
-GitHub...** in the manager copies it into `updates\` (package first, then signature and index): every device checks
-the signature itself.
+**A fleet you manage**: set `UPDATE_FROM=share` in `config\common.conf`. **Release from GitHub...** in the manager
+copies the latest release into `updates\` (package first, then signature and index), and into
+`updates\versions\<version>.txt` (+ `.sig`) too: every device checks the signature itself. The 3 newest packages
+stay, and any package a device is kept on (`UPDATE_TO`, below); a package removed takes its `versions\` index with it.
+
+### Pilot devices and going back
+
+`UPDATE_TO` says which version a device installs: `latest` (the default, the newest published) or a version such as
+`0.1.16`, installed also when it is older than the installed one, and kept until the setting changes. In
+`common.conf` it is the version of every device, in `<hostname>.conf` of one device. A device kept on a version
+reads `updates\versions\<version>.txt` and its signature (with `UPDATE_FROM=github`, the release with tag
+`v<version>`). Devices with a version that does not know `UPDATE_TO` ignore it and install the newest.
+
+- **Pilot devices.** **Software version...** in the header of a device makes it a pilot (`UPDATE_TO=latest` of its
+  own); the list marks it *(pilot)*. **Release from GitHub...** then asks: *all devices*, or *pilot devices only*.
+  Pilot only keeps every other device on the version published now (`UPDATE_TO=<that version>` in `common.conf`,
+  written before the new release is there; a folder published before `versions\` existed gets its index from the
+  current `LATEST.txt` first), and only the pilots take the new one.
+- **Release to all devices** (page **Updates**) puts `common.conf` back to `UPDATE_TO=latest` when the pilots are
+  fine. The page shows the newest version, the one all devices are on, the pilot devices, the devices on a version of
+  their own and what the devices run now; the status bar too.
+- **Going back.** **Version for all devices...** (page **Updates**) or **Software version...** of a device chooses
+  any version of `updates\versions\`, newest first. A version that is not there comes from GitHub with **Version from
+  GitHub...** (the release with tag `v<version>`, with the same checks: project signature, hash, signed again with
+  the site key when there is one); an older version goes into `updates\` and `updates\versions\` without changing
+  `updates\LATEST.txt`.
+
+Every change goes through the same files as any setting (`config\backup\`, `config\changes.log`), and the devices
+apply it within 5 minutes, never during a session.
 
 ### A fleet on its own key
 

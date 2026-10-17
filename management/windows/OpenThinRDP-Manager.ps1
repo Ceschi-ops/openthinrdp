@@ -19,15 +19,21 @@
                                   asks the access code of the vault, writes LATEST.txt.sig next to it)
   Vault:  vault.otr next to this file: the SSH key of the remote screen and the key that signs the updates,
           encrypted with the access code asked at the first start (OtrVault.cs)
+  Update: OpenThinRDP-Manager.cmd -UpdateManager   (no window: the manager of the latest GitHub release replaces this
+                                  one when it is newer; exit code 0 = updated, 1 = error, 2 = nothing to do)
+          VERSION next to this file = the release it came from; without it (the repository) it never updates itself
   Tests:  . .\OpenThinRDP-Manager.ps1 -Folder <path> -FunctionsOnly [-Language en]   (loads the functions, no window)
           $env:OTR_MANAGER_SCREENSHOT = <file.png> (+ $env:OTR_MANAGER_TAB = 0, 1 or 2): draws the window into
           the PNG instead of showing it, then exits
+          $env:OTR_MANAGER_RELEASES = <folder or URL>: where the manager looks for its own updates (instead of the
+          latest GitHub release)
 #>
 param(
   [string]$Folder,
   [string]$Language,       # en, it, ... (a file in lang\); empty = the Windows display language
   [switch]$FunctionsOnly,  # for tests: load the functions without opening the window
-  [string]$Sign            # LATEST.txt of an update package to sign with the key of the vault (no window)
+  [string]$Sign,           # LATEST.txt of an update package to sign with the key of the vault (no window)
+  [switch]$UpdateManager   # the manager of the latest release in place of this one (no window)
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -277,6 +283,7 @@ $script:Settings = @(
   (New-Setting 'UPDATE_FROM'         'choice'     'github' @('github', 'share', 'off'))
   (New-Setting 'UPDATE_GITHUB'       'repo'       'OpenThinRdp/openthinrdp')
   (New-Setting 'UPDATE_KEY'          'choice'     'any' @('any', 'site'))
+  (New-Setting 'UPDATE_TO'           'updateto'   'latest')
   (New-Setting 'SSH'                 'choice'     'off' @('off', 'on'))
   (New-Setting 'REMOTE_SCREEN'       'choice'     'on' @('on', 'off'))
   (Set-Section 'SectionWeb')
@@ -322,6 +329,7 @@ $script:Rx = @{
   Logo       = '^(/[A-Za-z0-9._/-]+\.png)?$'
   Color      = '^#[0-9a-fA-F]{6}$'
   Hex64      = '^[0-9a-fA-F]{64}$'
+  Version    = '^[0-9A-Za-z._-]{1,64}$'
   WgKey      = '^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$'
   SshKey     = '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/=]+( .*)?$'
 }
@@ -363,6 +371,8 @@ function Test-SettingValue([string]$key, [string]$v) {
     'names'      { foreach ($t in (Split-List $v)) { if (-not (Test-Ip $t) -and $t -cnotmatch $script:Rx.Name) { return (Get-Text 'ErrListValue' $L $t) } } }
     'collection' { if ($v -cnotmatch $script:Rx.Collection) { return (Get-Text 'ErrCollection') } }
     'repo'       { if ($v -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { return (Get-Text 'ErrRepo') } }
+    # latest, or a version as the index files name it: v0.1.16 is the GitHub tag, and updates\versions\v0.1.16.txt never exists
+    'updateto'   { if ($v -ne '' -and ($v -cnotmatch $script:Rx.Version -or $v -cmatch '^[vV][0-9]')) { return (Get-Text 'ErrUpdateTo') } }
     'choice'     { if ($s.Choices -notcontains $v) { return (Get-Text 'ErrChoice' $L ($s.Choices -join ', ')) } }
     'gfx'        { if ($v -cnotmatch $script:Rx.Gfx) { return (Get-Text 'ErrGfx' $L) } }
     'rdpkbd'     { if ($v -cnotmatch $script:Rx.RdpKbd) { return (Get-Text 'ErrRdpKbd' $L) } }
@@ -416,6 +426,7 @@ function ConvertTo-Canonical([string]$key, [string]$v) {
     'country'   { return $v.ToUpper() }
     'lang'      { return $v.ToLower() }
     'pin'       { return $v.ToLower() }
+    'updateto'  { if ($v -eq '' -or $v -ieq 'latest') { return 'latest' }; return $v }
     'days'      { $d = -join (@($v.ToCharArray() | Where-Object { $_ -match '[1-7]' } | Sort-Object -Unique)); if ($d) { return $d }; return '1234567' }
     { $_ -in 'threshold', 'shutdown', 'reload' } { if ($v -cmatch '^[0-9]{1,6}$') { return [string][int]$v }; return $v }
   }
@@ -531,7 +542,8 @@ $script:ReleaseKey = @((Join-Path $PSScriptRoot 'openthinrdp-release.asc'), (Joi
   Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $script:ReleaseFileRx = '^openthinrdp-update-[0-9A-Za-z._-]+\.tar\.gz$'
 function Get-ReleaseRepo {
-  $r = (Read-ConfFile $script:CommonFile)['UPDATE_GITHUB']
+  # -UpdateManager without -Folder: no common.conf to read
+  $r = if ($script:CommonFile) { (Read-ConfFile $script:CommonFile)['UPDATE_GITHUB'] } else { $null }
   if ($r -and $r -cmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { $r } else { (Get-Setting 'UPDATE_GITHUB').Default }
 }
 # one file of a release: from GitHub, or from a local folder (tests)
@@ -553,18 +565,26 @@ function Compare-Version([string]$a, [string]$b) {
   }
   0
 }
-# the index of an update package: version, package file, its SHA-256; Ok = all three in the format the devices accept
+# the index of an update package: version, package file, its SHA-256; Ok = all three in the format the devices accept.
+# Manager, ManagerHash: the zip of the manager of the same release (since 0.1.16, under the same signature);
+# ManagerOk = both there and named after the version
 function Read-LatestFile([string]$file) {
   $l = Read-Lines $file
   $field = { param($k) ([string]($l | Where-Object { $_ -match "^$k=" } | Select-Object -First 1) -replace "^$k=", '').Trim() }
-  $v = & $field 'version'; $f = & $field 'file'; $h = & $field 'sha256'
-  [pscustomobject]@{ Version = $v; File = $f; Hash = $h
-    Ok = ($v -cmatch '^[0-9A-Za-z._-]+$' -and $f -cmatch $script:ReleaseFileRx -and $h -cmatch '^[0-9a-f]{64}$') }
+  $v = & $field 'version'; $f = & $field 'file'; $h = & $field 'sha256'; $m = & $field 'manager'; $mh = & $field 'manager_sha256'
+  $ok = ($v -cmatch '^[0-9A-Za-z._-]+$' -and $f -cmatch $script:ReleaseFileRx -and $h -cmatch '^[0-9a-f]{64}$')
+  [pscustomobject]@{ Version = $v; File = $f; Hash = $h; Ok = $ok; Manager = $m; ManagerHash = $mh
+    ManagerOk = ($ok -and $m -ceq "openthinrdp-manager-$v.zip" -and $mh -cmatch '^[0-9a-f]{64}$') }
 }
 # Downloads and checks the release into a temporary folder. Ok = $false with Message, or the release:
-# Version, File, Signature ($true / $null = not checked here), Dir (temporary folder for Publish-Release)
-function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) {
-  if (-not $base) { $base = "https://github.com/$(Get-ReleaseRepo)/releases/latest/download" }
+# Version, File, Signature ($true / $null = not checked here), Dir (temporary folder for Publish-Release).
+# $version: that release (tag v<version>), also older than the one published, to keep devices on it or to go back;
+# without it the latest release, only when newer than the one published.
+function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey, [string]$version = '') {
+  if ($version -and ($version -cnotmatch $script:Rx.Version -or $version -ceq 'latest')) { return [pscustomobject]@{ Ok = $false; Message = (Get-Text 'ErrUpdateTo') } }
+  if (-not $base) {
+    $base = if ($version) { "https://github.com/$(Get-ReleaseRepo)/releases/download/v$version" } else { "https://github.com/$(Get-ReleaseRepo)/releases/latest/download" }
+  }
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   $tmp = Join-Path $env:TEMP "otr-release-$(Get-Random)"; New-Item -ItemType Directory $tmp | Out-Null
   $fail = { param($m) Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; [pscustomobject]@{ Ok = $false; Message = $m } }
@@ -574,9 +594,9 @@ function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) 
   if (-not $i.Ok) { return (& $fail (Get-Text 'RelNotValid')) }
   $sig = Test-ReleaseSignature "$tmp\LATEST.txt.sig" "$tmp\LATEST.txt" $keyFile
   if ($sig -eq $false) { return (& $fail (Get-Text 'RelBadSignature' $v)) }
-  $cur = Join-Path $script:Folder 'updates\LATEST.txt'
-  if (Test-Path -LiteralPath $cur) {
-    $cv = (Read-LatestFile $cur).Version
+  if ($version) { if ($v -cne $version) { return (& $fail (Get-Text 'RelWrongVersion' $version $v)) } }
+  else {
+    $cv = Get-CurrentVersion
     if ($cv -and (Compare-Version $v $cv) -le 0) { return (& $fail (Get-Text 'RelNotNewer' $v $cv)) }
   }
   try { Get-ReleaseFile $base $f "$tmp\$f" } catch { return (& $fail (Get-Text 'RelNotFound' "$base/$f" $_.Exception.Message)) }
@@ -584,9 +604,12 @@ function Get-Release([string]$base = '', [string]$keyFile = $script:ReleaseKey) 
   [pscustomobject]@{ Ok = $true; Version = $v; File = $f; Hash = $h; Signature = $sig; Dir = $tmp; Source = $base }
 }
 # Copies a checked release into updates\: package first, then signature and index (a device never sees an
-# index that points to a missing package); the last 3 packages are kept. Removes the temporary folder.
+# index that points to a missing package). The index goes to updates\versions\<version>.txt for the devices kept on
+# that version (UPDATE_TO), and to updates\LATEST.txt only when the release is newer than the one published there:
+# an older release fetched to go back never moves the devices that install the newest. Removes the temporary folder.
 # $siteKey (Get-VaultSigningKey): LATEST.txt is signed again with it first, only over a project signature checked
-# here; the new signature replaces the project one.
+# here; the new signature replaces the project one. Returns Latest ($true = updates\LATEST.txt is this release now)
+# and Previous (the version published before).
 function Publish-Release($rel, $siteKey = $null) {
   try {
     if ($siteKey) {
@@ -596,19 +619,290 @@ function Publish-Release($rel, $siteKey = $null) {
       if (-not [OtrVault]::VerifyDetached($siteKey.Public, $data, $sig)) { throw (Get-Text 'SignCheckFailed') }
       [IO.File]::WriteAllText((Join-Path $rel.Dir 'LATEST.txt.sig'), $sig, [Text.Encoding]::ASCII)
     }
-    $u = Join-Path $script:Folder 'updates'
-    if (-not (Test-Path -LiteralPath $u)) { New-Item -ItemType Directory -Path $u | Out-Null }
+    $u = Get-UpdatesDir; $vd = Get-VersionsDir
+    foreach ($d in $u, $vd) { if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null } }
     Copy-Item -LiteralPath (Join-Path $rel.Dir $rel.File) -Destination (Join-Path $u $rel.File) -Force -ErrorAction Stop
     if ((Get-FileHash -LiteralPath (Join-Path $u $rel.File) -Algorithm SHA256).Hash.ToLower() -ne $rel.Hash) { throw (Get-Text 'RelBadHash' $rel.File) }
-    foreach ($n in 'LATEST.txt.sig', 'LATEST.txt') {
-      Copy-Item -LiteralPath (Join-Path $rel.Dir $n) -Destination (Join-Path $u "$n.new") -Force -ErrorAction Stop
-      Move-Item -LiteralPath (Join-Path $u "$n.new") -Destination (Join-Path $u $n) -Force -ErrorAction Stop
-    }
-    Get-ChildItem -LiteralPath $u -Filter 'openthinrdp-update-*.tar.gz' | Where-Object Name -ne $rel.File |
-      Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 | Remove-Item -Force
-    Add-ChangeLog ("release {0} copied into updates\ from {1} (project signature {2}{3})" -f $rel.Version, $rel.Source,
-      $(if ($rel.Signature) { 'checked here' } else { 'not checked here: the devices check it' }), $(if ($siteKey) { ", signed again with the site key $($siteKey.Hex())" } else { '' }))
+    $cur = Get-CurrentVersion
+    $toLatest = -not $cur -or (Compare-Version $rel.Version $cur) -gt 0
+    $put = { param($dir, $name, $as)
+      Copy-Item -LiteralPath (Join-Path $rel.Dir $name) -Destination (Join-Path $dir "$as.new") -Force -ErrorAction Stop
+      Move-Item -LiteralPath (Join-Path $dir "$as.new") -Destination (Join-Path $dir $as) -Force -ErrorAction Stop }
+    # the same bytes as LATEST.txt and its signature: a pinned device checks them as it checks LATEST.txt
+    foreach ($n in 'LATEST.txt.sig', 'LATEST.txt') { & $put $vd $n ($n -replace '^LATEST', $rel.Version) }
+    if ($toLatest) { foreach ($n in 'LATEST.txt.sig', 'LATEST.txt') { & $put $u $n $n } }
+    Remove-OldPackages @($rel.File)
+    Add-ChangeLog ("release {0} copied into updates\ from {1} (project signature {2}{3}){4}" -f $rel.Version, $rel.Source,
+      $(if ($rel.Signature) { 'checked here' } else { 'not checked here: the devices check it' }), $(if ($siteKey) { ", signed again with the site key $($siteKey.Hex())" } else { '' }),
+      $(if ($toLatest) { '' } else { "; only into updates\versions\, updates\LATEST.txt stays on $cur" }))
+    [pscustomobject]@{ Latest = $toLatest; Previous = $cur }
   } finally { Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Versions of the fleet: UPDATE_TO in common.conf keeps every device on one version (latest = the newest), UPDATE_TO in
+# <hostname>.conf one device. A pilot device has UPDATE_TO=latest of its own: it takes a new release while the others
+# stay where common.conf keeps them. A device kept on a version reads updates\versions\<version>.txt (+ .sig), the
+# same index as LATEST.txt of that release, and installs its package even when older than its own (to go back).
+# ---------------------------------------------------------------------------------------------
+function Get-UpdatesDir { Join-Path $script:Folder 'updates' }
+function Get-VersionsDir { Join-Path (Get-UpdatesDir) 'versions' }
+# the newest published version (updates\LATEST.txt); $null = none
+function Get-CurrentVersion {
+  $f = Join-Path (Get-UpdatesDir) 'LATEST.txt'
+  if (Test-Path -LiteralPath $f) { $i = Read-LatestFile $f; if ($i.Ok) { return $i.Version } }
+  $null
+}
+# newest first, in the order of Compare-Version (Sort-Object knows no version order); $property = '' for strings
+function Get-NewestFirst($items, [string]$property = 'Version') {
+  $out = New-Object System.Collections.ArrayList
+  $key = { param($x) if ($property) { [string]$x.$property } else { [string]$x } }
+  foreach ($i in @($items)) {
+    if ($null -eq $i) { continue }
+    $v = & $key $i; $k = 0
+    while ($k -lt $out.Count -and (Compare-Version (& $key $out[$k]) $v) -ge 0) { $k++ }
+    $out.Insert($k, $i)
+  }
+  $out
+}
+# the versions in updates\versions\ (newest first): Usable = signed and with its package in updates\, so a device kept
+# on it can install it
+function Get-PublishedVersions {
+  $d = Get-VersionsDir
+  if (-not $script:Folder -or -not (Test-Path -LiteralPath $d)) { return @() }
+  $out = foreach ($f in @(Get-ChildItem -LiteralPath $d -Filter '*.txt' -File -ErrorAction SilentlyContinue | Where-Object Extension -eq '.txt')) {
+    $i = Read-LatestFile $f.FullName
+    if (-not $i.Ok -or $i.Version -cne $f.BaseName) { continue }
+    $signed = Test-Path -LiteralPath "$($f.FullName).sig"; $pkg = Test-Path -LiteralPath (Join-Path (Get-UpdatesDir) $i.File)
+    [pscustomobject]@{ Version = $i.Version; File = $i.File; Signed = $signed; Package = $pkg; Usable = ($signed -and $pkg) }
+  }
+  Get-NewestFirst $out
+}
+# updates\versions\<version>.txt of the version published now, copied from updates\LATEST.txt and its signature as they
+# are: a folder published before versions\ existed has none, and the devices kept on that version would find nothing.
+# Returns that version; $null = no signed LATEST.txt to take it from.
+function Initialize-VersionIndex {
+  $u = Get-UpdatesDir; $l = Join-Path $u 'LATEST.txt'
+  if (-not (Test-Path -LiteralPath $l) -or -not (Test-Path -LiteralPath "$l.sig")) { return $null }
+  $i = Read-LatestFile $l; if (-not $i.Ok) { return $null }
+  $vd = Get-VersionsDir; if (-not (Test-Path -LiteralPath $vd)) { New-Item -ItemType Directory -Path $vd | Out-Null }
+  $t = Join-Path $vd "$($i.Version).txt"
+  if (-not (Test-Path -LiteralPath $t) -or -not (Test-Path -LiteralPath "$t.sig")) {
+    foreach ($n in @(@("$l.sig", "$t.sig"), @($l, $t))) {
+      Copy-Item -LiteralPath $n[0] -Destination "$($n[1]).new" -Force -ErrorAction Stop
+      Move-Item -LiteralPath "$($n[1]).new" -Destination $n[1] -Force -ErrorAction Stop
+    }
+    Add-ChangeLog "updates\versions\$($i.Version).txt created from updates\LATEST.txt"
+  }
+  $i.Version
+}
+# UPDATE_TO of the .conf files: Common = what every device installs ('latest' when common.conf has none), Hosts = the
+# devices with one of their own (name -> value)
+function Get-UpdatePins {
+  $c = Read-ConfFile $script:CommonFile
+  $common = if ($c.Contains('UPDATE_TO')) { ConvertTo-Canonical 'UPDATE_TO' $c['UPDATE_TO'] } else { 'latest' }
+  $hosts = [ordered]@{}
+  if (Test-Path -LiteralPath $script:ConfigDir) {
+    foreach ($f in @(Get-ChildItem -LiteralPath $script:ConfigDir -Filter '*.conf' -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.conf' -and $_.BaseName -ne 'common' })) {
+      $h = Read-ConfFile $f.FullName; if ($h.Contains('UPDATE_TO')) { $hosts[$f.BaseName] = ConvertTo-Canonical 'UPDATE_TO' $h['UPDATE_TO'] }
+    }
+  }
+  [pscustomobject]@{ Common = $common; Hosts = $hosts }
+}
+# where the fleet stands: Latest (updates\LATEST.txt), Fleet (UPDATE_TO of common.conf), Pinned (the fleet kept on a
+# version), Behind (kept on an older version than the newest), Pilots (devices with UPDATE_TO=latest of their own), Own
+# (devices on a version of their own: name -> version), Pins (Get-UpdatePins)
+function Get-RolloutState {
+  $p = Get-UpdatePins; $latest = Get-CurrentVersion
+  $pilots = @($p.Hosts.Keys | Where-Object { $p.Hosts[$_] -eq 'latest' } | Sort-Object)
+  $own = [ordered]@{}; foreach ($k in @($p.Hosts.Keys | Sort-Object)) { if ($p.Hosts[$k] -ne 'latest') { $own[$k] = $p.Hosts[$k] } }
+  $pinned = $p.Common -ne 'latest'
+  [pscustomobject]@{ Latest = $latest; Fleet = $p.Common; Pinned = $pinned; Behind = ($pinned -and $latest -and (Compare-Version $p.Common $latest) -lt 0)
+    Pilots = $pilots; Own = $own; Pins = $p }
+}
+# what one device installs: Kind = pilot (UPDATE_TO=latest of its own), own (a version of its own) or fleet (common.conf);
+# Target = that version, or 'latest'
+function Get-DeviceTrack([string]$name, $state) {
+  $h = $state.Pins.Hosts
+  $k = @($h.Keys | Where-Object { $_ -eq $name }) | Select-Object -First 1
+  if ($k) { if ($h[$k] -eq 'latest') { return [pscustomobject]@{ Kind = 'pilot'; Target = 'latest' } }; return [pscustomobject]@{ Kind = 'own'; Target = $h[$k] } }
+  [pscustomobject]@{ Kind = 'fleet'; Target = $state.Fleet }
+}
+# The packages in updates\: the newest 3 stay, and whatever a device may still need: the package of LATEST.txt and of
+# every version a .conf file keeps devices on (UPDATE_TO). A removed package takes its index in versions\ with it: a
+# version listed there can always be installed.
+function Remove-OldPackages([string[]]$keep = @()) {
+  $u = Get-UpdatesDir; $vd = Get-VersionsDir
+  $index = @{}
+  if (Test-Path -LiteralPath $vd) {
+    foreach ($f in @(Get-ChildItem -LiteralPath $vd -Filter '*.txt' -File -ErrorAction SilentlyContinue | Where-Object Extension -eq '.txt')) { $index[$f.FullName] = (Read-LatestFile $f.FullName).File }
+  }
+  $need = @($keep)
+  $l = Join-Path $u 'LATEST.txt'; if (Test-Path -LiteralPath $l) { $need += (Read-LatestFile $l).File }
+  $pins = Get-UpdatePins
+  foreach ($v in @(@($pins.Common) + @($pins.Hosts.Values) | Where-Object { $_ -and $_ -ne 'latest' })) {
+    $need += "openthinrdp-update-$v.tar.gz"
+    $x = Join-Path $vd "$v.txt"; if ($index.ContainsKey($x)) { $need += $index[$x] }
+  }
+  $pk = @(Get-ChildItem -LiteralPath $u -Filter 'openthinrdp-update-*.tar.gz' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { [pscustomobject]@{ Version = ($_.Name -replace '^openthinrdp-update-|\.tar\.gz$', ''); Item = $_ } })
+  foreach ($p in @(Get-NewestFirst $pk | Select-Object -Skip 3 | Where-Object { $need -notcontains $_.Item.Name })) {
+    Remove-Item -LiteralPath $p.Item.FullName -Force
+    foreach ($x in @($index.Keys | Where-Object { $index[$_] -ceq $p.Item.Name })) {
+      Remove-Item -LiteralPath $x, "$x.sig" -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+# a note for a save plan: a device kept on a version the folder does not have stays where it is (for the devices that
+# update from the folder; from GitHub the device fetches the release itself)
+function Get-UpdateToNote($value) {
+  if (-not $value -or $value -eq 'latest' -or -not $script:Folder -or -not (Test-Path -LiteralPath (Get-UpdatesDir))) { return }
+  if (-not @(Get-PublishedVersions | Where-Object { $_.Version -ceq $value -and $_.Usable }).Count) { Get-Text 'NoteUpdateToMissing' $value }
+}
+# UPDATE_TO for every device (common.conf, $dev = $null) or for one device ($value $null = its own line off: it follows
+# common.conf), through the save plans as any setting: checked, the file copied to config\backup\, the change logged
+function Set-UpdateTo($value, $dev = $null) {
+  $m = [ordered]@{ UPDATE_TO = $value }
+  $plan = if ($dev) { Get-DeviceSavePlan $dev $m } else { Get-CommonSavePlan $m $script:Devices }
+  if ($plan.Errors.Count) { throw ($plan.Errors -join "`r`n") }
+  if ($plan.Changes.Count) { [void](Write-ConfFile $plan.File $plan.Values $(if ($dev) { $script:HostHeader } else { $script:CommonHeader })) }
+  $plan
+}
+
+# ---------------------------------------------------------------------------------------------
+# The manager updates itself: openthinrdp-manager-<version>.zip of a release (management\windows without the
+# launcher .exe, plus VERSION), named with its SHA-256 in the LATEST.txt the project key signs. The files of the zip
+# replace these; the ones they replace go to previous\ first. Nothing else is touched: vault.otr, the .args and .script
+# files of the launchers, the launcher .exe built here (build-launcher.ps1), previous\.
+# ---------------------------------------------------------------------------------------------
+$script:ManagerDir = $PSScriptRoot
+$script:ManagerKeep = '^(vault\.otr(\..*)?|.*\.(args|script|old|exe))$'
+# VERSION next to the manager = the release it came from; $null = a development copy (the repository): never updated
+function Get-ManagerVersion {
+  $f = Join-Path $script:ManagerDir 'VERSION'
+  if (Test-Path -LiteralPath $f) { $v = ([IO.File]::ReadAllText($f)).Trim(); if ($v -cmatch $script:Rx.Version) { return $v } }
+  $null
+}
+$script:ManagerVersion = Get-ManagerVersion
+function Get-ManagerReleaseBase { if ($env:OTR_MANAGER_RELEASES) { $env:OTR_MANAGER_RELEASES } else { "https://github.com/$(Get-ReleaseRepo)/releases/latest/download" } }
+# The LATEST.txt + .sig of a release, downloaded into $dir, as an offer for this manager. Status: Available (Version,
+# File, Hash of the zip), UpToDate, NoManager (a release without the zip), BadSignature, NoKey (no project key here to
+# check it: nothing is offered unchecked), Development (this copy has no VERSION)
+function Test-ManagerOffer([string]$dir, [string]$keyFile = $script:ReleaseKey) {
+  $r = { param($s, $i = $null) [pscustomobject]@{ Status = $s; Version = $(if ($i) { $i.Version }); File = $(if ($i) { $i.Manager }); Hash = $(if ($i) { $i.ManagerHash }) } }
+  if (-not $script:ManagerVersion) { return (& $r 'Development') }
+  if (-not $keyFile -or -not (Test-Path -LiteralPath $keyFile)) { return (& $r 'NoKey') }
+  if ((Test-ReleaseSignature "$dir\LATEST.txt.sig" "$dir\LATEST.txt" $keyFile) -ne $true) { return (& $r 'BadSignature') }
+  $i = Read-LatestFile "$dir\LATEST.txt"
+  if (-not $i.Ok) { return (& $r 'BadSignature') }
+  if ((Compare-Version $i.Version $script:ManagerVersion) -le 0) { return (& $r 'UpToDate' $i) }
+  if (-not $i.ManagerOk) { return (& $r 'NoManager' $i) }
+  & $r 'Available' $i
+}
+# the offer of the latest release (Test-ManagerOffer); throws when it cannot be downloaded
+function Get-ManagerOffer([string]$base = (Get-ManagerReleaseBase), [string]$keyFile = $script:ReleaseKey) {
+  if (-not $script:ManagerVersion) { return (Test-ManagerOffer '' $keyFile) }
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  $tmp = Join-Path $env:TEMP "otr-manager-$(Get-Random)"; New-Item -ItemType Directory $tmp | Out-Null
+  try {
+    try { Get-ReleaseFile $base 'LATEST.txt' "$tmp\LATEST.txt"; Get-ReleaseFile $base 'LATEST.txt.sig' "$tmp\LATEST.txt.sig" }
+    catch { throw (Get-Text 'MgrNotFound' $base $_.Exception.Message) }
+    Test-ManagerOffer $tmp $keyFile
+  } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+}
+# the zip into $dest, entry by entry: an entry that would land outside $dest (.., a drive, a rooted path) stops it
+function Expand-ManagerZip([string]$zip, [string]$dest) {
+  Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+  $z = [IO.Compression.ZipFile]::OpenRead($zip)
+  try {
+    foreach ($e in $z.Entries) {
+      $n = $e.FullName -replace '/', '\'
+      if ($n -match '(^|\\)\.\.(\\|$)' -or $n -match ':' -or $n.StartsWith('\')) { throw (Get-Text 'MgrBadZip' $e.FullName) }
+      if (-not $e.Name) { continue }     # a folder
+      $t = Join-Path $dest $n; $pd = Split-Path $t
+      if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd -Force | Out-Null }
+      [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $t, $true)
+    }
+  } finally { $z.Dispose() }
+}
+# One file in place. Windows lets a file in use (a running program) be renamed but not overwritten: such a file
+# becomes <name>.old, removed at the next start (Remove-OldManagerFiles).
+function Install-ManagerFile([string]$src, [string]$dest) {
+  $pd = Split-Path $dest; if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory -Path $pd -Force | Out-Null }
+  try { Copy-Item -LiteralPath $src -Destination $dest -Force -ErrorAction Stop }
+  catch {
+    if (-not (Test-Path -LiteralPath $dest)) { throw }
+    $old = "$dest.old"
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $old) { $old = "$dest.$(Get-Random).old" }
+    Move-Item -LiteralPath $dest -Destination $old -ErrorAction Stop
+    Copy-Item -LiteralPath $src -Destination $dest -Force -ErrorAction Stop
+  }
+}
+# *.old left by an update: removed at the next start, once nothing runs them (silent: another administrator may
+# still be running one)
+function Remove-OldManagerFiles {
+  $prev = Join-Path $script:ManagerDir 'previous'
+  Get-ChildItem -LiteralPath $script:ManagerDir -Filter '*.old' -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { -not $_.FullName.StartsWith("$prev\", [StringComparison]::OrdinalIgnoreCase) } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+# Downloads the zip of $offer, checks it (signed hash, OpenThinRDP-Manager.ps1 and VERSION of that version inside),
+# copies the files it replaces into previous\ (the copy of the previous update goes), then puts the new ones in place.
+# On any error the files of previous\ come back and the ones the zip added go. Returns Dir and LauncherChanged ($true =
+# a launcher .exe is here and Launcher.cs changed: it must be built again with build-launcher.ps1).
+function Update-Manager($offer, [string]$base = (Get-ManagerReleaseBase), [string]$dir = $script:ManagerDir) {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  # paths as Get-ChildItem gives them back (TEMP may be in the short 8.3 form): the relative names are cut from them
+  $tmp = (New-Item -ItemType Directory (Join-Path $env:TEMP "otr-manager-$(Get-Random)")).FullName
+  $dir = (Get-Item -LiteralPath $dir).FullName.TrimEnd('\')
+  try {
+    $zip = Join-Path $tmp $offer.File
+    try { Get-ReleaseFile $base $offer.File $zip } catch { throw (Get-Text 'MgrNotFound' "$base/$($offer.File)" $_.Exception.Message) }
+    if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower() -ne $offer.Hash) { throw (Get-Text 'MgrBadHash' $offer.File) }
+    $x = Join-Path $tmp 'x'; New-Item -ItemType Directory $x | Out-Null
+    Expand-ManagerZip $zip $x
+    $vf = Join-Path $x 'VERSION'
+    if (-not (Test-Path -LiteralPath (Join-Path $x 'OpenThinRDP-Manager.ps1')) -or -not (Test-Path -LiteralPath $vf) -or ([IO.File]::ReadAllText($vf)).Trim() -cne $offer.Version) {
+      throw (Get-Text 'MgrNotManager' $offer.Version) }
+    # the copy on a share may be read-only for this account: found out before anything changes
+    $probe = Join-Path $dir ".otr-write-$(Get-Random)"
+    try { [IO.File]::WriteAllText($probe, ''); Remove-Item -LiteralPath $probe -Force } catch { throw (Get-Text 'MgrNotWritable' $dir) }
+    $files = @(Get-ChildItem -LiteralPath $x -Recurse -File | ForEach-Object { $_.FullName.Substring($x.Length + 1) } |
+      Where-Object { (Split-Path -Leaf $_) -notmatch $script:ManagerKeep -and $_ -notmatch '^previous(\\|$)' })
+    $launcher = @(Get-ChildItem -LiteralPath $dir -Filter '*.exe' -File -ErrorAction SilentlyContinue).Count -gt 0
+    $lc = Join-Path $dir 'Launcher.cs'; $nlc = Join-Path $x 'Launcher.cs'
+    $launcherChanged = $launcher -and (Test-Path -LiteralPath $nlc) -and (-not (Test-Path -LiteralPath $lc) -or
+      (Get-FileHash -LiteralPath $lc -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $nlc -Algorithm SHA256).Hash)
+    $prev = Join-Path $dir 'previous'
+    if (Test-Path -LiteralPath $prev) { Remove-Item -LiteralPath $prev -Recurse -Force -ErrorAction Stop }
+    $prev = (New-Item -ItemType Directory $prev).FullName
+    $added = @()
+    try {
+      foreach ($r in $files) {
+        $d = Join-Path $dir $r
+        if (Test-Path -LiteralPath $d) { $p = Join-Path $prev $r; $pd = Split-Path $p; if (-not (Test-Path -LiteralPath $pd)) { New-Item -ItemType Directory $pd -Force | Out-Null }
+          Copy-Item -LiteralPath $d -Destination $p -ErrorAction Stop } else { $added += $r }
+      }
+    } catch { throw (Get-Text 'MgrBackupFailed' $_.Exception.Message) }
+    try {
+      foreach ($r in $files) { Install-ManagerFile (Join-Path $x $r) (Join-Path $dir $r) }
+      foreach ($r in $files) {
+        if ((Get-FileHash -LiteralPath (Join-Path $dir $r) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $x $r) -Algorithm SHA256).Hash) { throw (Get-Text 'MgrBadCopy' $r) }
+      }
+    } catch {
+      $why = $_.Exception.Message; $bad = @()
+      foreach ($f in @(Get-ChildItem -LiteralPath $prev -Recurse -File)) {
+        $r = $f.FullName.Substring($prev.Length + 1); $d = Join-Path $dir $r
+        # not replaced yet (or a file in use that could not be): nothing to put back
+        if ((Test-Path -LiteralPath $d) -and (Get-FileHash -LiteralPath $d -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash) { continue }
+        try { Install-ManagerFile $f.FullName $d } catch { $bad += $r }
+      }
+      foreach ($r in $added) { Remove-Item -LiteralPath (Join-Path $dir $r) -Force -ErrorAction SilentlyContinue }
+      if ($bad.Count) { throw (Get-Text 'MgrRestoreFailed' $why ($bad -join ', ')) }
+      throw (Get-Text 'MgrRestored' $why)
+    }
+    [pscustomobject]@{ Dir = $dir; Version = $offer.Version; LauncherChanged = $launcherChanged }
+  } finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -978,6 +1272,7 @@ function Get-DeviceSavePlan($dev, $managed) {
     $notes += Get-Text 'NoteRename' $final['HOSTNAME']
   }
   if ($null -ne $final['NETMODE'] -or $null -ne $final['IPADDR']) { $notes += Get-Text 'NoteNetwork' }
+  $notes += @(Get-UpdateToNote $final['UPDATE_TO'])
   [pscustomobject]@{ File = $f; Errors = $err; Values = $final; Changes = $changes; Notes = $notes; RenameMac = $mac }
 }
 
@@ -1032,6 +1327,7 @@ function Get-CommonSavePlan($managed, $devices) {
   $risky = @($final.Keys | Where-Object { $_ -in 'BROKER', 'DOMAIN', 'LOAD_BALANCE_INFO', 'MGMT_SHARE', 'NETMASK', 'GATEWAY', 'DNS1', 'WIFI', 'SSH', 'SETTINGS_PIN_SHA256' } |
              Where-Object { $(if ($before.Contains($_)) { $before[$_] } else { $null }) -cne $final[$_] })
   if ($risky.Count) { $notes += Get-Text 'NoteRisky' ($risky -join ', ') }
+  $notes += @(Get-UpdateToNote $final['UPDATE_TO'])
   [pscustomobject]@{ File = $script:CommonFile; Errors = $err; Warnings = $warn; Values = $final; Changes = $changes; Notes = $notes }
 }
 
@@ -1372,7 +1668,35 @@ function Save-LastFolder($path) {
 }
 
 if ($Folder) { Set-ManagementFolder $Folder }
+# what an update of the manager says for the administrator: the folder, and the launchers to build again
+function Get-ManagerDoneText($r) {
+  $m = Get-Text 'MgrDone' $r.Version $r.Dir
+  if ($r.LauncherChanged) { $m += "`r`n`r`n" + (Get-Text 'MgrLauncherChanged' (Join-Path $r.Dir 'build-launcher.ps1')) }
+  $m
+}
+function Add-ManagerChangeLog($r) {
+  # the change log of the management folder, when one is open and has a config\ (the manager itself is not in it)
+  if ($script:ChangeLog -and (Test-Path -LiteralPath $script:ConfigDir)) { Add-ChangeLog "manager updated from $($script:ManagerVersion) to $($r.Version) in $($r.Dir)" }
+}
+# -UpdateManager: no window, the result on the console (OpenThinRDP-Manager.cmd runs it in the foreground).
+# Exit code 0 = updated, 1 = error, 2 = nothing to do (up to date, a release without the manager, a development copy).
+if ($UpdateManager) {
+  $rc = 2
+  try {
+    Remove-OldManagerFiles
+    $o = Get-ManagerOffer
+    if ($o.Status -eq 'Available') {
+      $r = Update-Manager $o
+      Add-ManagerChangeLog $r
+      [Console]::Out.WriteLine((Get-ManagerDoneText $r)); $rc = 0
+    } elseif ($o.Status -eq 'BadSignature') { throw (Get-Text 'MgrStatus_BadSignature') }
+    else { [Console]::Out.WriteLine((Get-Text "MgrStatus_$($o.Status)" $o.Version)) }
+  } catch { $rc = 1; [Console]::Error.WriteLine($_.Exception.Message) }
+  exit $rc
+}
 if ($FunctionsOnly) { return }
+# files of an update of the manager that were in use (Install-ManagerFile)
+try { Remove-OldManagerFiles } catch { }
 
 # =============================================================================================
 # Window
@@ -1385,6 +1709,53 @@ if ($FunctionsOnly) { return }
 function Show-Message($title, $text, $icon = 'Warning') { [void][System.Windows.Forms.MessageBox]::Show($text, $title, 'OK', $icon) }
 function Confirm-Action($title, $text, $default = 'Button1') {
   [System.Windows.Forms.MessageBox]::Show($text, $title, 'YesNo', 'Question', $default) -eq 'Yes'
+}
+# A choice in a small dialog: $text on top, one radio button per option (a text, or @(text, $false) when it cannot be
+# chosen now). With $versions (a list, also empty) the last option chooses one of them in a list under it, and $fetch
+# (a script block returning a version, or $null) adds From GitHub... next to the list, which fills it again from
+# updates\versions\. Returns @{ Option = index; Version = the chosen version } or $null (Cancel).
+function Show-PickDialog([string]$title, [string]$text, $options, [int]$selected = 0, $versions = $null, [string]$version = '', $fetch = $null, [string]$okKey = 'BtnApply') {
+  $W = 620
+  $dlg = New-Object System.Windows.Forms.Form; Set-WindowIcon $dlg
+  $dlg.Text = $title; $dlg.Font = $fontBase; $dlg.FormBorderStyle = 'FixedDialog'; $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false; $dlg.StartPosition = 'CenterParent'
+  $note = New-Object System.Windows.Forms.Label; $note.Text = $text; $note.MaximumSize = New-Object System.Drawing.Size(($W - 28), 0); $note.AutoSize = $true
+  $note.Location = New-Object System.Drawing.Point(14, 12); $dlg.Controls.Add($note)
+  $y = 12 + $note.GetPreferredSize((New-Object System.Drawing.Size(($W - 28), 0))).Height + 14
+  $radios = @()
+  for ($i = 0; $i -lt @($options).Count; $i++) {
+    $o = @($options)[$i]; $t = if ($o -is [array]) { [string]$o[0] } else { [string]$o }; $can = -not ($o -is [array] -and $o.Count -gt 1 -and -not $o[1])
+    $rb = New-Object System.Windows.Forms.RadioButton; $rb.Text = $t; $rb.Enabled = $can; $rb.AutoSize = $true
+    $rb.MaximumSize = New-Object System.Drawing.Size(($W - 44), 0); $rb.Location = New-Object System.Drawing.Point(20, $y)
+    $dlg.Controls.Add($rb); $radios += $rb; $y += $rb.GetPreferredSize((New-Object System.Drawing.Size(($W - 44), 0))).Height + 8
+  }
+  $cmb = $null
+  if ($null -ne $versions) {
+    $cmb = New-Object System.Windows.Forms.ComboBox; $cmb.DropDownStyle = 'DropDownList'; $cmb.Font = $fontBase; $cmb.SetBounds(40, $y, 200, 26)
+    $fill = { param($list, $want) $cmb.Items.Clear(); foreach ($v in @($list)) { [void]$cmb.Items.Add($v) }
+      if ($cmb.Items.Count) { $k = $cmb.Items.IndexOf($want); $cmb.SelectedIndex = [Math]::Max(0, $k) }
+      $cmb.Enabled = $cmb.Items.Count -gt 0; $radios[-1].Enabled = $cmb.Items.Count -gt 0 }
+    & $fill $versions $version
+    $cmb.add_SelectionChangeCommitted({ $radios[-1].Checked = $true })
+    $dlg.Controls.Add($cmb)
+    if ($fetch) {
+      $bf = New-Button 'BtnFromGitHub' 120 28; $bf.Location = New-Object System.Drawing.Point(($cmb.Right + 10), ($y - 1)); $dlg.Controls.Add($bf)
+      $bf.add_Click({ $v = & $fetch; if ($v) { & $fill @(Get-PublishedVersions | Where-Object Usable | ForEach-Object Version) $v; if ($cmb.Items.Count) { $radios[-1].Checked = $true } } })
+    }
+    $y += 40
+  }
+  if ($selected -ge 0 -and $selected -lt $radios.Count -and $radios[$selected].Enabled) { $radios[$selected].Checked = $true }
+  else { $first = @($radios | Where-Object Enabled) | Select-Object -First 1; if ($first) { $first.Checked = $true } }
+  $y += 6
+  $ok = New-Button $okKey 110 28; $cancel = New-Button 'BtnCancel' 100 28
+  $cancel.Location = New-Object System.Drawing.Point(($W - 14 - $cancel.Width), $y); $ok.Location = New-Object System.Drawing.Point(($cancel.Left - 8 - $ok.Width), $y)
+  $ok.DialogResult = 'OK'; $cancel.DialogResult = 'Cancel'; $dlg.AcceptButton = $ok; $dlg.CancelButton = $cancel
+  $dlg.Controls.AddRange(@($ok, $cancel)); $dlg.ClientSize = New-Object System.Drawing.Size($W, ($y + 42))
+  try {
+    if ($dlg.ShowDialog($form) -ne 'OK') { return $null }
+    $k = -1; for ($i = 0; $i -lt $radios.Count; $i++) { if ($radios[$i].Checked) { $k = $i } }
+    if ($k -lt 0) { return $null }
+    @{ Option = $k; Version = $(if ($cmb -and $cmb.SelectedItem) { [string]$cmb.SelectedItem } else { '' }) }
+  } finally { $dlg.Dispose() }
 }
 
 # The access code of the vault. Open: one box; Create and Change: the code twice. $true = the vault is open (or
@@ -1760,7 +2131,10 @@ $btnOpen = New-ActionButton 'BtnOpenFolder' 'Folder' 'toolbar'
 $btnRefresh = New-ActionButton 'BtnRefresh' 'Refresh' 'toolbar'
 $btnVaultTool = New-ActionButton 'VaultToolClosed' 'Lock' 'toolbar'
 $btnVaultTool.Width = (@('VaultToolClosed', 'VaultToolOpen', 'VaultToolNone') | ForEach-Object { Get-TextWidth (Get-Text $_) } | Measure-Object -Maximum).Maximum + 50
-foreach ($b in @($btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
+# a newer manager in the latest release (checked in the background at the start): shown only then
+$btnMgrNotice = New-ActionButton 'MgrAvailable' 'Download' 'toolbar'; $btnMgrNotice.Visible = $false; $btnMgrNotice.ForeColor = New-Color '#fcd34d'
+$btnMgrNotice.Image = New-Glyph 'Download' (New-Color '#fcd34d') 16
+foreach ($b in @($btnMgrNotice, $btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)) { $b.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0); $tools.Controls.Add($b) }
 $tips = New-Object System.Windows.Forms.ToolTip
 $tips.SetToolTip($btnRefresh, (Get-Text 'NoteDevices')); $tips.SetToolTip($lblFolder, $script:Folder)
 $header.Controls.AddRange(@($picLogo, $lblApp, $lblFolder, $tools))
@@ -1769,7 +2143,7 @@ $lblFolder.AutoSize = $false; $lblFolder.AutoEllipsis = $true; $lblFolder.Height
 # the actions on the folder keep only their icons when the window is too narrow for their text
 $script:ToolbarCompact = $false
 function Set-ToolbarFit {
-  $buttons = @($btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh)
+  $buttons = @($btnMgrNotice, $btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh | Where-Object Visible)
   $compact = (Get-FullWidth $buttons) + 10 -gt ($header.ClientSize.Width - $lblApp.Right - 24 - 120)
   if ($compact -ne $script:ToolbarCompact) { $script:ToolbarCompact = $compact; Set-CompactButtons $buttons $compact }
   $lblFolder.Width = [Math]::Max(40, $header.ClientSize.Width - $tools.Width - $lblFolder.Left - 16)
@@ -1804,9 +2178,10 @@ $navCommon = New-NavButton 'NavCommon' 'Settings' 1
 $navKeys = New-NavButton 'NavKeys' 'Key' 2
 $navProblems = New-NavButton 'NavProblems' 'Warning' 3
 $navVault = New-NavButton 'NavVault' 'Lock' 4
-$script:NavButtons = @($navDevices, $navCommon, $navKeys, $navProblems, $navVault)
-# Dock Top stacks the last added on top; the vault next to the SSH keys
-foreach ($b in @($navProblems, $navVault, $navKeys, $navCommon, $navDevices)) { $nav.Controls.Add($b) }
+$navUpdates = New-NavButton 'NavUpdates' 'Download' 5
+$script:NavButtons = @($navDevices, $navCommon, $navKeys, $navProblems, $navVault, $navUpdates)
+# Dock Top stacks the last added on top; the vault next to the SSH keys, the versions after the settings
+foreach ($b in @($navProblems, $navVault, $navKeys, $navUpdates, $navCommon, $navDevices)) { $nav.Controls.Add($b) }
 
 # ---------------- Devices page: list | selected device ----------------
 $pageDevices = New-Panel 'Fill' $Theme.Page
@@ -1842,6 +2217,8 @@ $list.Tag = @{ Ideal = @() }
 foreach ($c in @(@('ColDevice', 105), @('ColState', 110), @('ColUser', 80), @('ColVersion', 52), @('ColLastReport', 64))) {
   # room for the sort arrow too
   $title = Get-Text $c[0]; $w = Get-FitWidth $c[1] "$title $([char]0x25B2)" -pad 14
+  # a pilot device says so after its version
+  if ($c[0] -eq 'ColVersion') { $w = Get-FitWidth $w (Get-Text 'ListPilot' '0.1.16') -pad 14 }
   [void]$list.Columns.Add($title, $w); $list.Tag.Ideal += $w
 }
 # click on a header = sort by that column, second click = reverse; the arrow shows which.
@@ -1877,17 +2254,19 @@ $btnRemoteDev = New-ActionButton 'BtnRemoteScreen' 'Screen' 'primary'
 $btnBrandDev = New-ActionButton 'BtnBranding' 'Picture' 'secondary'
 # only on a device with VPN=openvpn: its profile does not go through the folder
 $btnVpnDev = New-ActionButton 'BtnVpnProfile' 'Vpn' 'secondary'; $btnVpnDev.Visible = $false
-foreach ($b in @($btnRemoteDev, $btnBrandDev, $btnVpnDev)) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $devActions.Controls.Add($b) }
-$tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen')); $tips.SetToolTip($btnVpnDev, (Get-Text 'TipVpnProfile'))
+# which version it installs: like all devices, pilot, or one of its own
+$btnTrackDev = New-ActionButton 'BtnDeviceVersion' 'Download' 'secondary'
+foreach ($b in @($btnRemoteDev, $btnBrandDev, $btnTrackDev, $btnVpnDev)) { $b.Margin = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $devActions.Controls.Add($b) }
+$tips.SetToolTip($btnRemoteDev, (Get-Text 'TipRemoteScreen')); $tips.SetToolTip($btnVpnDev, (Get-Text 'TipVpnProfile')); $tips.SetToolTip($btnTrackDev, (Get-Text 'TipDeviceVersion'))
 $devHead.Controls.AddRange(@($lblDevName, $lblDevState, $lblDevInfo, $devActions))
 # the actions in the top right corner, over the first line only: the line under the name keeps the whole width
 # the actions keep only their icons when the name and state of the device leave too little room for their text
 $script:DevActionsCompact = $false
 function Set-DeviceActionsFit {
   $left = [Math]::Max($lblDevName.Right, $(if ($lblDevState.Visible) { $lblDevState.Right } else { 0 }))
-  $shown = @($btnRemoteDev, $btnBrandDev, $btnVpnDev | Where-Object { $_.Visible })
+  $shown = @($btnRemoteDev, $btnBrandDev, $btnTrackDev, $btnVpnDev | Where-Object { $_.Visible })
   $compact = ($devHead.ClientSize.Width - 16 - $left - 24) -lt (Get-FullWidth $shown)
-  if ($compact -ne $script:DevActionsCompact) { $script:DevActionsCompact = $compact; Set-CompactButtons @($btnRemoteDev, $btnBrandDev, $btnVpnDev) $compact }
+  if ($compact -ne $script:DevActionsCompact) { $script:DevActionsCompact = $compact; Set-CompactButtons @($btnRemoteDev, $btnBrandDev, $btnTrackDev, $btnVpnDev) $compact }
   $devActions.Location = New-Object System.Drawing.Point(($devHead.ClientSize.Width - $devActions.Width - 16), 14)
   # the line under the name ends with ... when it does not fit; the whole of it in the tooltip
   $lblDevInfo.AutoSize = $false; $lblDevInfo.AutoEllipsis = $true; $lblDevInfo.Height = 24
@@ -2102,10 +2481,11 @@ foreach ($b in @($blkSign, $blkSsh, $blkVault)) { $vaultCard.Controls.Add($b) }
 $vaultWrap.Controls.Add($vaultCard)
 $pageVault.Controls.Add($vaultWrap); $pageVault.Controls.Add((New-PageHeader (Get-Text 'NavVault') (Get-Text 'PageVaultNote')))
 # each block as high as its text
-function Set-VaultHeights {
-  $inner = $vaultCard.ClientSize.Width - 2 - 36
+function Set-VaultHeights { Set-BlockHeights $vaultCard @($blkVault, $blkSsh, $blkSign) }
+function Set-BlockHeights($card, $blocks) {
+  $inner = $card.ClientSize.Width - 2 - 36
   if ($inner -lt 100) { return }
-  foreach ($b in @($blkVault, $blkSsh, $blkSign)) {
+  foreach ($b in $blocks) {
     $fh = Get-FlowHeight $b.Tag.Flow $inner
     if ($b.Tag.Flow.Height -ne $fh) { $b.Tag.Flow.Height = $fh }
     $need = 14 + 28 + 4 + (Measure-Note $b.Tag.Note.Text $inner) + 10 + $fh + 6
@@ -2114,7 +2494,25 @@ function Set-VaultHeights {
 }
 $vaultCard.add_Resize({ Set-VaultHeights })
 
-$script:Pages = @($pageDevices, $pageCommon, $pageKeys, $pageProblems, $pageVault)
+# ---------------- Updates page ----------------
+# two blocks, as the vault: the versions the devices install (published, all devices, pilots, going back) and this manager
+$pageUpdates = New-Panel 'Fill' $Theme.Page
+$updWrap = New-Panel 'Fill' $Theme.Page; $updWrap.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 12)
+$updCard = New-Panel 'Fill' $Theme.Card; Add-Line $updCard 'Box'; $updCard.Padding = New-Object System.Windows.Forms.Padding(1); $updCard.AutoScroll = $true
+$btnUpdRelease = New-ActionButton 'BtnImportRelease' 'Download' 'primary'
+$btnUpdAll = New-ActionButton 'BtnReleaseAll' 'Devices' 'secondary'
+$btnUpdFleet = New-ActionButton 'BtnFleetVersion' 'Undo' 'secondary'
+$btnUpdFetch = New-ActionButton 'BtnFetchVersion' 'Add' 'secondary'
+$btnMgrUpdate = New-ActionButton 'BtnUpdateManager' 'Download' 'primary'
+$btnMgrCheck = New-ActionButton 'BtnCheckManager' 'Refresh' 'secondary'
+$blkFleet = New-VaultBlock 'UpdBlockTitle' 'Devices' @($btnUpdRelease, $btnUpdAll, $btnUpdFleet, $btnUpdFetch)
+$blkManager = New-VaultBlock 'MgrBlockTitle' 'Settings' @($btnMgrUpdate, $btnMgrCheck)
+foreach ($b in @($blkManager, $blkFleet)) { $updCard.Controls.Add($b) }
+$updWrap.Controls.Add($updCard)
+$pageUpdates.Controls.Add($updWrap); $pageUpdates.Controls.Add((New-PageHeader (Get-Text 'NavUpdates') (Get-Text 'PageUpdatesNote')))
+$updCard.add_Resize({ Set-BlockHeights $updCard @($blkFleet, $blkManager) })
+
+$script:Pages = @($pageDevices, $pageCommon, $pageKeys, $pageProblems, $pageVault, $pageUpdates)
 foreach ($p in $script:Pages) { $p.Visible = $false; $content.Controls.Add($p) }
 # Fill first, then the edges: the last one added takes its side first
 $root.Controls.Add($content); $root.Controls.Add($nav); $root.Controls.Add($header); $root.Controls.Add($bar)
@@ -2133,6 +2531,7 @@ function Select-Page([int]$i) {
   }
   if ($i -eq 3) { Update-ProblemView }
   if ($i -eq 4) { Update-VaultView }
+  if ($i -eq 5) { Update-UpdatesView }
 }
 
 function Set-Cell($row, $col, $s, $value) {
@@ -2187,6 +2586,7 @@ function Update-DeviceList {
   } catch { $barText.Text = Get-Text 'ErrReadFolder' $script:Folder $_.Exception.Message; return }
   $sel = if ($script:Selected) { $script:Selected.File } else { $null }
   $f = [System.Management.Automation.WildcardPattern]::Escape($txtDevSearch.Text.Trim())
+  $script:Rollout = try { Get-RolloutState } catch { $null }
   $script:Listing = $true
   $list.BeginUpdate(); $list.Items.Clear()
   foreach ($d in $script:Devices) {
@@ -2194,7 +2594,8 @@ function Update-DeviceList {
     if ($f -and -not (@($d.Name, $d.State, $s['IP'], $user, $s['DEFAULT_USER'], $s['MAC']) | Where-Object { "$_" -like "*$f*" })) { continue }
     $it = New-Object System.Windows.Forms.ListViewItem($d.Name)
     $it.ImageKey = $d.Kind; $it.UseItemStyleForSubItems = $false; $it.BackColor = $Theme.Card
-    foreach ($v in @($d.State, $user, (Get-Version $s), (Get-Seen $d))) { [void]$it.SubItems.Add([string]$v) }
+    $ver = Get-Version $s; if ($script:Rollout -and $script:Rollout.Pilots -contains $d.Name) { $ver = Get-Text 'ListPilot' $ver }
+    foreach ($v in @($d.State, $user, $ver, (Get-Seen $d))) { [void]$it.SubItems.Add([string]$v) }
     $it.SubItems[1].ForeColor = if ($d.Kind -eq 'ok') { $Theme.Text } else { $script:KindColor[$d.Kind] }
     if (-not $user) { $it.SubItems[2].Text = '' }
     $it.ToolTipText = "$($d.Name)   $([char]0x00B7)   $($d.State)   $([char]0x00B7)   $($s['IP'])"
@@ -2212,6 +2613,7 @@ function Update-DeviceList {
   $lblDevCount.Text = Get-Text 'DevCount' $script:Devices.Count $on $bad
   $navDevices.Tag.Count = "$($script:Devices.Count)"; $navDevices.Invalidate()
   $upd = try { Get-PublishedUpdate } catch { '?' }
+  if ($script:Rollout -and $script:Rollout.Pinned) { $upd = Get-Text 'UpdFleetPinned' $upd $script:Rollout.Fleet $script:Rollout.Pilots.Count }
   $barText.Text = Get-Text 'StatusBar' $script:Folder $script:Devices.Count $on $upd (Get-Date) $(if ($renamed.Count) { Get-Text 'StatusRenamed' ($renamed -join ', ') } else { '' })
   if ($script:Selected) { Update-DeviceHeader $script:Selected }
 }
@@ -2220,7 +2622,7 @@ function Update-DeviceList {
 function Update-DeviceHeader($d) {
   if (-not $d) {
     $lblDevName.Text = Get-Text 'NoDevice'; $lblDevState.Visible = $false; $lblDevInfo.Text = ''
-    $btnRemoteDev.Enabled = $false; $btnBrandDev.Enabled = $false; $btnVpnDev.Visible = $false; return
+    $btnRemoteDev.Enabled = $false; $btnBrandDev.Enabled = $false; $btnTrackDev.Enabled = $false; $btnVpnDev.Visible = $false; return
   }
   $s = $d.S
   $lblDevName.Text = $d.Name
@@ -2232,9 +2634,23 @@ function Update-DeviceHeader($d) {
   $parts += Get-Text 'DevLastReport' (Get-Seen $d)
   $u = Get-SessionUser $s
   $parts += if ($u -and $u -eq (Get-Text 'UserKiosk') -and $s['SESSION'] -in $null, '', 'none') { Get-Text 'DevKioskPage' } elseif ($u) { Get-Text 'DevSessionOf' $u } else { Get-Text 'DevNoSession' }
+  # a pilot device, or one on a version of its own (like all devices: nothing to say)
+  if ($script:Rollout) { $t = Get-DeviceTrack $d.Name $script:Rollout
+    if ($t.Kind -eq 'pilot') { $parts += Get-Text 'DevPilot' } elseif ($t.Kind -eq 'own') { $parts += Get-Text 'DevOwnVersion' $t.Target } }
   $lblDevInfo.Text = $parts -join $dot
-  $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true; $btnVpnDev.Visible = ($s['CFG_VPN'] -eq 'openvpn')
+  $btnRemoteDev.Enabled = $true; $btnBrandDev.Enabled = $true; $btnTrackDev.Enabled = $true; $btnVpnDev.Visible = ($s['CFG_VPN'] -eq 'openvpn')
   Set-DeviceActionsFit
+}
+# what a device installs, in words: pilot (the newest), its own version, or like all devices
+function Get-TrackText($d) {
+  $st = $script:Rollout; if (-not $st) { return '' }
+  $t = Get-DeviceTrack $d.Name $st
+  $newest = if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' }
+  switch ($t.Kind) {
+    'pilot' { Get-Text 'TrackPilot' $newest }
+    'own' { Get-Text 'TrackOwn' $t.Target }
+    default { Get-Text 'TrackFleet' $(if ($t.Target -eq 'latest') { Get-Text 'TrackNewest' $newest } else { $t.Target }) }
+  }
 }
 
 # the [Peer] of a device for the configuration of the WireGuard server: its public key and its address in the tunnel
@@ -2257,7 +2673,11 @@ function Update-Summary($d) {
     SumSoftware = @(@('ColSoftware', $s['SOFTWARE']), @('ColFreeRdp', $s['FREERDP']), @('ColShareUpdate', $s['SHARE_UPDATE']), @('SumUpdateKeys', $(
       # where the updates come from, which signature they need, and the site key the device has (0.1.13 and later)
       if ($s['UPDATE_KEY']) { Get-Text 'SumUpdateKeysValue' $s['UPDATE_FROM'] $s['UPDATE_KEY'] $(if ($s['SITE_KEY'] -match '^[0-9A-F]{40}$') { ($s['SITE_KEY'] -replace '(.{4})', '$1 ').Trim() } else { Get-Text 'SumSiteKeyNone' }) }
-      else { [string]$s['UPDATE_FROM'] })), @('ColSecurityUpdates', $(
+      else { [string]$s['UPDATE_FROM'] })), @('SumUpdateTo', $(
+      # what the folder asks for, and what the device reports (UPDATE_TO in force there, the update installed)
+      $x = Get-TrackText $d
+      if ($s.ContainsKey('UPDATE_TO')) { $x += '   ' + (Get-Text 'SumUpdateToReported' $s['UPDATE_TO'] $s['UPDATE_VERSION']) } elseif ($x) { $x += '   ' + (Get-Text 'SumUpdateToOld') }
+      $x)), @('ColSecurityUpdates', $(
       $x = [string]$s['SECURITY_UPDATES']; if ($s['LAST_UPDATE']) { $x = Get-Text 'LastUpdate' $x $s['LAST_UPDATE'] }; $x)))
     SumManagement = @(@('ColCentralConfig', $s['CENTRAL_CONFIG']), @('SumSecrets', $s['SECRETS']), @('SumSsh', $s['CFG_SSH']), @('SumRemoteScreen', $s['CFG_REMOTE_SCREEN']), @('ColUptime', $s['UPTIME']))
   }
@@ -2688,23 +3108,252 @@ $btnRefresh.add_Click({
   if ($script:Selected) { $n = $script:Selected.File; $q = $script:Devices | Where-Object File -eq $n | Select-Object -First 1; if ($q) { Show-Device $q } }
   if ($script:Page -eq 3) { Update-ProblemView } })
 $btnOpen.add_Click({ Start-Process explorer.exe $script:Folder })
-$btnRelease.add_Click({
+# ---------------- releases and versions ----------------
+# The signature a checked release goes in with: the site key signs it again (the vault opened for it when there is
+# one). Site = the key or $null; Text = what the confirmation says about it; Error = it cannot go in.
+function Get-ReleaseSigning($rel) {
+  if ((Test-VaultFile) -and -not (Test-VaultOpen)) { [void](Request-VaultOpen) }
+  $site = Get-ResignKey
+  if ($site -and $rel.Signature -ne $true) { return @{ Error = (Get-Text 'RelResignUnchecked') } }
+  $t = if ($rel.Signature) { Get-Text 'RelSigChecked' } else { Get-Text 'RelSigNotChecked' }
+  $siteOnly = (Read-ConfFile $script:CommonFile)['UPDATE_KEY'] -eq 'site'
+  $t += "`r`n" + $(if ($site) { Get-Text 'RelResign' $site.Hex() } elseif ($siteOnly) { Get-Text 'RelNoResignWarn' } else { Get-Text 'RelNoResign' })
+  @{ Site = $site; Text = $t; Error = $null }
+}
+# after UPDATE_TO changed in a file: the grids show it, without losing edits not saved yet (a grid saved later with
+# the old value would undo it)
+function Sync-UpdateToRows {
+  $c = Read-ConfFile $script:CommonFile
+  if ($lblDirtyCom.Visible) { Set-GridSetting $gridCom 'UPDATE_TO' $c['UPDATE_TO'] 1 2 $Theme.Managed } else { Update-CommonGrid }
+  if ($script:Selected) {
+    $h = Read-ConfFile (Get-HostFile $script:Selected.Name)
+    if ($lblDirtyDev.Visible) { Set-GridSetting $gridDev 'UPDATE_TO' $h['UPDATE_TO'] 3 4 $Theme.Own } else { Update-DeviceGrid }
+  }
+  Update-DeviceList; if ($script:Selected) { Update-Summary $script:Selected }; Update-UpdatesView
+}
+function Set-GridSetting($g, [string]$key, $value, [int]$valueCol, [int]$checkCol, $tint) {
+  $script:Loading = $true
+  try {
+    foreach ($r in $g.Rows) { if ($r.Tag -and $r.Tag.Key -eq $key) {
+      if ($null -ne $value) { $r.Cells[$valueCol].Value = [string]$value }
+      $r.Cells[$checkCol].Value = ($null -ne $value); Set-RowLook $r $valueCol $checkCol $tint } }
+  } finally { $script:Loading = $false }
+}
+# Release from GitHub: the latest release, checked, to all devices or to the pilot devices only. Pilot only keeps every
+# other device on the version published now (UPDATE_TO of common.conf, set BEFORE the new LATEST.txt is there, so that
+# no device takes it in between); all devices also ends a pinned fleet (UPDATE_TO=latest).
+function Start-ReleaseImport {
   $form.Cursor = 'WaitCursor'
   try { $rel = Get-Release } catch { $rel = [pscustomobject]@{ Ok = $false; Message = $_.Exception.Message } } finally { $form.Cursor = 'Default' }
   if (-not $rel.Ok) { Show-Message (Get-Text 'RelTitle') $rel.Message 'Information'; return }
-  # the site key signs it again: the vault opened for it when there is one
-  if ((Test-VaultFile) -and -not (Test-VaultOpen)) { [void](Request-VaultOpen) }
-  $site = Get-ResignKey
-  if ($site -and $rel.Signature -ne $true) { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelResignUnchecked') 'Error'; Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue; return }
-  $sigText = if ($rel.Signature) { Get-Text 'RelSigChecked' } else { Get-Text 'RelSigNotChecked' }
-  $siteOnly = (Read-ConfFile $script:CommonFile)['UPDATE_KEY'] -eq 'site'
-  $sigText += "`r`n" + $(if ($site) { Get-Text 'RelResign' $site.Hex() } elseif ($siteOnly) { Get-Text 'RelNoResignWarn' } else { Get-Text 'RelNoResign' })
-  if (-not (Confirm-Action (Get-Text 'RelTitle') (Get-Text 'RelConfirm' $rel.Version (Get-PublishedUpdate) $sigText) 'Button2')) {
-    Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue; return }
-  try { Publish-Release $rel $site; Show-Message (Get-Text 'RelTitle') (Get-Text 'RelDone' $rel.Version) 'Information' }
-  catch { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error' }
-  Update-DeviceList
-})
+  try {
+    $sg = Get-ReleaseSigning $rel
+    if ($sg.Error) { Show-Message (Get-Text 'RelTitle') $sg.Error 'Error'; return }
+    $st = Get-RolloutState
+    # the others stay on the version published now: there must be one, signed, to keep them on
+    $l = Join-Path (Get-UpdatesDir) 'LATEST.txt'
+    $stay = if ($st.Pinned) { $st.Fleet } elseif ($st.Latest -and (Test-Path -LiteralPath "$l.sig")) { $st.Latest } else { $null }
+    $pilots = if ($st.Pilots.Count) { $st.Pilots -join ', ' } else { Get-Text 'RelNoPilots' }
+    $opts = @((Get-Text 'RelScopeAll' $rel.Version),
+      $(if ($stay) { , @((Get-Text 'RelScopePilot' $st.Pilots.Count $stay $pilots), $true) } else { , @((Get-Text 'RelScopePilotNo'), $false) }))
+    $sel = if ($stay -and ($st.Pinned -or $st.Pilots.Count)) { 1 } else { 0 }
+    $pick = Show-PickDialog (Get-Text 'RelTitle') (Get-Text 'RelConfirm' $rel.Version (Get-PublishedUpdate) $sg.Text) $opts $sel -okKey 'BtnPublish'
+    if (-not $pick) { return }
+    try {
+      if ($pick.Option -eq 1 -and -not $st.Pinned) {
+        $v = Initialize-VersionIndex
+        if (-not $v) { throw (Get-Text 'RelPilotNoIndex') }
+        [void](Set-UpdateTo $v)
+      }
+      [void](Publish-Release $rel $sg.Site)
+      if ($pick.Option -eq 0 -and $st.Pinned) { [void](Set-UpdateTo 'latest') }
+      Show-Message (Get-Text 'RelTitle') $(if ($pick.Option -eq 1) { Get-Text 'RelDonePilot' $rel.Version $stay } else { Get-Text 'RelDone' $rel.Version }) 'Information'
+    } catch { Show-Message (Get-Text 'RelTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error' }
+    Sync-UpdateToRows
+  } finally { Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+# A release of GitHub by its version (tag v<version>), with the checks of Release from GitHub, into updates\ and
+# updates\versions\: to keep devices on it or to go back. Returns the version now in updates\versions\, or $null.
+function Invoke-FetchVersion {
+  Add-Type -AssemblyName Microsoft.VisualBasic
+  $v = [Microsoft.VisualBasic.Interaction]::InputBox((Get-Text 'FetchAsk' (Get-ReleaseRepo)), (Get-Text 'FetchTitle'), '').Trim() -replace '^[vV](?=[0-9])', ''
+  if (-not $v) { return $null }
+  if ($v -cnotmatch $script:Rx.Version -or $v -eq 'latest') { Show-Message (Get-Text 'FetchTitle') (Get-Text 'ErrUpdateTo'); return $null }
+  if (@(Get-PublishedVersions | Where-Object { $_.Version -ceq $v -and $_.Usable }).Count) { Show-Message (Get-Text 'FetchTitle') (Get-Text 'FetchAlready' $v) 'Information'; return $v }
+  $form.Cursor = 'WaitCursor'
+  try { $rel = Get-Release '' $script:ReleaseKey $v } catch { $rel = [pscustomobject]@{ Ok = $false; Message = $_.Exception.Message } } finally { $form.Cursor = 'Default' }
+  if (-not $rel.Ok) { Show-Message (Get-Text 'FetchTitle') $rel.Message 'Information'; return $null }
+  try {
+    $sg = Get-ReleaseSigning $rel
+    if ($sg.Error) { Show-Message (Get-Text 'FetchTitle') $sg.Error 'Error'; return $null }
+    $cur = Get-CurrentVersion
+    $where = if ($cur -and (Compare-Version $v $cur) -le 0) { Get-Text 'FetchOlder' $cur } else { Get-Text 'FetchNewer' $(if ($cur) { $cur } else { Get-Text 'UpdNone' }) }
+    if (-not (Confirm-Action (Get-Text 'FetchTitle') (Get-Text 'FetchConfirm' $v $sg.Text $where))) { return $null }
+    try { [void](Publish-Release $rel $sg.Site) } catch { Show-Message (Get-Text 'FetchTitle') (Get-Text 'RelCopyFailed' $_.Exception.Message) 'Error'; return $null }
+    Update-DeviceList; Update-UpdatesView
+    $v
+  } finally { Remove-Item -LiteralPath $rel.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+# the versions that can be chosen: in updates\versions\, signed, with their package (newest first)
+function Get-ChoosableVersions { @(Get-PublishedVersions | Where-Object Usable | ForEach-Object Version) }
+# "the newest (0.1.16)" or a version, for the texts
+function Format-Target([string]$t, $st) { if ($t -eq 'latest') { Get-Text 'TrackNewest' $(if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' }) } else { $t } }
+# a version older than the newest published: the devices go back to it
+function Get-BackText([string]$v, $st) { if ($v -ne 'latest' -and $st.Latest -and (Compare-Version $v $st.Latest) -lt 0) { "`r`n`r`n" + (Get-Text 'VerBack' $v $st.Latest) } else { '' } }
+# Release to all devices: the fleet kept on a version goes to the newest (UPDATE_TO=latest in common.conf)
+function Start-ReleaseToAll {
+  $st = Get-RolloutState
+  if (-not $st.Pinned) { Show-Message (Get-Text 'AllTitle') (Get-Text 'AllNothing') 'Information'; return }
+  if (-not $st.Latest) { Show-Message (Get-Text 'AllTitle') (Get-Text 'UpdNone') 'Information'; return }
+  if (-not (Confirm-Action (Get-Text 'AllTitle') (Get-Text 'AllConfirm' $st.Fleet $st.Latest))) { return }
+  try { [void](Set-UpdateTo 'latest') } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'AllDone' $st.Latest
+  Sync-UpdateToRows
+}
+# Version for all devices: the newest, or one of updates\versions\ (also older: going back); pilots and devices with a
+# version of their own keep theirs
+function Start-FleetVersion {
+  $st = Get-RolloutState
+  $opts = @((Get-Text 'FleetOptLatest' $(if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' })), (Get-Text 'FleetOptVersion'))
+  $pick = Show-PickDialog (Get-Text 'FleetTitle') (Get-Text 'FleetText' (Format-Target $st.Fleet $st)) $opts $(if ($st.Pinned) { 1 } else { 0 }) (Get-ChoosableVersions) $st.Fleet { Invoke-FetchVersion }
+  if (-not $pick) { return }
+  $v = if ($pick.Option -eq 0) { 'latest' } else { $pick.Version }
+  if (-not $v) { return }
+  if ($v -eq $st.Fleet) { Show-Message (Get-Text 'MsgNoChangesTitle') (Get-Text 'MsgNoChanges') 'Information'; return }
+  $back = Get-BackText $v $st
+  if (-not (Confirm-Action (Get-Text 'FleetTitle') (Get-Text 'FleetConfirm' (Format-Target $st.Fleet $st) (Format-Target $v $st) $back) $(if ($back) { 'Button2' } else { 'Button1' }))) { return }
+  try { [void](Set-UpdateTo $v) } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'SavedCommon' $script:CommonFile (Get-Text 'ColSource')
+  Sync-UpdateToRows
+}
+# Software version of one device: like all devices (no UPDATE_TO of its own), pilot (UPDATE_TO=latest), or a version of
+# its own (also older: going back)
+function Show-DeviceVersionDialog($d) {
+  $st = Get-RolloutState; $t = Get-DeviceTrack $d.Name $st
+  $opts = @((Get-Text 'DevOptFleet' (Format-Target $st.Fleet $st)), (Get-Text 'DevOptPilot' $(if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' })), (Get-Text 'DevOptVersion'))
+  $sel = switch ($t.Kind) { 'pilot' { 1 } 'own' { 2 } default { 0 } }
+  $installed = if ($d.S['UPDATE_VERSION']) { $d.S['UPDATE_VERSION'] } else { [string][char]0x2014 }
+  $text = Get-Text 'DevVerText' $d.Name (Get-Version $d.S) $installed (Get-TrackText $d)
+  $pick = Show-PickDialog (Get-Text 'DevVerTitle' $d.Name) $text $opts $sel (Get-ChoosableVersions) $(if ($t.Kind -eq 'own') { $t.Target } else { '' }) { Invoke-FetchVersion }
+  if (-not $pick) { return }
+  $v = switch ($pick.Option) { 0 { $null } 1 { 'latest' } default { $pick.Version } }
+  if ($pick.Option -eq 2 -and -not $v) { return }
+  $now = switch ($t.Kind) { 'fleet' { $null } default { $t.Target } }
+  if ($v -ceq $now) { Show-Message (Get-Text 'MsgNoChangesTitle') (Get-Text 'MsgNoChanges') 'Information'; return }
+  $back = if ($v -and $v -ne 'latest') { Get-BackText $v $st } else { '' }
+  $label = { param($k, $x) switch ($k) { 0 { Get-Text 'TrackFleet' (Format-Target $st.Fleet $st) } 1 { Get-Text 'TrackPilot' (Format-Target 'latest' $st) } default { Get-Text 'TrackOwn' $x } } }
+  if (-not (Confirm-Action (Get-Text 'DevVerTitle' $d.Name) ((Get-Text 'DevVerConfirm' $d.Name (& $label $sel $t.Target) (& $label $pick.Option $v)) + $back) $(if ($back) { 'Button2' } else { 'Button1' }))) { return }
+  try { $plan = Set-UpdateTo $v $d } catch { Show-Message (Get-Text 'MsgErrorTitle') (Get-Text 'MsgSaveFailed' $_.Exception.Message) 'Error'; return }
+  $barText.Text = Get-Text 'SavedDevice' $plan.File (Get-Text 'ColSource')
+  Sync-UpdateToRows
+}
+# the Updates page: what is published, what the devices install, and this manager
+function Update-UpdatesView {
+  $st = $null; try { $st = Get-RolloutState } catch { }
+  $lines = @()
+  if ($st) {
+    $vers = @(Get-ChoosableVersions)
+    $lines += Get-Text 'UpdNoteLatest' $(if ($st.Latest) { $st.Latest } else { Get-Text 'UpdNone' })
+    $lines += if ($st.Pinned) { Get-Text 'UpdNoteFleetPinned' $st.Fleet } else { Get-Text 'UpdNoteFleetLatest' }
+    $lines += if ($st.Pilots.Count) { Get-Text 'UpdNotePilots' $st.Pilots.Count ($st.Pilots -join ', ') } else { Get-Text 'UpdNoPilots' }
+    if ($st.Own.Count) { $lines += Get-Text 'UpdNoteOwn' (@($st.Own.Keys | ForEach-Object { "$_ ($($st.Own[$_]))" }) -join ', ') }
+    $lines += if ($vers.Count) { Get-Text 'UpdNoteVersions' ($vers -join ', ') } else { Get-Text 'UpdNoVersions' }
+    # what the devices run now, from their reports
+    $run = @($script:Devices | Where-Object { -not $_.OldName } | Group-Object { Get-Version $_.S } | ForEach-Object { [pscustomobject]@{ Version = $_.Name; N = $_.Count } })
+    if ($run.Count) { $lines += Get-Text 'UpdNoteInstalled' (@(Get-NewestFirst $run | ForEach-Object { Get-Text 'UpdOnDevices' $(if ($_.Version) { $_.Version } else { '?' }) $_.N }) -join ', ') }
+  }
+  $blkFleet.Tag.Note.Text = $lines -join "`r`n"
+  $btnUpdAll.Enabled = [bool]($st -and $st.Pinned -and $st.Latest)
+  $btnUpdFleet.Enabled = [bool]$st
+  # this manager
+  $o = $script:ManagerOffer
+  $state = if (-not $script:ManagerVersion) { Get-Text 'MgrStatus_Development' } elseif ($script:ManagerChecking) { Get-Text 'MgrChecking' }
+    elseif ($script:ManagerCheckError) { Get-Text 'MgrCheckFailed' $script:ManagerCheckError } elseif ($o) { Get-Text "MgrStatus_$($o.Status)" $o.Version } else { Get-Text 'MgrStatus_Unknown' }
+  $blkManager.Tag.Note.Text = Get-Text 'MgrNote' $(if ($script:ManagerVersion) { $script:ManagerVersion } else { Get-Text 'MgrDevelopmentShort' }) $script:ManagerDir $state
+  # only when there is one: a disabled blue button still looks like the thing to press
+  $btnMgrUpdate.Visible = [bool]($o -and $o.Status -eq 'Available')
+  $btnMgrCheck.Enabled = [bool]$script:ManagerVersion -and -not $script:ManagerChecking
+  Set-BlockHeights $updCard @($blkFleet, $blkManager)
+}
+
+# ---------------- the manager updates itself ----------------
+$script:ManagerOffer = $null; $script:ManagerChecking = $false; $script:ManagerCheckError = $null
+# the notice in the top bar: only when a newer manager is there
+function Update-ManagerNotice {
+  $on = [bool]($script:ManagerOffer -and $script:ManagerOffer.Status -eq 'Available')
+  # the bar back to full texts, then fitted again with the notice in it or not
+  Set-CompactButtons @($btnMgrNotice, $btnVaultTool, $btnPerm, $btnRelease, $btnOpen, $btnRefresh) $false; $script:ToolbarCompact = $false
+  if ($on) {
+    $t = Get-Text 'MgrAvailable' $script:ManagerOffer.Version
+    $btnMgrNotice.Text = $t; $btnMgrNotice.Width = (Get-TextWidth $t) + 50
+    $tips.SetToolTip($btnMgrNotice, (Get-Text 'MgrStatus_Available' $script:ManagerOffer.Version))
+    $btnMgrNotice.Tag = $null      # Set-CompactButtons takes the new text and width as the full ones
+  }
+  $btnMgrNotice.Visible = $on
+  Set-ToolbarFit
+  if ($script:Page -eq 5) { Update-UpdatesView }
+}
+# At the start, in the background (a runspace: the window does not wait): LATEST.txt + .sig of the latest release,
+# checked here when they are there. Every failure is silent: the Updates page says it only when asked again.
+function Start-ManagerCheck([switch]$Loud) {
+  if (-not $script:ManagerVersion -or $script:ManagerChecking) { return }
+  $tmp = Join-Path $env:TEMP "otr-manager-$(Get-Random)"; New-Item -ItemType Directory $tmp | Out-Null
+  $ps = [powershell]::Create()
+  [void]$ps.AddScript({ param($base, $dir)
+    $ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    foreach ($n in 'LATEST.txt', 'LATEST.txt.sig') {
+      if ($base -match '^https?://') { Invoke-WebRequest -UseBasicParsing -Uri "$base/$n" -OutFile (Join-Path $dir $n) -TimeoutSec 60 }
+      else { Copy-Item -LiteralPath (Join-Path $base $n) -Destination (Join-Path $dir $n) }
+    } }).AddArgument((Get-ManagerReleaseBase)).AddArgument($tmp)
+  $script:ManagerChecking = $true; $script:ManagerCheckError = $null
+  $t = New-Object System.Windows.Forms.Timer; $t.Interval = 500
+  $t.Tag = @{ PS = $ps; H = $ps.BeginInvoke(); Dir = $tmp; Started = (Get-Date); Loud = [bool]$Loud }
+  $t.add_Tick({ param($s, $e)
+    $st = $s.Tag
+    if (-not $st.H.IsCompleted -and ((Get-Date) - $st.Started).TotalSeconds -lt 150) { return }
+    $s.Stop(); $s.Dispose(); $script:ManagerChecking = $false
+    try {
+      if (-not $st.H.IsCompleted) { [void]$st.PS.BeginStop($null, $null); throw 'timeout' }
+      [void]$st.PS.EndInvoke($st.H)
+      $script:ManagerOffer = Test-ManagerOffer $st.Dir
+    } catch { if ($st.Loud) { $script:ManagerCheckError = $_.Exception.GetBaseException().Message } }
+    finally { if ($st.H.IsCompleted) { $st.PS.Dispose() }; Remove-Item -LiteralPath $st.Dir -Recurse -Force -ErrorAction SilentlyContinue }
+    Update-ManagerNotice; if ($st.Loud) { Update-UpdatesView }
+  })
+  $t.Start()
+  if ($script:Page -eq 5) { Update-UpdatesView }
+}
+# Update the manager: the zip of the offer in place of these files (Update-Manager), then the manager starts again
+# with the same folder and language, and this window closes
+function Start-ManagerUpdate {
+  $o = $script:ManagerOffer; if (-not $o -or $o.Status -ne 'Available') { return }
+  $unsaved = $lblDirtyDev.Visible -or $lblDirtyCom.Visible -or $lblDirtyKeys.Visible
+  $msg = (Get-Text 'MgrConfirm' $script:ManagerVersion $o.Version $script:ManagerDir) + $(if ($unsaved) { Get-Text 'MgrUnsaved' } else { '' })
+  if (-not (Confirm-Action (Get-Text 'MgrTitle') $msg $(if ($unsaved) { 'Button2' } else { 'Button1' }))) { return }
+  $form.Cursor = 'WaitCursor'; $barText.Text = Get-Text 'MgrUpdating' $o.Version; [System.Windows.Forms.Application]::DoEvents()
+  try { $r = Update-Manager $o } catch { $form.Cursor = 'Default'; $barText.Text = ''; Show-Message (Get-Text 'MgrTitle') $_.Exception.Message 'Error'; return }
+  $form.Cursor = 'Default'
+  try { Add-ManagerChangeLog $r } catch { }
+  Show-Message (Get-Text 'MgrTitle') ((Get-ManagerDoneText $r) + "`r`n`r`n" + (Get-Text 'MgrRestart')) 'Information'
+  # the same start as OpenThinRDP-Manager.cmd, on the folder open now (a path ending in \ would escape the quote)
+  $fd = $script:Folder; if ($fd.EndsWith('\')) { $fd += '\' }
+  $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-WindowStyle', 'Hidden', '-File', "`"$(Join-Path $script:ManagerDir 'OpenThinRDP-Manager.ps1')`"", '-Folder', "`"$fd`"")
+  if ($Language) { $a += @('-Language', $Language) }
+  try { Start-Process (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $a -WorkingDirectory $script:ManagerDir -WindowStyle Hidden }
+  catch { Show-Message (Get-Text 'MgrTitle') $_.Exception.Message 'Error'; return }
+  $form.Close()
+}
+
+$btnRelease.add_Click({ Start-ReleaseImport })
+$btnUpdRelease.add_Click({ Start-ReleaseImport })
+$btnUpdAll.add_Click({ Start-ReleaseToAll })
+$btnUpdFleet.add_Click({ Start-FleetVersion })
+$btnUpdFetch.add_Click({ if (Invoke-FetchVersion) { Update-UpdatesView } })
+$btnMgrUpdate.add_Click({ Start-ManagerUpdate })
+$btnMgrNotice.add_Click({ Start-ManagerUpdate })
+$btnMgrCheck.add_Click({ Start-ManagerCheck -Loud })
+$btnTrackDev.add_Click({ if ($script:Selected) { Show-DeviceVersionDialog $script:Selected } })
 $btnPerm.add_Click({
   $acc = @(Get-MgmtAccounts $script:Devices)
   if (-not $acc.Count) {
@@ -2900,12 +3549,14 @@ $form.add_Shown({
   if ($env:OTR_MANAGER_SCREENSHOT) { if ($env:OTR_MANAGER_VAULT_CODE -and (Test-VaultFile)) { [void](Open-Vault $env:OTR_MANAGER_VAULT_CODE) } }
   else { [void](Request-VaultOpen) }
   Update-VaultView
+  # a newer manager? In the background: the window does not wait for GitHub (a screenshot only with OTR_MANAGER_RELEASES)
+  if (-not $env:OTR_MANAGER_SCREENSHOT -or $env:OTR_MANAGER_RELEASES) { try { Start-ManagerCheck } catch { } }
 })
 if ($env:OTR_MANAGER_BRANDING_SHOT) {   # test: the logo dialog (of OTR_MANAGER_BRANDING_HOST, or common) into a PNG
   $form.add_Shown({ Show-BrandingDialog ($script:Devices | Where-Object Name -eq $env:OTR_MANAGER_BRANDING_HOST | Select-Object -First 1); $form.Close() })
 }
 if ($env:OTR_MANAGER_SCREENSHOT) {   # test: draws the window into a PNG instead of leaving it open
-  # OTR_MANAGER_TAB = page (0 devices, 1 common, 2 keys, 3 problems), OTR_MANAGER_DETAIL = tab of the selected device,
+  # OTR_MANAGER_TAB = page (0 devices, 1 common, 2 keys, 3 problems, 4 vault, 5 updates), OTR_MANAGER_DETAIL = tab of the selected device,
   # OTR_MANAGER_DEVICE = the device to select, OTR_MANAGER_ROW = the setting whose help shows
   # an error must close the window and be reported: nobody is there to close it
   $form.add_Shown({ try {
@@ -2919,6 +3570,9 @@ if ($env:OTR_MANAGER_SCREENSHOT) {   # test: draws the window into a PNG instead
     # Windows clamps a window to the screen: the contents are drawn at the intended size instead (child controls
     # are not clamped), without the title bar
     # OTR_MANAGER_SIZE = <width>x<height> (default 1440x840): the window at another size, to check how it fits
+    # with OTR_MANAGER_RELEASES the check of a newer manager is waited for (at most 20 s): its notice is drawn too
+    if ($env:OTR_MANAGER_RELEASES) { $t0 = Get-Date
+      while ($script:ManagerChecking -and ((Get-Date) - $t0).TotalSeconds -lt 20) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50 } }
     $w = 1440; $h = 840
     if ($env:OTR_MANAGER_SIZE -match '^(\d{3,4})x(\d{3,4})$') { $w = [int]$Matches[1]; $h = [int]$Matches[2] }
     $root.Dock = 'None'; $root.SetBounds(0, 0, $w, $h)

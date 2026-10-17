@@ -91,7 +91,7 @@
   RelBadHash             = 'The package {0} does not match the hash in LATEST.txt (incomplete download?): nothing copied.'
   RelSigChecked          = 'Signature of the project key: checked.'
   RelSigNotChecked       = 'Signature not checked here (openthinrdp-release.asc is not next to this tool): every device checks it before installing.'
-  RelConfirm             = "Copy release {0} into updates\ of the management folder?`r`nNow published: {1}.`r`n{2}`r`n`r`nThe devices with UPDATE_FROM = share install it within 5 minutes, never during a session."
+  RelConfirm             = "Copy release {0} into updates\ of the management folder?`r`nNow published: {1}.`r`n{2}`r`n`r`nWhich devices install it? (UPDATE_FROM = share: within 5 minutes, never during a session)"
   RelDone                = 'Release {0} published in updates\. The devices show it in the Software update column as they install it.'
   RelCopyFailed          = "Copy into updates\ failed:`r`n{0}"
 
@@ -616,4 +616,104 @@
   VpnErrNotProfile       = 'not an OpenVPN client profile (no remote or client line)'
   VpnErrCommands         = "the profile runs commands or writes files ('{0}'): remove that line"
   VpnErrOldVersion       = 'the device has a version without VPN: update it first (0.1.14 or later)'
+
+  # ---- versions of the devices: pilot devices, going back (UPDATE_TO) ----
+  Label_UPDATE_TO        = 'Version to install'
+  Help_UPDATE_TO         = 'latest = the newest published version (updates\LATEST.txt of the management folder, or the latest GitHub release); a version, e.g. 0.1.16 = exactly that one, installed also when it is older than the installed one (to go back) and kept until this changes. Pilot devices: latest of their own while all devices stay on a version (Updates page). A device with a version that does not know this setting installs the newest.'
+  ErrUpdateTo            = 'Version to install: latest, or a version such as 0.1.16 (letters, digits, dot, dash, underscore; without the v of the GitHub tag)'
+  NoteUpdateToMissing    = 'Version to install {0}: updates\versions\{0}.txt (with its signature and package) is not in the management folder. The devices that update from the folder stay on what they have until it is there (Updates page, Version from GitHub...).'
+  NavUpdates             = 'Updates'
+  PageUpdatesNote        = 'The versions of OpenThinRDP in updates\ of the management folder, which one the devices install, and this manager. A new release can go to the pilot devices first and to all devices later; any version in updates\versions\ can be chosen again, to go back.'
+  UpdBlockTitle          = 'Versions of the devices'
+  UpdNoteLatest          = 'Newest published (updates\LATEST.txt): {0}'
+  UpdNoteFleetLatest     = 'All devices: the newest (UPDATE_TO = latest).'
+  UpdNoteFleetPinned     = 'All devices: {0} (UPDATE_TO in common.conf), until Release to all devices.'
+  UpdNotePilots          = 'Pilot devices ({0}), always on the newest: {1}'
+  UpdNoPilots            = 'Pilot devices: none (Software version... in the header of a device).'
+  UpdNoteOwn             = 'Devices on a version of their own: {0}'
+  UpdNoteVersions        = 'Versions that can be chosen (updates\versions\): {0}'
+  UpdNoVersions          = 'updates\versions\ is empty: it fills with the next release copied by this manager.'
+  UpdNoteInstalled       = 'Installed now: {0}'
+  UpdOnDevices           = '{0} on {1}'
+  UpdFleetPinned         = '{0} (all devices on {1}, pilot devices: {2})'
+  BtnReleaseAll          = 'Release to all devices'
+  BtnFleetVersion        = 'Version for all devices...'
+  BtnFetchVersion        = 'Version from GitHub...'
+  BtnFromGitHub          = 'From GitHub...'
+  BtnPublish             = 'Publish'
+  BtnApply               = 'Apply'
+  RelScopeAll            = 'All devices: they install {0}'
+  RelScopePilot          = 'Pilot devices only ({0}: {2}); all the others stay on {1}'
+  RelScopePilotNo        = 'Pilot devices only: not possible, nothing signed is published in updates\ yet for the other devices to stay on'
+  RelNoPilots            = 'none marked yet'
+  RelDonePilot           = 'Release {0} published in updates\. The pilot devices install it; all the others stay on {1} until Release to all devices (Updates page).'
+  RelPilotNoIndex        = 'updates\LATEST.txt or its signature is missing: the other devices would have no version to stay on. Nothing copied.'
+  RelWrongVersion        = 'The release with tag v{0} says version {1} in its LATEST.txt: nothing copied.'
+  FetchTitle             = 'Version from GitHub'
+  FetchAsk               = 'Version to fetch from the GitHub releases of {0}, e.g. 0.1.15 (the release with tag v0.1.15):'
+  FetchAlready           = 'Version {0} is already in updates\versions\.'
+  FetchConfirm           = "Copy version {0} into updates\ and updates\versions\?`r`n{1}`r`n`r`n{2}"
+  FetchOlder             = 'It is not newer than the newest published ({0}): updates\LATEST.txt does not change, and no device installs it until it is chosen as its version.'
+  FetchNewer             = 'It is newer than the newest published ({0}): it becomes the newest, and the devices that install the newest take it.'
+  AllTitle               = 'Release to all devices'
+  AllConfirm             = "All devices from {0} to {1}, the newest published?`r`n`r`ncommon.conf gets UPDATE_TO = latest: the devices install it within 5 minutes, never during a session."
+  AllNothing             = 'All devices already install the newest published version.'
+  AllDone                = 'common.conf: UPDATE_TO = latest. The devices install {0} within 5 minutes.'
+  FleetTitle             = 'Version for all devices'
+  FleetText              = "Which version every device installs (UPDATE_TO in common.conf). Now: {0}.`r`nPilot devices and devices with a version of their own keep theirs."
+  FleetOptLatest         = 'The newest published ({0})'
+  FleetOptVersion        = 'This version (also an older one: they go back to it):'
+  FleetConfirm           = "All devices: {0} -> {1}?{2}`r`n`r`nThey install it within 5 minutes, never during a session."
+  VerBack                = '{0} is older than the newest published ({1}): the devices that have a newer one go back to it, installed as any update.'
+  BtnDeviceVersion       = 'Software version...'
+  TipDeviceVersion       = 'Which version of OpenThinRDP this device installs: like all devices, pilot (always the newest), or a version of its own.'
+  DevVerTitle            = 'Software version - {0}'
+  DevVerText             = "{0} has OpenThinRDP {1} (update installed: {2}).`r`nNow it installs: {3}."
+  DevOptFleet            = 'Like all devices ({0})'
+  DevOptPilot            = 'Pilot device: always the newest published ({0}), also while all devices stay on a version'
+  DevOptVersion          = 'A version of its own (also an older one: it goes back to it):'
+  DevVerConfirm          = '{0}: {1} -> {2}?'
+  DevPilot               = 'pilot device'
+  DevOwnVersion          = 'stays on {0}'
+  ListPilot              = '{0} (pilot)'
+  TrackFleet             = 'like all devices: {0}'
+  TrackPilot             = 'pilot: the newest ({0})'
+  TrackOwn               = 'its own version: {0}'
+  TrackNewest            = 'the newest ({0})'
+  SumUpdateTo            = 'Version to install'
+  SumUpdateToReported    = '(the device: UPDATE_TO = {0}, update installed: {1})'
+  SumUpdateToOld         = '(the device does not report UPDATE_TO: its version installs the newest)'
+
+  # ---- the manager updates itself ----
+  MgrBlockTitle          = 'This manager'
+  MgrNote                = "Version: {0}   -   folder: {1}`r`n{2}"
+  MgrDevelopmentShort    = 'development copy'
+  MgrStatus_Development  = 'No VERSION file next to it (a copy of the repository): it never updates itself.'
+  MgrStatus_Unknown      = 'Not checked yet.'
+  MgrStatus_Available    = 'Manager {0} is available: Update the manager replaces the files of this folder (the current ones go to previous\) and starts it again.'
+  MgrStatus_UpToDate     = 'Up to date (the latest release is {0}).'
+  MgrStatus_NoManager    = 'The latest release ({0}) has no manager package.'
+  MgrStatus_BadSignature = 'The LATEST.txt of the latest release is NOT signed by the project key: nothing offered. Report it in the project security advisories.'
+  MgrStatus_NoKey        = 'openthinrdp-release.asc is not next to this manager: a new manager could not be checked, so none is offered.'
+  MgrChecking            = 'Checking the latest release...'
+  MgrCheckFailed         = 'The latest release could not be read: {0}'
+  MgrAvailable           = 'Manager {0} available'
+  BtnUpdateManager       = 'Update the manager'
+  BtnCheckManager        = 'Check again'
+  MgrTitle               = 'Update the manager'
+  MgrConfirm             = "Update the manager from {0} to {1}?`r`n`r`nThe files of {2} are replaced by those of the release; the ones replaced are copied into previous\ first. vault.otr, the launchers (.exe, .args, .script) and anything else not in the release stay as they are. The manager then starts again; other administrators get the new version at their next start."
+  MgrUnsaved             = "`r`n`r`nChanges not saved on the pages of this window are lost."
+  MgrUpdating            = 'Updating the manager to {0}...'
+  MgrNotFound            = "Download failed: {0}`r`n{1}"
+  MgrBadHash             = 'The manager package {0} does not match the hash in the signed LATEST.txt: nothing changed.'
+  MgrBadZip              = 'The manager package holds a path outside its folder ({0}): nothing changed.'
+  MgrNotManager          = 'The manager package does not hold OpenThinRDP-Manager.ps1 and VERSION {0}: nothing changed.'
+  MgrNotWritable         = "The folder of the manager cannot be written: {0}`r`nUpdate it as an administrator who can write there: that copy is the one every PC starts."
+  MgrBadCopy             = '{0} was not copied whole'
+  MgrBackupFailed        = 'The files of the manager could not be copied into previous\ (nothing changed): {0}'
+  MgrRestored            = "The update failed and the previous files are back in place: {0}"
+  MgrRestoreFailed       = "The update failed ({0}) and these files could not be put back from previous\: {1}. Copy them back by hand."
+  MgrDone                = 'Manager {0} installed in {1} (the files it replaced are in previous\).'
+  MgrLauncherChanged     = 'The launcher changed (Launcher.cs): build the .exe again with {0}, with the same -Name, -Folder, -Language (and -Install on each PC that has a local copy). The old one keeps working until then.'
+  MgrRestart             = 'The manager starts again now.'
 }
