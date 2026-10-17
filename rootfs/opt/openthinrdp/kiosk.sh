@@ -263,9 +263,9 @@ connect(){
   # that accepts the connection and then hangs costs this much on every attempt before the next one.
   o+=(/timeout:20000)
   # RD Gateway: the broker and the VM through it, over HTTPS, with the credentials of the session (FreeRDP's
-  # default). FreeRDP carries no UDP through a gateway and declines it as soon as a gateway is set, also when
-  # detect reaches a server on the local network straight (measured 16/10/2026): with always no UDP is offered at all
-  # (-multitransport); with detect FreeRDP declines it by itself.
+  # default). FreeRDP carries no UDP through a gateway: with always no UDP is offered at all (-multitransport); with
+  # detect FreeRDP declines it by itself when the connection goes through the gateway, and keeps it when the server
+  # is reached straight (FreeRDP dda5414; the earlier one declined it as soon as a gateway was set).
   # /network:auto stays: the server adapts frame rate and quality to the line, which matters most from outside.
   v=$(cfg RDP_GATEWAY)
   if [ -n "$v" ]; then
