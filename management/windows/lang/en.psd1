@@ -648,6 +648,7 @@
   RelNoPilots            = 'none marked yet'
   RelDonePilot           = 'Release {0} published in updates\. The pilot devices install it; all the others stay on {1} until Release to all devices (Updates page).'
   RelPilotNoIndex        = 'updates\LATEST.txt or its signature is missing: the other devices would have no version to stay on. Nothing copied.'
+  RelPilotOldDevices     = '{0} devices are not pilots but run a version before 0.2.0, which does not know UPDATE_TO: {1}. They would install {2} anyway, as soon as it is in the folder. Publish to the pilot devices only all the same?'
   RelWrongVersion        = 'The release with tag v{0} says version {1} in its LATEST.txt: nothing copied.'
   FetchTitle             = 'Version from GitHub'
   FetchAsk               = 'Version to fetch from the GitHub releases of {0}, e.g. 0.1.15 (the release with tag v0.1.15):'
